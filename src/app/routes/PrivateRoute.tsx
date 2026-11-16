@@ -1,0 +1,104 @@
+import { useEffect, useRef, useReducer } from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { selectIsAuthenticated, selectCurrentUser } from '../../entities/auth/model/authSlice';
+import { useVerifySessionQuery } from '../../entities/auth/api/authApi';
+import { PageLoader } from '../../shared/ui';
+
+export const PrivateRoute = () => {
+    const isAuthenticated = useSelector(selectIsAuthenticated);
+
+    const { isLoading } = useVerifySessionQuery(undefined, {
+        skip: !isAuthenticated,
+        // Always verify with the server on mount — never trust stale cache
+        refetchOnMountOrArgChange: true,
+    });
+
+    // Timeout: if verification takes more than 10s, stop blocking
+    const timedOut = useRef(false);
+    const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+
+    useEffect(() => {
+        if (!isLoading) return;
+        const timer = setTimeout(() => {
+            timedOut.current = true;
+            forceUpdate();
+        }, 10000);
+        return () => clearTimeout(timer);
+    }, [isLoading]);
+
+    // 401 errors are handled globally by baseQueryWithReauth (dispatches logout)
+    // No need for a separate useEffect here — it was causing infinite re-render loops
+
+    // Not authenticated at all -> login
+    if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+    // Show loading spinner while verifying session on initial load
+    if (isLoading && !timedOut.current) {
+        return (
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                height: '100vh',
+                background: 'var(--bg-primary, #0f1117)',
+                color: '#f3f4f6',
+                fontFamily: 'Inter, system-ui, sans-serif'
+            }}>
+                <PageLoader text="Verificando sesión..." minHeight="180px" />
+                <div style={{ fontSize: '12px', color: 'var(--text-dimmed, #4b5563)', marginTop: '12px', maxWidth: '320px', textAlign: 'center', lineHeight: '1.4' }}>
+                    Si es la primera visita en un rato, el servidor gratuito de Render puede tardar hasta 1 minuto en "despertar".
+                </div>
+            </div>
+        );
+    }
+
+    return <Outlet />;
+};
+
+interface RoleGuardProps {
+    allowedRoles: string[];
+}
+
+export const RoleGuard = ({ allowedRoles }: RoleGuardProps) => {
+    const user = useSelector(selectCurrentUser);
+
+    if (!user) {
+        return <Navigate to="/login" replace />;
+    }
+
+    if (!allowedRoles.includes(user.role.toUpperCase())) {
+        return <Navigate to="/" replace />;
+    }
+
+    return <Outlet />;
+};
+
+interface SectorGuardProps {
+    allowedSectors: string[];
+}
+
+export const SectorGuard = ({ allowedSectors }: SectorGuardProps) => {
+    const user = useSelector(selectCurrentUser);
+
+    if (!user) {
+        return <Navigate to="/login" replace />;
+    }
+
+    if (user.role?.toUpperCase() === 'ADMIN') {
+        return <Outlet />;
+    }
+
+    const userSectors: string[] = user.sectors && user.sectors.length > 0
+        ? user.sectors
+        : (user.sector ? user.sector.split(/[,;|]/).map((s: string) => s.trim().toUpperCase()).filter(Boolean) : []);
+
+    const hasSector = allowedSectors.some(sector => userSectors.includes(sector.toUpperCase()));
+
+    if (!hasSector) {
+        return <Navigate to="/" replace />;
+    }
+
+    return <Outlet />;
+};

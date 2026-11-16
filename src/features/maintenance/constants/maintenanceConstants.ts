@@ -1,0 +1,57 @@
+export const MAINTENANCE_STATUS_COLORS: Record<string, string> = {
+    ACTIVA: '#1fb811',
+    REVISAR: '#ff7b00',
+    VELOCIDAD_REDUCIDA: '#fffb03',
+    MUESTRAS: '#a855f7',
+    PARADA: '#ef4444',
+    ELECTRONIC: '#0818aa',
+    FALTA_COSTURA: '#a4f190',
+    FALTA_PROGRAMA: '#00ffdd',
+    REPUESTOS: 'var(--text-subtle, #94a3b8)',
+    OTRO: 'var(--text-subtle, #6b7280)',
+    CAMBIO: '#f380d0',
+};
+
+export const MAINTENANCE_STATUS_LABELS: Record<string, string> = {
+    ACTIVA: 'Activa',
+    REVISAR: 'En Revisión',
+    VELOCIDAD_REDUCIDA: 'Vel. Reducida',
+    FALTA_COSTURA: 'Costura',
+    MUESTRAS: 'Muestras',
+    PARADA: 'Parada',
+    ELECTRONIC: 'Electrónica',
+    FALTA_PROGRAMA: 'Programa',
+    REPUESTOS: 'Repuestos',
+    OTRO: 'Otro',
+    CAMBIO: 'En Cambio',
+};
+
+export const FAILURE_TYPES = [
+    'Sin Asignar', 'Ninguna', 'Cosedora Cilindro', 'Cosedora Brazo', 'Cosedora Cierre', 'Error electronico',
+    'Error Puesta 0', 'Error Motores', 'Mal vanizado', 'Logo contaminado',
+    'Tejido(Muerde/revienta/pica/tirones)', 'Goma', 'Puntada', 'Transferencia',
+    'Aguja', 'Platina', 'Menguados', 'Corta', 'Electronico', 'Lubricacion',
+    'Mancha', 'Corte', 'REPUESTO', 'Corte de luz.', 'Programacion'
+];
+
+export const RESPONSABLES = [
+    'Sin Asignar', 'Gaston', 'Ruben', 'Daniel', 'Alexis', 'Violeta', 'Leandro', 'Gaspar', 'Ramón', 'Tejedor'
+];
+
+export const CHANGE_TYPES = [
+    { value: 'COLOR', label: 'Color' },
+    { value: 'TALLE', label: 'Talle' },
+    { value: 'ARTICULO', label: 'Artículo' },
+    { value: 'ECONOMIA', label: 'Economía' },
+    { value: 'PUENTE', label: 'Puente' },
+    { value: 'PLATINERO', label: 'Platinero' },
+];
+
+export const CHANGE_TYPE_COLORS: Record<string, string> = {
+    COLOR: '#e91e63',
+    TALLE: '#9c27b0',
+    ARTICULO: '#2196f3',
+    ECONOMIA: '#ff9800',
+    PUENTE: '#4caf50',
+    PLATINERO: '#00bcd4',
+};

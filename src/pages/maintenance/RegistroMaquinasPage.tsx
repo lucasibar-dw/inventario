@@ -1,0 +1,583 @@
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+    Box, Typography, Button, TextField, MenuItem, Card as MuiCard, 
+    CardContent, Divider, Autocomplete, IconButton, List, ListItem, 
+    ListItemText, ListItemSecondaryAction, Paper, Chip, FormControlLabel, Checkbox,
+    Grid
+} from '@mui/material';
+import { useForm, Controller } from 'react-hook-form';
+import { useSelector } from 'react-redux';
+import { PageHeader, Spinner, Select } from '../../shared/ui';
+import { selectCurrentUser } from '../../entities/auth/model/authSlice';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import SendIcon from '@mui/icons-material/Send';
+import HistoryIcon from '@mui/icons-material/History';
+import { 
+    useGetPlantsQuery, 
+    useGetMachineTypesQuery, 
+    useGetMachinesQuery,
+    useUpdateMachineStatusMutation
+} from '../../entities/maintenance/api/maintenance.api';
+
+import { 
+    FAILURE_TYPES as failureTypes, 
+    RESPONSABLES as responsables, 
+    MAINTENANCE_STATUS_COLORS as statusColors
+} from '../../features/maintenance/constants/maintenanceConstants';
+
+const targetStatuses = [
+    { value: 'ACTIVA', label: 'Activa', color: statusColors.ACTIVA },
+    { value: 'REVISAR', label: 'Revisar', color: statusColors.REVISAR },
+    { value: 'VELOCIDAD_REDUCIDA', label: 'Velocidad Reducida', color: statusColors.VELOCIDAD_REDUCIDA },
+    { value: 'FALTA_COSTURA', label: 'Falta Costura', color: statusColors.FALTA_COSTURA },
+    { value: 'MUESTRAS', label: 'Muestras', color: statusColors.MUESTRAS },
+    { value: 'PARADA', label: 'Parada', color: statusColors.PARADA },
+    { value: 'ELECTRONIC', label: 'Electronic', color: statusColors.ELECTRONIC },
+    { value: 'FALTA_PROGRAMA', label: 'Falta Programa', color: statusColors.FALTA_PROGRAMA },
+    { value: 'REPUESTOS', label: 'Repuestos', color: statusColors.REPUESTOS },
+];
+
+interface PendingEvent {
+    id: string;
+    targetStatus: string;
+    failureType: string;
+    observation: string;
+    generatedBy: string;
+    timestamp: string;
+    machineId: string;
+    machineLabel: string;
+}
+
+export default function RegistroMaquinasPage() {
+    const user = useSelector(selectCurrentUser);
+    const machineSearchRef = useRef<HTMLInputElement>(null);
+    
+    // Selectors state
+    const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
+    const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
+    const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+    const [pendingEvents, setPendingEvents] = useState<PendingEvent[]>([]);
+
+    const [enableSecondState, setEnableSecondState] = useState<boolean>(false);
+
+    const defaultDate = useMemo(() => new Date().toISOString().split('T')[0], []);
+    const defaultHour = useMemo(() => String(new Date().getHours()).padStart(2, '0'), []);
+    const defaultMinute = useMemo(() => String(new Date().getMinutes()).padStart(2, '0'), []);
+
+    const [secondStatus, setSecondStatus] = useState('ACTIVA');
+    const [secondDate, setSecondDate] = useState(defaultDate);
+    const [secondHour, setSecondHour] = useState('05');
+    const [secondMinute, setSecondMinute] = useState('00');
+    const [secondFailure, setSecondFailure] = useState('Ninguna');
+    const [secondObservation, setSecondObservation] = useState('');
+    
+    // Queries
+    const { data: plants = [], isLoading: loadingPlants } = useGetPlantsQuery();
+    const { data: machineTypes = [], isLoading: loadingTypes } = useGetMachineTypesQuery();
+    const { data: machines = [], isLoading: loadingMachines } = useGetMachinesQuery(
+        { plantId: selectedPlantId || '', typeId: selectedTypeId || '' },
+        { skip: !selectedPlantId || !selectedTypeId }
+    );
+    const [updateStatus, { isLoading: isUpdating }] = useUpdateMachineStatusMutation();
+
+    // Defaults
+    useEffect(() => {
+        if (plants.length > 0 && !selectedPlantId) {
+            const derWill = plants.find((p: any) => p.name.toLowerCase().includes('der will') || p.name.toLowerCase().includes('derwill'));
+            setSelectedPlantId(derWill?.id || plants[0].id);
+        }
+    }, [plants, selectedPlantId]);
+
+    useEffect(() => {
+        if (machineTypes.length > 0 && !selectedTypeId) {
+            const tej = machineTypes.find((t: any) => t.name.trim().toLowerCase() === 'tejeduría' || t.name.trim().toLowerCase() === 'tejeduria')
+                || machineTypes.find((t: any) => t.category === 'TEJEDURIA' || t.name.toLowerCase().includes('tejedur'));
+            setSelectedTypeId(tej?.id || machineTypes[0].id);
+        }
+    }, [machineTypes, selectedTypeId]);
+
+    const { control, reset, setValue, getValues } = useForm({
+        defaultValues: {
+            targetStatus: 'PARADA',
+            failureType: 'Ninguna',
+            observation: '',
+            generatedBy: (user as any)?.name || (user as any)?.username || '',
+            date: defaultDate,
+            hour: defaultHour,
+            minute: defaultMinute,
+        }
+    });
+
+    // Auto-focus on machine search when plant/type loads
+    useEffect(() => {
+        if (machineSearchRef.current) {
+            machineSearchRef.current.focus();
+        }
+    }, [loadingMachines]);
+
+    const plantOptions = useMemo(() => plants.map((p: any) => ({ value: p.id, label: p.name })), [plants]);
+    const typeOptions = useMemo(() => machineTypes.map((t: any) => ({ value: t.id, label: t.name })), [machineTypes]);
+    const machineOptions = useMemo(() => machines.map((m: any) => ({ value: m.id, label: `Máquina ${m.number} - ${m.codigoInterno || ''}`, number: m.number })), [machines]);
+
+    const addEvent = () => {
+        if (!selectedMachineId) {
+            return alert('Por favor seleccione una máquina del listado desplegable primero.');
+        }
+
+        const values = getValues();
+        const matchedMachine = machineOptions.find((m: any) => m.value === selectedMachineId);
+        const machineLabelVal = matchedMachine ? matchedMachine.label : `Máquina ID: ${selectedMachineId}`;
+
+        const timestamp1 = new Date(`${values.date}T${values.hour}:${values.minute}:00`).toISOString();
+
+        const event1: PendingEvent = {
+            id: Math.random().toString(36).substr(2, 9),
+            targetStatus: values.targetStatus,
+            failureType: values.failureType,
+            observation: values.observation,
+            generatedBy: values.generatedBy,
+            timestamp: timestamp1,
+            machineId: selectedMachineId,
+            machineLabel: machineLabelVal
+        };
+
+        const newEventsList = [event1];
+
+        if (enableSecondState) {
+            const timestamp2 = new Date(`${secondDate}T${secondHour}:${secondMinute}:00`).toISOString();
+            const event2: PendingEvent = {
+                id: Math.random().toString(36).substr(2, 9),
+                targetStatus: secondStatus,
+                failureType: secondFailure,
+                observation: secondObservation,
+                generatedBy: values.generatedBy,
+                timestamp: timestamp2,
+                machineId: selectedMachineId,
+                machineLabel: machineLabelVal
+            };
+            newEventsList.push(event2);
+        }
+
+        setPendingEvents(prev => [...prev, ...newEventsList].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
+        
+        // Reset fields and clear machine selection to allow picking the next machine seamlessly
+        setSelectedMachineId(null);
+        setValue('observation', '');
+        setSecondObservation('');
+        
+        // Focus back to machine autocomplete for fast sequential entry
+        setTimeout(() => {
+            if (machineSearchRef.current) {
+                machineSearchRef.current.focus();
+            }
+        }, 50);
+    };
+
+    const removeEvent = (id: string) => {
+        setPendingEvents(prev => prev.filter(e => e.id !== id));
+    };
+
+    const submitAll = async () => {
+        if (pendingEvents.length === 0) return;
+        
+        try {
+            for (const event of pendingEvents) {
+                await updateStatus({
+                    id: event.machineId,
+                    plantId: selectedPlantId,
+                    typeId: selectedTypeId,
+                    status: event.targetStatus,
+                    failureType: event.failureType,
+                    observation: event.observation,
+                    generatedBy: event.generatedBy,
+                    timestamp: event.timestamp,
+                    isBatch: true
+                }).unwrap();
+            }
+            
+            alert(`Se registraron ${pendingEvents.length} movimientos correctamente.`);
+            setPendingEvents([]);
+            setSelectedMachineId(null);
+            reset({
+                targetStatus: 'PARADA',
+                failureType: 'Ninguna',
+                observation: '',
+                generatedBy: (user as any)?.name || (user as any)?.username || '',
+                date: defaultDate,
+                hour: defaultHour,
+                minute: defaultMinute,
+            });
+            
+        } catch (error) {
+            console.error('Error submitting events:', error);
+            alert('Error al procesar algunos cambios. Revise el historial.');
+        }
+    };
+
+    if (loadingPlants || loadingTypes) return <Spinner />;
+
+    return (
+        <Box sx={{ p: 3, maxWidth: '1000px', margin: '0 auto' }}>
+            <PageHeader 
+                title="Carga de Novedades por Lote" 
+                subtitle="Formulario optimizado para cargar múltiples movimientos y estados de diferentes máquinas a la vez"
+            />
+
+            <Grid container spacing={3}>
+                {/* Form Side */}
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <MuiCard sx={{ bgcolor: 'var(--bg-secondary, #111827)', borderRadius: 2, border: '1px solid var(--border-dynamic, #1f2937)' }}>
+                        <CardContent sx={{ p: 3 }}>
+                            <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-white-dynamic, white)', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                1. Seleccionar Máquina
+                            </Typography>
+                            
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 3 }}>
+                                <Select 
+                                    label="Planta"
+                                    value={selectedPlantId || ''}
+                                    onChange={(val) => { setSelectedPlantId(val); setSelectedMachineId(null); }}
+                                    options={plantOptions}
+                                />
+                                
+                                <Select 
+                                    label="Tipo"
+                                    value={selectedTypeId || ''}
+                                    onChange={(val) => { setSelectedTypeId(val); setSelectedMachineId(null); }}
+                                    options={typeOptions}
+                                />
+                                
+                                <Autocomplete
+                                    options={machineOptions}
+                                    getOptionLabel={(opt) => opt.label}
+                                    value={machineOptions.find((o: any) => o.value === selectedMachineId) || null}
+                                    onChange={(_e, newVal) => setSelectedMachineId(newVal?.value || null)}
+                                    loading={loadingMachines}
+                                    filterOptions={(options, state) => {
+                                        const input = state.inputValue.trim();
+                                        if (!input) return options;
+                                        if (/^\d+$/.test(input)) {
+                                            const targetNum = parseInt(input, 10);
+                                            // Si es numérico, filtrar por número exacto primero
+                                            const exact = options.filter(o => o.number === targetNum);
+                                            if (exact.length > 0) return exact;
+                                        }
+                                        const lower = input.toLowerCase();
+                                        return options.filter(o => o.label.toLowerCase().includes(lower));
+                                    }}
+                                    renderInput={(params) => (
+                                        <TextField
+                                            {...params}
+                                            inputRef={machineSearchRef}
+                                            label="Buscar Máquina (N° o Código)"
+                                            variant="outlined"
+                                            placeholder="Escriba para filtrar..."
+                                            slotProps={{ htmlInput: { ...params.inputProps, inputMode: 'numeric' } }}
+                                            sx={{
+                                                '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' },
+                                                '& .MuiInputLabel-root': { color: 'var(--text-muted, #9ca3af)' },
+                                                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' },
+                                            }}
+                                        />
+                                    )}
+                                    slotProps={{
+                                        paper: { sx: { bgcolor: 'var(--bg-secondary, #111827)', color: 'var(--text-white-dynamic, white)', border: '1px solid var(--border-strong, #374151)' } }
+                                    }}
+                                />
+                            </Box>
+
+                            <Divider sx={{ my: 3, borderColor: 'var(--border-dynamic, #1f2937)' }} />
+
+                            <Typography variant="h6" sx={{ mb: 2, color: 'var(--text-white-dynamic, white)', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                2. Datos del Movimiento
+                            </Typography>
+
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                                {/* Evento Principal */}
+                                <Box sx={{ p: 2, bgcolor: 'var(--border-dynamic, #1f2937)40', borderRadius: 2, border: '1px solid var(--border-strong, #374151)' }}>
+                                    <Typography variant="subtitle2" sx={{ color: '#3b82f6', mb: 2, fontWeight: 700 }}>
+                                        Movimiento a Registrar
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        <Controller
+                                            name="targetStatus"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <TextField {...field} select fullWidth size="small" label="Estado Destino" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}>
+                                                    {targetStatuses.map((opt) => (
+                                                        <MenuItem key={opt.value} value={opt.value}>
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: opt.color }} />
+                                                                {opt.label}
+                                                            </Box>
+                                                        </MenuItem>
+                                                    ))}
+                                                </TextField>
+                                            )}
+                                        />
+
+                                        <Controller
+                                            name="date"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <TextField {...field} fullWidth size="small" type="date" label="Fecha del evento" variant="outlined" InputLabelProps={{ shrink: true }} sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }} />
+                                            )}
+                                        />
+
+                                        <Box sx={{ display: 'flex', gap: 2 }}>
+                                            <Controller
+                                                name="hour"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <TextField {...field} select fullWidth size="small" label="Hora del evento" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}>
+                                                        {Array.from({ length: 24 }).map((_, h) => {
+                                                            const hStr = String(h).padStart(2, '0');
+                                                            return <MenuItem key={hStr} value={hStr}>{hStr}</MenuItem>;
+                                                        })}
+                                                    </TextField>
+                                                )}
+                                            />
+                                            <Controller
+                                                name="minute"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <TextField {...field} select fullWidth size="small" label="Minuto del evento" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}>
+                                                        {Array.from({ length: 60 }).map((_, m) => {
+                                                            const mStr = String(m).padStart(2, '0');
+                                                            return <MenuItem key={mStr} value={mStr}>{mStr}</MenuItem>;
+                                                        })}
+                                                    </TextField>
+                                                )}
+                                            />
+                                        </Box>
+
+                                        <Controller
+                                            name="generatedBy"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <TextField {...field} select fullWidth size="small" label="Responsable" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}>
+                                                    {responsables.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                                                </TextField>
+                                            )}
+                                        />
+
+                                        <Controller
+                                            name="failureType"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <TextField {...field} select fullWidth size="small" label="Tipo de Falla" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}>
+                                                    {failureTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                                                </TextField>
+                                            )}
+                                        />
+
+                                        <Controller
+                                            name="observation"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <TextField {...field} fullWidth size="small" multiline rows={2} label="Observación" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }} />
+                                            )}
+                                        />
+                                    </Box>
+                                </Box>
+
+                                {/* Checkbox Opcional */}
+                                <Box sx={{ bgcolor: 'var(--bg-secondary, #111827)', p: 1, borderRadius: 1, border: '1px dashed var(--border-strong, #374151)' }}>
+                                    <FormControlLabel
+                                        control={
+                                            <Checkbox 
+                                                checked={enableSecondState} 
+                                                onChange={(e) => setEnableSecondState(e.target.checked)} 
+                                                sx={{ color: 'var(--text-subtle, #6b7280)', '&.Mui-checked': { color: '#10b981' } }}
+                                            />
+                                        }
+                                        label={
+                                            <Typography variant="body2" sx={{ color: enableSecondState ? '#10b981' : 'var(--text-muted, #9ca3af)', fontWeight: enableSecondState ? 700 : 400 }}>
+                                                Añadir segundo cambio de estado secuencial para esta misma máquina
+                                            </Typography>
+                                        }
+                                    />
+                                </Box>
+
+                                {/* Evento Secundario Opcional */}
+                                {enableSecondState && (
+                                    <Box sx={{ p: 2, bgcolor: '#10b98110', borderRadius: 2, border: '1px solid #10b98130' }}>
+                                        <Typography variant="subtitle2" sx={{ color: '#10b981', mb: 2, fontWeight: 700 }}>
+                                            Segundo Cambio de Estado (Consecutivo)
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            <TextField 
+                                                select 
+                                                fullWidth 
+                                                size="small"
+                                                label="Estado Posterior" 
+                                                value={secondStatus} 
+                                                onChange={(e) => setSecondStatus(e.target.value)}
+                                                sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}
+                                            >
+                                                {targetStatuses.map((opt) => (
+                                                    <MenuItem key={opt.value} value={opt.value}>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: opt.color }} />
+                                                            {opt.label}
+                                                        </Box>
+                                                    </MenuItem>
+                                                ))}
+                                            </TextField>
+
+                                            <TextField 
+                                                fullWidth 
+                                                size="small"
+                                                type="date" 
+                                                label="Fecha posterior" 
+                                                value={secondDate} 
+                                                onChange={(e) => setSecondDate(e.target.value)}
+                                                InputLabelProps={{ shrink: true }} 
+                                                sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }} 
+                                            />
+
+                                            <Box sx={{ display: 'flex', gap: 2 }}>
+                                                <TextField 
+                                                    select 
+                                                    fullWidth 
+                                                    size="small"
+                                                    label="Hora posterior" 
+                                                    value={secondHour} 
+                                                    onChange={(e) => setSecondHour(e.target.value)}
+                                                    sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }} 
+                                                >
+                                                    {Array.from({ length: 24 }).map((_, h) => {
+                                                        const hStr = String(h).padStart(2, '0');
+                                                        return <MenuItem key={hStr} value={hStr}>{hStr}</MenuItem>;
+                                                    })}
+                                                </TextField>
+                                                <TextField 
+                                                    select 
+                                                    fullWidth 
+                                                    size="small"
+                                                    label="Minuto posterior" 
+                                                    value={secondMinute} 
+                                                    onChange={(e) => setSecondMinute(e.target.value)}
+                                                    sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }} 
+                                                >
+                                                    {Array.from({ length: 60 }).map((_, m) => {
+                                                        const mStr = String(m).padStart(2, '0');
+                                                        return <MenuItem key={mStr} value={mStr}>{mStr}</MenuItem>;
+                                                    })}
+                                                </TextField>
+                                            </Box>
+
+                                            <TextField 
+                                                select 
+                                                fullWidth 
+                                                size="small"
+                                                label="Tipo de Falla" 
+                                                value={secondFailure} 
+                                                onChange={(e) => setSecondFailure(e.target.value)}
+                                                sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}
+                                            >
+                                                {failureTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                                            </TextField>
+
+                                            <TextField 
+                                                fullWidth 
+                                                size="small"
+                                                multiline 
+                                                rows={2} 
+                                                label="Observación Posterior" 
+                                                value={secondObservation} 
+                                                onChange={(e) => setSecondObservation(e.target.value)}
+                                                sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }} 
+                                            />
+                                        </Box>
+                                    </Box>
+                                )}
+
+                                <Button 
+                                    variant="contained" 
+                                    color="secondary" 
+                                    fullWidth 
+                                    startIcon={<AddIcon />}
+                                    onClick={addEvent}
+                                    sx={{ py: 1.5, borderRadius: 2, fontWeight: 800, bgcolor: '#3b82f6', '&:hover': { bgcolor: '#2563eb' } }}
+                                >
+                                    {enableSecondState ? 'Añadir Ambos Estados a la Cola' : 'Añadir a la Cola de Carga'}
+                                </Button>
+                            </Box>
+                        </CardContent>
+                    </MuiCard>
+                </Grid>
+
+                {/* Queue Side */}
+                <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper sx={{ bgcolor: 'var(--bg-secondary, #111827)', borderRadius: 2, p: 3, border: '1px solid var(--border-dynamic, #1f2937)', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <Typography variant="h6" sx={{ color: 'var(--text-white-dynamic, white)', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <HistoryIcon /> Cola de Movimientos a Enviar ({pendingEvents.length})
+                        </Typography>
+
+                        {pendingEvents.length === 0 ? (
+                            <Box sx={{ flex: 1, display: 'flex', flexWrap: 'wrap', placeContent: 'center', opacity: 0.5, minHeight: 200 }}>
+                                <Typography sx={{ color: 'var(--text-muted, #9ca3af)', textAlign: 'center' }}>
+                                    Selecciona una máquina y añade movimientos para ver la lista a procesar en lote.
+                                </Typography>
+                            </Box>
+                        ) : (
+                            <List sx={{ flex: 1 }}>
+                                {pendingEvents.map((event) => (
+                                    <ListItem key={event.id} sx={{ mb: 2, bgcolor: 'var(--border-dynamic, #1f2937)50', borderRadius: 2, border: '1px solid var(--border-strong, #374151)40' }}>
+                                        <ListItemText 
+                                            primary={
+                                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                                    <Typography variant="caption" sx={{ color: '#e5e7eb', fontWeight: 700 }}>
+                                                        {event.machineLabel}
+                                                    </Typography>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                        <Chip 
+                                                            size="small" 
+                                                            label={targetStatuses.find(s => s.value === event.targetStatus)?.label} 
+                                                            sx={{ bgcolor: `${targetStatuses.find(s => s.value === event.targetStatus)?.color}20`, color: targetStatuses.find(s => s.value === event.targetStatus)?.color, fontWeight: 700 }}
+                                                        />
+                                                        <Typography variant="body2" sx={{ color: 'var(--text-muted, #9ca3af)' }}>
+                                                            {new Date(event.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short', hour12: false })}
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
+                                            }
+                                            secondary={
+                                                <Typography variant="caption" sx={{ color: 'var(--text-subtle, #6b7280)', display: 'block', mt: 0.5 }}>
+                                                    {event.generatedBy} • {event.failureType}
+                                                    {event.observation && ` • ${event.observation}`}
+                                                </Typography>
+                                            }
+                                        />
+                                        <ListItemSecondaryAction>
+                                            <IconButton edge="end" onClick={() => removeEvent(event.id)} sx={{ color: '#f87171' }}>
+                                                <DeleteIcon />
+                                            </IconButton>
+                                        </ListItemSecondaryAction>
+                                    </ListItem>
+                                ))}
+                            </List>
+                        )}
+
+                        <Box sx={{ mt: 'auto', pt: 3 }}>
+                            <Button
+                                variant="contained"
+                                color="primary"
+                                fullWidth
+                                size="large"
+                                disabled={pendingEvents.length === 0 || isUpdating}
+                                startIcon={<SendIcon />}
+                                onClick={submitAll}
+                                sx={{ py: 2, borderRadius: 2, fontWeight: 800, boxShadow: '0 10px 15px -3px rgba(59, 130, 246, 0.3)' }}
+                            >
+                                {isUpdating ? 'Procesando Lote...' : `Confirmar y Registrar ${pendingEvents.length} Movimientos`}
+                            </Button>
+                        </Box>
+                    </Paper>
+                </Grid>
+            </Grid>
+        </Box>
+    );
+}

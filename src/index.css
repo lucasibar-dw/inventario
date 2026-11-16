@@ -1,0 +1,235 @@
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d2e;
+  --bg-tertiary: #141622;
+  --bg-accordion: #131625;
+  --border-color: #2a2d3e;
+  --border-secondary: #374151;
+  --border-table: #1e2133;
+  --text-primary: #f3f4f6;
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-subtle: #6b7280;
+  --text-dimmed: #4b5563;
+  --text-mui-primary: #e6e1e5;
+  --text-mui-secondary: #CAC4D0;
+  --text-accent: #a5b4fc;
+
+  --bg-report-gradient: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+  --border-report-strong: #312e81;
+
+  --border-strong: #374151;
+  --border-subtle: #1e2133;
+  --bg-action-trigger: rgba(255,255,255,0.05);
+
+  /* New Dynamic Variables for Text, Backgrounds and Opacities */
+  --text-white-dynamic: #ffffff;
+  --text-white-dynamic-muted: #e2e8f0;
+  --text-inverse: #000000;
+  
+  --bg-overlay: rgba(15, 17, 23, 0.65);
+  --bg-overlay-heavy: rgba(0, 0, 0, 0.7);
+  --bg-hover-dynamic: rgba(255,255,255,0.05);
+  --bg-alt-row: rgba(255,255,255,0.02);
+  
+  --border-dynamic: #1e293b;
+  --border-dynamic-light: #334155;
+  --border-dynamic-transparent: rgba(255, 255, 255, 0.1);
+  --border-dynamic-transparent-strong: rgba(255, 255, 255, 0.2);
+
+  --shadow-dropdown: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+
+  --bg-alt-row: rgba(255,255,255,0.01);
+  --bg-hover-row: rgba(255,255,255,0.03);
+  --bg-action-btn: rgba(255,255,255,0.05);
+  --bg-btn-default: #1a1a1a;
+
+  --shadow-default: rgba(0,0,0,0.4);
+
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+[data-theme='light'] {
+  /* Premium Light Mode Palette (Slate/Zinc inspired) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-accordion: #e2e8f0;
+
+  --border-color: #e2e8f0;
+  --border-secondary: #cbd5e1;
+  --border-table: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+  --text-dimmed: #cbd5e1;
+
+  --text-mui-primary: #1e293b;
+  --text-mui-secondary: #475569;
+  --text-accent: #6366f1;
+
+  --bg-report-gradient: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  --border-report-strong: #e2e8f0;
+
+  --border-strong: #cbd5e1;
+  --border-subtle: #f1f5f9;
+  --bg-action-trigger: rgba(15, 23, 42, 0.04);
+
+  /* New Dynamic Variables for Light Mode */
+  --text-white-dynamic: #0f172a; /* Was white in dark mode, now slate-900 */
+  --text-white-dynamic-muted: #475569; 
+  --text-inverse: #ffffff;
+  
+  --bg-overlay: rgba(255, 255, 255, 0.85); /* Light translucent overlay */
+  --bg-overlay-heavy: rgba(255, 255, 255, 0.95);
+  --bg-hover-dynamic: rgba(15, 23, 42, 0.04);
+  --bg-alt-row: rgba(15, 23, 42, 0.02);
+  
+  --border-dynamic: #cbd5e1; /* Slate 300 replacing dark borders like #1e293b */
+  --border-dynamic-light: #e2e8f0; /* Slate 200 replacing #334155 */
+  --border-dynamic-transparent: rgba(15, 23, 42, 0.08);
+  --border-dynamic-transparent-strong: rgba(15, 23, 42, 0.15);
+
+  --shadow-dropdown: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+
+  --bg-alt-row: rgba(0,0,0,0.02);
+  --bg-hover-row: rgba(0,0,0,0.04);
+  --bg-action-btn: rgba(0,0,0,0.05);
+  --bg-btn-default: #e2e8f0;
+
+  --shadow-default: rgba(0,0,0,0.08);
+
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: var(--bg-btn-default);
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+
+button:hover {
+  border-color: #646cff;
+}
+
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Global element overrides for light mode */
+[data-theme='light'] body {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme='light'] input,
+[data-theme='light'] select,
+[data-theme='light'] textarea {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-primary) !important;
+  color-scheme: light !important;
+}
+
+/* Table overrides */
+[data-theme='light'] th,
+[data-theme='light'] td {
+  border-color: var(--border-table) !important;
+}
+
+[data-theme='light'] td {
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] th {
+  color: var(--text-primary);
+}
+
+[data-theme='light'] tr {
+  border-color: var(--border-table) !important;
+}
+
+/* Scrollbar overrides */
+[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1 !important;
+}
+
+[data-theme='light'] ::-webkit-scrollbar-track {
+  background-color: transparent !important;
+}
+
+/* Transition overrides */
+[data-theme='light'] div,
+[data-theme='light'] aside,
+[data-theme='light'] header,
+[data-theme='light'] main,
+[data-theme='light'] nav,
+[data-theme='light'] section,
+[data-theme='light'] footer,
+[data-theme='light'] table,
+[data-theme='light'] thead,
+[data-theme='light'] tbody,
+[data-theme='light'] tr,
+[data-theme='light'] td,
+[data-theme='light'] th,
+[data-theme='light'] input,
+[data-theme='light'] select,
+[data-theme='light'] textarea,
+[data-theme='light'] button,
+[data-theme='light'] span,
+[data-theme='light'] p,
+[data-theme='light'] h1,
+[data-theme='light'] h2,
+[data-theme='light'] h3,
+[data-theme='light'] h4,
+[data-theme='light'] h5,
+[data-theme='light'] h6,
+[data-theme='light'] label,
+[data-theme='light'] a {
+  transition: background-color 0.2s ease, color 0.15s ease, border-color 0.2s ease;
+}

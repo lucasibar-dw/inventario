@@ -1,0 +1,478 @@
+import { api } from '../../../shared/api';
+
+export interface Plant {
+    id: string;
+    name: string;
+    location?: string;
+}
+
+export interface MachineType {
+    id: string;
+    name: string;
+}
+
+export interface Machine {
+    id: string;
+    number: number;
+    codigoInterno: string;
+    nombre: string;
+    status: 'ACTIVA' | 'REVISAR' | 'VELOCIDAD_REDUCIDA' | 'MUESTRAS' | 'PARADA' | 'ELECTRONIC' | 'REPUESTOS' | 'FALTA_COSTURA' | 'FALTA_PROGRAMA' | 'OTRO';
+    lastObservation?: string;
+    lastChangeBy?: string;
+    lastFailureType?: string;
+    plantId: string;
+    typeId: string;
+    metadata?: {
+        cantidadAgujas?: string | number;
+        tipoCilindro?: string;
+        tipoTrimer?: string;
+        [key: string]: any;
+    };
+    createdAt: string;
+    updatedAt: string;
+    lastStatusChange?: string;
+    mtbf?: number;
+    mttr?: number;
+}
+
+
+export interface MaintenanceLog {
+    id: string;
+    machineId: string;
+    fromStatus: string;
+    toStatus: string;
+    failureType?: string;
+    observation?: string;
+    generatedBy: string;
+    timestamp: string;
+    machine?: {
+        number: number;
+        codigoInterno: string;
+        plant?: { name: string };
+        plantId?: string;
+        typeId?: string;
+    };
+}
+
+
+export interface Metrics {
+    total: number;
+    running: number;
+    failed: number;
+    byStatus: { status: string; count: string }[];
+}
+
+export interface MachineKPI {
+    uptime: string;
+    downtime: string;
+    availability: string;
+    mtbf: string;
+    mttr: string;
+    mttf: string;
+    failures: number;
+    repairs: number;
+    oee: string;
+    history: any[];
+}
+
+
+export interface MachineChange {
+    id: string;
+    machineId: string;
+    changeTypes: string[];
+    startTime: string;
+    endTime: string | null;
+    observation?: string;
+    generatedBy: string;
+    createdAt: string;
+    durationMs?: number;
+    durationFormatted?: string;
+    machine?: {
+        number: number;
+        codigoInterno: string;
+        nombre: string;
+        plant?: { name: string };
+    };
+}
+
+export interface AvailabilityMachineData {
+    machineId: string;
+    number: number;
+    nombre: string;
+    currentStatus: string;
+    availability24h: number;
+    availabilityMonth: number;
+    downtimeNovedadesMs: number;
+    downtimeChangesMs: number;
+    totalDowntimeMs: number;
+    uptimeMs: number;
+    failureCount: number;
+    changeCount: number;
+}
+
+export interface AvailabilityDashboard {
+    summary: {
+        totalMachines: number;
+        activeMachines: number;
+        stoppedMachines: number;
+        avgAvailability24h: string;
+        avgAvailabilityMonth: string;
+        totalDowntimeNovedadesFormatted: string;
+        totalDowntimeChangesFormatted: string;
+        totalStopsNovedades: number;
+        totalChanges: number;
+        avgStopDurationFormatted: string;
+        avgChangeDurationFormatted: string;
+    };
+    machines: AvailabilityMachineData[];
+    topProblematic: Array<{
+        machineId: string;
+        number: number;
+        nombre: string;
+        availability24h: number;
+        failureCount: number;
+        currentStatus: string;
+    }>;
+    topPerformers: Array<{
+        machineId: string;
+        number: number;
+        nombre: string;
+        availability24h: number;
+        failureCount: number;
+        currentStatus: string;
+    }>;
+    byShift: {
+        day: { availability: number; stops: number; changes: number; };
+        night: { availability: number; stops: number; changes: number; };
+    };
+    dailyTrend: Array<{
+        date: string;
+        availability: number;
+        stops: number;
+        changes: number;
+    }>;
+}
+
+export interface MachineChangeReport {
+    totalChanges: number;
+    totalMedianDurationMs: number;
+    totalMedianDurationFormatted: string;
+    report: {
+        combination: string[];
+        combinationLabel: string;
+        count: number;
+        percentage: number;
+        avgDurationMs: number;
+        avgDurationFormatted: string;
+        medianDurationMs: number;
+        medianDurationFormatted: string;
+        minDurationMs: number;
+        minDurationFormatted: string;
+        maxDurationMs: number;
+        maxDurationFormatted: string;
+        details: {
+            id: string;
+            machineNumber: number;
+            machineName: string;
+            plantName: string;
+            startTime: string;
+            endTime: string;
+            durationMs: number;
+            durationFormatted: string;
+            observation: string | null;
+            generatedBy: string;
+            changeTypes: string[];
+        }[];
+    }[];
+}
+
+export const maintenanceApi = api.injectEndpoints({
+    endpoints: (builder) => ({
+        getPlants: builder.query<any[], void>({
+            query: () => 'maintenance/plants',
+            providesTags: ['Maintenance'],
+        }),
+        getMachineTypes: builder.query<any[], void>({
+            query: () => 'maintenance/types',
+            providesTags: ['Maintenance'],
+        }),
+                getMachines: builder.query({
+            query: (params: any = {}) => {
+                const { plantId, typeId } = params || {};
+                const q = new URLSearchParams();
+                if (plantId && plantId !== 'ALL' && plantId !== 'undefined') {
+                    q.append('plantId', plantId);
+                }
+                if (typeId && typeId !== 'ALL' && typeId !== 'undefined') {
+                    q.append('typeId', typeId);
+                }
+                const qs = q.toString();
+                return `maintenance/machines${qs ? '?' + qs : ''}`;
+            },
+            providesTags: ['Maintenance'],
+        }),
+        getMetrics: builder.query({
+            query: ({ plantId, typeId }: any) => {
+                let url = `maintenance/metrics?plantId=${plantId}`;
+                if (typeId && typeId !== 'ALL') url += `&typeId=${typeId}`;
+                return url;
+            },
+            providesTags: ['Maintenance'],
+        }),
+        updateMachineStatus: builder.mutation({
+            query: ({ id, plantId, typeId, ...body }: any) => ({
+                url: `maintenance/machines/${id}/status`,
+                method: 'POST',
+                body,
+            }),
+            invalidatesTags: ['Maintenance', 'Machine'],
+            async onQueryStarted({ id, plantId, typeId, status, generatedBy, timestamp }, { dispatch, queryFulfilled }) {
+                // If we have plantId, we can perform a targeted optimistic update
+                const patches: any[] = [];
+                
+                if (plantId) {
+                    // Update the specific plant/type query
+                    patches.push(dispatch(
+                        maintenanceApi.util.updateQueryData('getMachines', { plantId, typeId }, (draft) => {
+                            const machine = draft?.find((m: any) => m.id === id);
+                            if (machine) {
+                                const statusChanged = status && status !== machine.status;
+                                machine.status = status;
+                                if (generatedBy) machine.lastChangeBy = generatedBy;
+                                if (statusChanged || timestamp) {
+                                    machine.lastStatusChange = timestamp || new Date().toISOString();
+                                }
+                            }
+                        })
+                    ));
+                    
+                    // Also update the plant-only query if it was called without typeId
+                    if (typeId) {
+                        patches.push(dispatch(
+                            maintenanceApi.util.updateQueryData('getMachines', { plantId }, (draft) => {
+                                const machine = draft?.find((m: any) => m.id === id);
+                                if (machine) {
+                                    const statusChanged = status && status !== machine.status;
+                                    machine.status = status;
+                                    if (generatedBy) machine.lastChangeBy = generatedBy;
+                                    if (statusChanged || timestamp) {
+                                        machine.lastStatusChange = timestamp || new Date().toISOString();
+                                    }
+                                }
+                            })
+                        ));
+                    }
+                }
+
+                try {
+                    await queryFulfilled;
+                } catch {
+                    patches.forEach(patch => patch.undo());
+                }
+            },
+        }),
+
+        getMachineKPIs: builder.query({
+            query: ({ id, startDate, endDate }: { id: string; startDate?: string; endDate?: string }) => {
+                let url = `maintenance/machines/${id}/metrics`;
+                const params = new URLSearchParams();
+                if (startDate) params.append('startDate', startDate);
+                if (endDate) params.append('endDate', endDate);
+                const queryStr = params.toString();
+                return queryStr ? `${url}?${queryStr}` : url;
+            },
+            providesTags: (_res: any, _err: any) => [{ type: 'Maintenance', id: 'KPI' }],
+        }),
+        
+        getPlantKPIs: builder.query({
+            query: ({ plantId, startDate, endDate, typeId }: any) => {
+                let url = `maintenance/plants/${plantId}/kpis`;
+                const params = new URLSearchParams();
+                if (startDate) params.append('startDate', startDate);
+                if (endDate) params.append('endDate', endDate);
+                if (typeId && typeId !== 'ALL') params.append('typeId', typeId);
+                const queryStr = params.toString();
+                return queryStr ? `${url}?${queryStr}` : url;
+            },
+            providesTags: (_res: any, _err: any) => [{ type: 'Maintenance', id: 'PlantKPI' }],
+        }),
+        getLogs: builder.query({
+            query: (params: any) => ({
+                url: 'maintenance/logs',
+                params
+            }),
+            providesTags: ['Maintenance'],
+        }),
+        updateLog: builder.mutation({
+            query: ({ id, ...body }: any) => ({
+                url: `maintenance/logs/${id}`,
+                method: 'PATCH',
+                body,
+            }),
+            async onQueryStarted({ id, ...body }, { dispatch, getState, queryFulfilled }) {
+                try {
+                    const { data: updatedLog } = await queryFulfilled;
+                    const state = getState() as any;
+                    const filters = state.maintenance?.historyFilters;
+                    if (filters) {
+                        const queryArgs = {
+                            startDate: filters.startDate,
+                            endDate: filters.endDate,
+                            plantId: filters.plantId || undefined,
+                            status: filters.statusFilter || undefined,
+                            machineNumber: filters.machineNumber || undefined
+                        };
+                        dispatch(
+                            maintenanceApi.util.updateQueryData('getLogs', queryArgs, (draft) => {
+                                const index = draft.findIndex((log: any) => log.id === id);
+                                if (index !== -1) {
+                                    Object.assign(draft[index], body, updatedLog || {});
+                                }
+                            })
+                        );
+                    }
+                } catch {}
+            },
+        }),
+        deleteLog: builder.mutation({
+            query: (id: any) => ({
+                url: `maintenance/logs/${id}`,
+                method: 'DELETE',
+            }),
+            async onQueryStarted(id, { dispatch, getState, queryFulfilled }) {
+                try {
+                    await queryFulfilled;
+                    const state = getState() as any;
+                    const filters = state.maintenance?.historyFilters;
+                    if (filters) {
+                        const queryArgs = {
+                            startDate: filters.startDate,
+                            endDate: filters.endDate,
+                            plantId: filters.plantId || undefined,
+                            status: filters.statusFilter || undefined,
+                            machineNumber: filters.machineNumber || undefined
+                        };
+                        dispatch(
+                            maintenanceApi.util.updateQueryData('getLogs', queryArgs, (draft) => {
+                                const index = draft.findIndex((log: any) => log.id === id);
+                                if (index !== -1) {
+                                    draft.splice(index, 1);
+                                }
+                            })
+                        );
+                    }
+                } catch {}
+            },
+        }),
+        getMaintenanceStats: builder.query({
+            query: (params: any) => ({
+                url: 'maintenance/stats',
+                params
+            }),
+            providesTags: ['Maintenance'],
+        }),
+        // Machine Changes
+        createMachineChange: builder.mutation<MachineChange, any>({
+            query: (body) => ({
+                url: 'maintenance/machine-changes',
+                method: 'POST',
+                body,
+            }),
+            invalidatesTags: ['MachineChange', 'Maintenance'],
+        }),
+        createMachineChangesBulk: builder.mutation<MachineChange[], { items: Array<{
+            machineId: string;
+            changeTypes: string[];
+            startTime: string;
+            endTime?: string | null;
+            observation?: string;
+            generatedBy: string;
+        }> }>({
+            query: (body) => ({
+                url: 'maintenance/machine-changes/bulk',
+                method: 'POST',
+                body,
+            }),
+            invalidatesTags: ['MachineChange', 'Maintenance'],
+        }),
+        getMachineChanges: builder.query<MachineChange[], any>({
+            query: (params) => ({
+                url: 'maintenance/machine-changes',
+                params,
+            }),
+            providesTags: ['MachineChange'],
+        }),
+        getMachineChangeReport: builder.query<MachineChangeReport, any>({
+            query: (params) => ({
+                url: 'maintenance/machine-changes/report',
+                params,
+            }),
+            providesTags: ['MachineChange'],
+        }),
+        updateMachineChange: builder.mutation<MachineChange, any>({
+            query: ({ id, ...body }) => ({
+                url: `maintenance/machine-changes/${id}`,
+                method: 'PATCH',
+                body,
+            }),
+            invalidatesTags: ['MachineChange', 'Maintenance'],
+        }),
+        deleteMachineChange: builder.mutation<void, string>({
+            query: (id) => ({
+                url: `maintenance/machine-changes/${id}`,
+                method: 'DELETE',
+            }),
+            invalidatesTags: ['MachineChange', 'Maintenance'],
+        }),
+        // Availability Dashboard
+        getAvailabilityDashboard: builder.query<AvailabilityDashboard, { plantId: string; typeId?: string; startDate?: string; endDate?: string }>({
+            query: ({ plantId, typeId, startDate, endDate }) => {
+                const params = new URLSearchParams();
+                params.append('plantId', plantId);
+                if (typeId && typeId !== 'ALL') params.append('typeId', typeId);
+                if (startDate) params.append('startDate', startDate);
+                if (endDate) params.append('endDate', endDate);
+                return `maintenance/availability-dashboard?${params.toString()}`;
+            },
+            providesTags: [{ type: 'Maintenance', id: 'Availability' }],
+        }),
+        // Availability Timeline (V2)
+        getAvailabilityTimeline: builder.query<any, { plantId: string; typeId?: string; period?: string; startDate?: string; endDate?: string }>({
+            query: ({ plantId, typeId, period, startDate, endDate }) => {
+                const params = new URLSearchParams();
+                params.append('plantId', plantId);
+                if (typeId && typeId !== 'ALL') params.append('typeId', typeId);
+                if (period) params.append('period', period);
+                if (startDate) params.append('startDate', startDate);
+                if (endDate) params.append('endDate', endDate);
+                return `maintenance/availability-timeline?${params.toString()}`;
+            },
+            providesTags: [{ type: 'Maintenance', id: 'AvailabilityTimeline' }],
+        }),
+    }),
+});
+
+
+export const {
+    useGetPlantsQuery,
+    useGetMachineTypesQuery,
+    useGetMachinesQuery,
+    useGetMetricsQuery,
+    useGetMachineKPIsQuery,
+    useGetPlantKPIsQuery,
+    useGetLogsQuery,
+    useLazyGetLogsQuery,
+    useUpdateLogMutation,
+    useDeleteLogMutation,
+    useUpdateMachineStatusMutation,
+    useGetMaintenanceStatsQuery,
+    useCreateMachineChangeMutation,
+    useCreateMachineChangesBulkMutation,
+    useGetMachineChangesQuery,
+    useLazyGetMachineChangesQuery,
+    useGetMachineChangeReportQuery,
+    useUpdateMachineChangeMutation,
+    useDeleteMachineChangeMutation,
+    useGetAvailabilityDashboardQuery,
+    useGetAvailabilityTimelineQuery,
+} = maintenanceApi;

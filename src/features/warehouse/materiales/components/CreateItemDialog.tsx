@@ -1,0 +1,591 @@
+
+import { useState, useEffect, useMemo } from 'react';
+import {
+    Dialog, DialogTitle, DialogContent, DialogActions,
+    Button, TextField, MenuItem, Typography, Box
+} from '@mui/material';
+import { useCreateItemMutation, useUpdateItemMutation, useGetItemCategoriesQuery, useCreateItemCategoryMutation, useGetItemsQuery } from '../api/items.api';
+import { useGetBoxTypesQuery } from '../api/box-types.api';
+import { useGetPartnersQuery } from '../../../config/partners/api/partners.api';
+import { useGetDepotsQuery } from '../../deposito/api/deposito.api';
+import { Autocomplete } from '@mui/material';
+
+const ROTACIONES = [
+    { value: 'ALTA', label: '🔴 Alta' },
+    { value: 'MEDIA', label: '🟡 Media' },
+    { value: 'BAJA', label: '⚫ Baja' },
+    { value: 'TEMPORAL', label: '⏳ Temporal' },
+];
+
+interface CreateItemDialogProps {
+    open: boolean;
+    onClose: () => void;
+    onSuccess?: (newItem: any) => void;
+    initialSupplierId?: string;
+    initialSupplierName?: string;
+    depositoId?: string;
+    editTarget?: any; // New prop for editing
+}
+
+export const CreateItemDialog = ({ open, onClose, onSuccess, initialSupplierId, initialSupplierName, depositoId, editTarget }: CreateItemDialogProps) => {
+    const [createItem, { isLoading: isCreating }] = useCreateItemMutation();
+    const [updateItem, { isLoading: isUpdating }] = useUpdateItemMutation();
+    const isLoading = isCreating || isUpdating;
+    const { data: rawDepots = [] } = useGetDepotsQuery();
+    const depots = useMemo(() => rawDepots.filter((d: any) => d.activo !== false), [rawDepots]);
+    
+    const [form, setForm] = useState({
+        codigoInterno: '',
+        descripcion: '',
+        categoryId: '',
+        depositoId: editTarget?.category?.depositoId || depositoId || '',
+        rotacion: 'MEDIA',
+        stockMinimo: '',
+        stockMaximo: '', // New
+        kilosPorCaja: '', // New
+        pesoConoKg: '',
+        costoUnitario: '',
+        unidadPrincipal: 'KG',
+        unidadSecundaria: '',
+        tono: '', // New
+        boxTypeId: '', // New
+        supplierId: initialSupplierId || '',
+        supplierName: initialSupplierName || ''
+    });
+
+    const { data: categories = [], isLoading: isLoadingCats } = useGetItemCategoriesQuery(form.depositoId || '', { skip: !form.depositoId });
+    const [createCategory] = useCreateItemCategoryMutation();
+    const { data: boxTypes = [] } = useGetBoxTypesQuery();
+    const { data: partners = [], isLoading: isLoadingPartners } = useGetPartnersQuery({ type: 'SUPPLIER' });
+
+    useEffect(() => {
+        if (open) {
+            const initialDepot = editTarget?.category?.depositoId || editTarget?.depositoId || depositoId || (depots.length === 1 ? depots[0].id : '');
+            if (editTarget) {
+                setForm({
+                    codigoInterno: editTarget.codigoInterno || '',
+                    descripcion: editTarget.descripcion || '',
+                    categoryId: editTarget.categoryId || '',
+                    depositoId: initialDepot,
+                    rotacion: editTarget.rotacion || 'MEDIA',
+                    stockMinimo: editTarget.stockMinimo != null ? String(editTarget.stockMinimo) : '',
+                    stockMaximo: editTarget.stockMaximo != null ? String(editTarget.stockMaximo) : '',
+                    kilosPorCaja: editTarget.kilosPorCaja != null ? String(editTarget.kilosPorCaja) : '',
+                    pesoConoKg: editTarget.pesoConoKg != null ? String(editTarget.pesoConoKg) : '',
+                    costoUnitario: editTarget.costoUnitario != null ? String(editTarget.costoUnitario) : (editTarget.meta?.costoUnitario != null ? String(editTarget.meta.costoUnitario) : ''),
+                    unidadPrincipal: editTarget.unidadPrincipal || 'KG',
+                    unidadSecundaria: editTarget.unidadSecundaria || '',
+                    tono: editTarget.tono || '',
+                    boxTypeId: editTarget.boxTypeId || '',
+                    supplierId: editTarget.supplierId || '',
+                    supplierName: editTarget.supplier?.name || ''
+                });
+            } else {
+                setForm({
+                    codigoInterno: '',
+                    descripcion: '',
+                    categoryId: '',
+                    depositoId: initialDepot,
+                    rotacion: 'MEDIA',
+                    stockMinimo: '',
+                    stockMaximo: '',
+                    kilosPorCaja: '',
+                    pesoConoKg: '',
+                    costoUnitario: '',
+                    unidadPrincipal: 'KG',
+                    unidadSecundaria: '',
+                    tono: '',
+                    boxTypeId: '',
+                    supplierId: initialSupplierId || '',
+                    supplierName: initialSupplierName || '',
+                });
+            }
+            setError('');
+            setFieldErrors({});
+        }
+    }, [open, initialSupplierId, initialSupplierName, editTarget, depositoId, depots]);
+
+    const { data: allItems = [] } = useGetItemsQuery({});
+    const [error, setError] = useState('');
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+
+    const handleCreateCategorySubmit = async () => {
+        if (!newCategoryName.trim() || !form.depositoId) return;
+        setIsCreatingCategory(true);
+        try {
+            const res = await createCategory({ nombre: newCategoryName.trim(), depositoId: form.depositoId }).unwrap();
+            setForm({ ...form, categoryId: res.id });
+            setNewCategoryName('');
+            setCategoryDialogOpen(false);
+        } catch (e: any) {
+            alert(e?.data?.message || e?.message || 'Error al crear la categoría');
+        } finally {
+            setIsCreatingCategory(false);
+        }
+    };
+
+    const handleSave = async () => {
+        const errors: Record<string, string> = {};
+        if (!form.depositoId) {
+            errors.depositoId = 'Falta seleccionar el depósito';
+        }
+        if (!form.codigoInterno.trim()) {
+            errors.codigoInterno = 'Falta llenar el código interno';
+        } else {
+            const isDuplicate = allItems.some((item: any) => 
+                item.codigoInterno.trim().toLowerCase() === form.codigoInterno.trim().toLowerCase() &&
+                (!editTarget || item.id !== editTarget.id)
+            );
+            if (isDuplicate) {
+                errors.codigoInterno = 'Este código interno ya está registrado';
+            }
+        }
+        if (!form.descripcion.trim()) {
+            errors.descripcion = 'Falta llenar la descripción';
+        }
+        if (!form.categoryId && categories.length > 0) {
+            errors.categoryId = 'Falta seleccionar la categoría';
+        }
+        if (!form.unidadPrincipal.trim()) {
+            errors.unidadPrincipal = 'Falta llenar la unidad principal';
+        }
+
+        if (Object.keys(errors).length > 0) {
+            setFieldErrors(errors);
+            return;
+        }
+
+        setFieldErrors({});
+        try {
+            const { depositoId: _, ...rest } = form;
+            const dto = {
+                ...rest,
+                stockMinimo: form.stockMinimo ? Number(form.stockMinimo) : undefined,
+                stockMaximo: form.stockMaximo ? Number(form.stockMaximo) : undefined,
+                kilosPorCaja: form.kilosPorCaja ? Number(form.kilosPorCaja) : undefined,
+                pesoConoKg: form.pesoConoKg ? Number(form.pesoConoKg) : undefined,
+                costoUnitario: form.costoUnitario ? Number(form.costoUnitario) : 0,
+            };
+            
+            let result;
+            if (editTarget) {
+                result = await updateItem({ id: editTarget.id, data: dto }).unwrap();
+            } else {
+                result = await createItem(dto).unwrap();
+            }
+            
+            if (onSuccess) onSuccess(result);
+            onClose();
+            setForm({
+                codigoInterno: '',
+                descripcion: '',
+                categoryId: '',
+                depositoId: depositoId || '',
+                rotacion: 'MEDIA',
+                stockMinimo: '',
+                stockMaximo: '',
+                kilosPorCaja: '',
+                pesoConoKg: '',
+                costoUnitario: '',
+                unidadPrincipal: 'KG',
+                unidadSecundaria: '',
+                tono: '',
+                boxTypeId: '',
+                supplierId: '',
+                supplierName: '',
+            });
+        } catch (err: any) {
+            setError(err?.data?.message || err?.message || 'Error al crear el material');
+        }
+    };
+
+    return (
+        <>
+        <Dialog
+            open={open}
+            onClose={onClose}
+            fullWidth
+            maxWidth="sm"
+            PaperProps={{
+                sx: { borderRadius: { xs: 0, sm: 3 }, m: { xs: 0, sm: 2 } }
+            }}
+        >
+            <DialogTitle sx={{ fontWeight: 800, px: 3, pt: 3, color: 'text.primary', letterSpacing: '-0.5px' }}>
+                {editTarget ? 'Editar Material' : 'Nuevo Material'}
+            </DialogTitle>
+            <DialogContent sx={{ px: 3 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Complete los datos básicos para registrar un nuevo material en el catálogo.
+                </Typography>
+                {!editTarget && (
+                    <Box sx={{ mb: 3 }}>
+                        <Autocomplete
+                            options={allItems}
+                            getOptionLabel={(option: any) => `${option.codigoInterno} - ${option.descripcion}`}
+                            onChange={(_, newValue) => {
+                                if (newValue) {
+                                    setForm({
+                                        codigoInterno: newValue.codigoInterno || '',
+                                        descripcion: newValue.descripcion || '',
+                                        categoryId: newValue.categoryId || '',
+                                        depositoId: newValue.category?.depositoId || '',
+                                        rotacion: newValue.rotacion || 'MEDIA',
+                                        stockMinimo: newValue.stockMinimo != null ? String(newValue.stockMinimo) : '',
+                                        stockMaximo: newValue.stockMaximo != null ? String(newValue.stockMaximo) : '',
+                                        kilosPorCaja: newValue.kilosPorCaja != null ? String(newValue.kilosPorCaja) : '',
+                                        pesoConoKg: newValue.pesoConoKg != null ? String(newValue.pesoConoKg) : '',
+                                        costoUnitario: newValue.costoUnitario != null ? String(newValue.costoUnitario) : '',
+                                        unidadPrincipal: newValue.unidadPrincipal || 'KG',
+                                        unidadSecundaria: newValue.unidadSecundaria || '',
+                                        tono: newValue.tono || '',
+                                        boxTypeId: newValue.boxTypeId || '',
+                                        supplierId: newValue.supplierId || '',
+                                        supplierName: newValue.supplier?.name || '',
+                                    });
+                                }
+                            }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Copiar datos de material existente (Opcional)"
+                                    variant="outlined"
+                                    placeholder="Buscar por código o descripción..."
+                                    helperText="Seleccioná un material para rellenar automáticamente el formulario"
+                                />
+                            )}
+                        />
+                    </Box>
+                )}
+                <Box sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                    gap: 2
+                }}>
+                    <Box sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}>
+                        <TextField
+                            select
+                            label="Depósito"
+                            fullWidth
+                            required
+                            variant="filled"
+                            value={form.depositoId}
+                            disabled={!!depositoId}
+                            onChange={(e) => {
+                                setForm({ ...form, depositoId: e.target.value, categoryId: '' });
+                                setFieldErrors(prev => ({ ...prev, depositoId: '' }));
+                            }}
+                            error={!!fieldErrors.depositoId}
+                            helperText={fieldErrors.depositoId}
+                        >
+                            <MenuItem value="" disabled>Seleccione un depósito...</MenuItem>
+                            {depots.map((d: any) => (
+                                <MenuItem key={d.id} value={d.id}>{d.nombre}</MenuItem>
+                            ))}
+                        </TextField>
+                    </Box>
+                    <Box sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}>
+                        <TextField
+                            label="Código Interno"
+                            fullWidth
+                            required
+                            variant="filled"
+                            value={form.codigoInterno}
+                            InputLabelProps={{ shrink: true }}
+                            onChange={(e) => {
+                                setForm({ ...form, codigoInterno: e.target.value });
+                                setFieldErrors(prev => ({ ...prev, codigoInterno: '' }));
+                            }}
+                            error={!!fieldErrors.codigoInterno}
+                            helperText={fieldErrors.codigoInterno}
+                        />
+                    </Box>
+                    <Box sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}>
+                        <TextField
+                            label="Descripción"
+                            fullWidth
+                            required
+                            variant="filled"
+                            value={form.descripcion}
+                            InputLabelProps={{ shrink: true }}
+                            onChange={(e) => {
+                                setForm({ ...form, descripcion: e.target.value });
+                                setFieldErrors(prev => ({ ...prev, descripcion: '' }));
+                            }}
+                            error={!!fieldErrors.descripcion}
+                            helperText={fieldErrors.descripcion}
+                        />
+                    </Box>
+                    <Box sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' }, display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                        <Autocomplete
+                            value={categories.find((c: any) => c.id === form.categoryId) || (editTarget?.category?.id === form.categoryId ? editTarget.category : null) || null}
+                            onChange={(_, newValue) => {
+                                setForm({ ...form, categoryId: newValue?.id || '' });
+                                setFieldErrors(prev => ({ ...prev, categoryId: '' }));
+                            }}
+                            id="category-autocomplete"
+                            options={categories}
+                            getOptionLabel={(option) => option.nombre || ''}
+                            renderOption={(props, option) => (
+                                <li {...props} key={option.id}>
+                                    {option.nombre}
+                                </li>
+                            )}
+                            loading={isLoadingCats}
+                            sx={{ flex: 1 }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Categoría"
+                                    required
+                                    variant="filled"
+                                    placeholder="Seleccionar categoría..."
+                                    error={!!fieldErrors.categoryId}
+                                    helperText={fieldErrors.categoryId}
+                                />
+                            )}
+                        />
+                        <Button 
+                            variant="contained" 
+                            onClick={() => setCategoryDialogOpen(true)}
+                            disabled={!form.depositoId}
+                            sx={{ 
+                                height: 56, 
+                                minWidth: 56, 
+                                width: 56, 
+                                bgcolor: 'var(--bg-hover-dynamic, rgba(255,255,255,0.05))', 
+                                border: '1px solid var(--border-dynamic-transparent, rgba(255,255,255,0.1))',
+                                color: 'text.primary',
+                                '&:hover': { bgcolor: 'var(--border-dynamic-transparent, rgba(255,255,255,0.1))' },
+                                '&:disabled': {
+                                    bgcolor: 'rgba(255,255,255,0.02)',
+                                    color: 'rgba(255,255,255,0.3)',
+                                    borderColor: 'var(--bg-hover-dynamic, rgba(255,255,255,0.05))',
+                                    cursor: 'not-allowed'
+                                }
+                            }}
+                        >
+                            +
+                        </Button>
+                    </Box>
+                    <Box>
+                        <TextField
+                            select
+                            label="Rotación"
+                            fullWidth
+                            variant="filled"
+                            value={form.rotacion}
+                            onChange={(e) => setForm({ ...form, rotacion: e.target.value })}
+                        >
+                            {ROTACIONES.map((rot) => (
+                                <MenuItem key={rot.value} value={rot.value}>{rot.label}</MenuItem>
+                            ))}
+                        </TextField>
+                    </Box>
+                    <Box>
+                        <Autocomplete
+                            options={boxTypes}
+                            getOptionLabel={(option) => option.nombre}
+                            isOptionEqualToValue={(option, value) => option.id === value.id}
+                            value={boxTypes.find((bt: any) => bt.id === form.boxTypeId) || null}
+                            onChange={(_, newValue) => setForm({ ...form, boxTypeId: newValue?.id || '' })}
+                            renderInput={(params) => (
+                                <TextField 
+                                    {...params} 
+                                    label="Tipo de Embalaje" 
+                                    variant="filled"
+                                    placeholder="Seleccionar caja..."
+                                />
+                            )}
+                        />
+                    </Box>
+                    <Box>
+                        <TextField
+                            label="Alerta Stock Mín."
+                            type="number"
+                            fullWidth
+                            variant="filled"
+                            placeholder="Ej: 100"
+                            value={form.stockMinimo}
+                            onChange={(e) => setForm({ ...form, stockMinimo: e.target.value })}
+                        />
+                    </Box>
+                    <Box>
+                        <TextField
+                            label="Stock Máximo"
+                            type="number"
+                            fullWidth
+                            variant="filled"
+                            value={form.stockMaximo}
+                            onChange={(e) => setForm({ ...form, stockMaximo: e.target.value })}
+                        />
+                    </Box>
+                    <Box>
+                        <TextField
+                            label="Kilos por Caja"
+                            type="number"
+                            fullWidth
+                            variant="filled"
+                            value={form.kilosPorCaja}
+                            onChange={(e) => setForm({ ...form, kilosPorCaja: e.target.value })}
+                        />
+                    </Box>
+                    <Box>
+                        <TextField
+                            label="Costo Unitario (USD)"
+                            type="number"
+                            fullWidth
+                            variant="filled"
+                            helperText="Valor de referencia por kg o unidad"
+                            value={form.costoUnitario}
+                            onChange={(e) => setForm({ ...form, costoUnitario: e.target.value })}
+                        />
+                    </Box>
+                    <Box>
+                        <TextField
+                            label="Peso por Cono (kg)"
+                            type="number"
+                            fullWidth
+                            variant="filled"
+                            helperText="Producción usa este valor para preparar hilado"
+                            value={form.pesoConoKg}
+                            onChange={(e) => setForm({ ...form, pesoConoKg: e.target.value })}
+                        />
+                    </Box>
+                    <Box>
+                        <TextField
+                            select
+                            label="Tono"
+                            fullWidth
+                            variant="filled"
+                            value={form.tono}
+                            onChange={(e) => setForm({ ...form, tono: e.target.value })}
+                        >
+                            <MenuItem value="">Sin tono</MenuItem>
+                            <MenuItem value="AMARILLO">🟡 Amarillo</MenuItem>
+                            <MenuItem value="NARANJA">🟠 Naranja</MenuItem>
+                            <MenuItem value="AZUL">🔵 Azul</MenuItem>
+                            <MenuItem value="ROJO">🔴 Rojo</MenuItem>
+                            <MenuItem value="VERDE">🟢 Verde</MenuItem>
+                            <MenuItem value="MARRÓN">🟫 Marrón</MenuItem>
+                            <MenuItem value="GRIS">🔘 Gris</MenuItem>
+                            <MenuItem value="VIOLETA">🟣 Violeta</MenuItem>
+                            <MenuItem value="ROSA">🌸 Rosa</MenuItem>
+                            <MenuItem value="CELESTE">🩵 Celeste</MenuItem>
+                            <MenuItem value="BLANCO">⬜ Blanco</MenuItem>
+                            <MenuItem value="NEGRO">⬛ Negro</MenuItem>
+                        </TextField>
+                    </Box>
+                    <Box>
+                        <TextField
+                            label="Unidad Principal"
+                            fullWidth
+                            required
+                            variant="filled"
+                            placeholder="Ej: KG"
+                            value={form.unidadPrincipal}
+                            onChange={(e) => {
+                                setForm({ ...form, unidadPrincipal: e.target.value });
+                                setFieldErrors(prev => ({ ...prev, unidadPrincipal: '' }));
+                            }}
+                            error={!!fieldErrors.unidadPrincipal}
+                            helperText={fieldErrors.unidadPrincipal}
+                        />
+                    </Box>
+                    <Box>
+                        <TextField
+                            label="Unidad Secundaria"
+                            fullWidth
+                            variant="filled"
+                            placeholder="Ej: Unidades, bolsas..."
+                            value={form.unidadSecundaria}
+                            onChange={(e) => setForm({ ...form, unidadSecundaria: e.target.value })}
+                        />
+                    </Box>
+                    <Box sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}>
+                        <Autocomplete
+                            options={partners}
+                            getOptionLabel={(option: any) => `${option.name} ${option.taxId ? `(${option.taxId})` : ''}`}
+                            isOptionEqualToValue={(option, value) => option.id === value?.id}
+                            value={partners.find((p: any) => p.id === form.supplierId) || (editTarget?.supplier?.id === form.supplierId ? editTarget.supplier : null) || null}
+                            loading={isLoadingPartners}
+                            onChange={(_, newValue) => {
+                                setForm({
+                                    ...form,
+                                    supplierId: newValue?.id || '',
+                                    supplierName: newValue?.name || ''
+                                });
+                            }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Proveedor Principal (Opcional)"
+                                    placeholder="Seleccionar proveedor..."
+                                    variant="filled"
+                                    fullWidth
+                                />
+                            )}
+                        />
+                    </Box>
+                    {error && (
+                        <Box sx={{ gridColumn: { xs: 'span 1', sm: 'span 2' } }}>
+                            <Typography color="error" variant="caption" sx={{ fontWeight: 600 }}>{error}</Typography>
+                        </Box>
+                    )}
+                </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 3, pt: 1 }}>
+                <Button onClick={onClose} color="inherit" sx={{ fontWeight: 600 }}>Cancelar</Button>
+                <Button
+                    onClick={handleSave}
+                    variant="contained"
+                    disableElevation
+                    sx={{ fontWeight: 600, px: 3 }}
+                    disabled={isLoading || !form.descripcion}
+                >
+                    {isLoading ? (editTarget ? 'Actualizando...' : 'Guardando...') : (editTarget ? 'Guardar Cambios' : 'Crear Material')}
+                </Button>
+            </DialogActions>
+        </Dialog >
+        <Dialog 
+            open={categoryDialogOpen} 
+            onClose={() => setCategoryDialogOpen(false)}
+            PaperProps={{
+                sx: { bgcolor: 'var(--bg-secondary, #1a1d2e)', color: '#f3f4f6', borderRadius: 3, p: 2 }
+            }}
+        >
+            <DialogTitle sx={{ fontWeight: 800 }}>Nueva Categoría de Material</DialogTitle>
+            <DialogContent>
+                <Typography variant="body2" sx={{ color: 'var(--text-muted, #9ca3af)', mb: 2 }}>
+                    Ingresa el nombre de la nueva categoría para este depósito.
+                </Typography>
+                <TextField
+                    autoFocus
+                    label="Nombre de Categoría"
+                    fullWidth
+                    variant="filled"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    InputLabelProps={{ sx: { color: 'var(--text-muted, #9ca3af)' } }}
+                    InputProps={{ sx: { color: '#f3f4f6' } }}
+                />
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+                <Button onClick={() => setCategoryDialogOpen(false)} sx={{ color: 'var(--text-muted, #9ca3af)' }}>
+                    Cancelar
+                </Button>
+                <Button 
+                    onClick={handleCreateCategorySubmit} 
+                    disabled={isCreatingCategory || !newCategoryName.trim()}
+                    variant="contained"
+                    sx={{ bgcolor: '#6366f1', '&:hover': { bgcolor: '#4f46e5' } }}
+                >
+                    {isCreatingCategory ? 'Creando...' : 'Crear'}
+                </Button>
+            </DialogActions>
+        </Dialog>
+        </>
+    );
+};
