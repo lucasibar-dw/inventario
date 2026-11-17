@@ -798,10 +798,9 @@ export default function DashboardDepositoPage() {
         }));
     }, [rawStock]);
 
-    // Agrupación y Métricas de Alto Rendimiento basadas exclusivamente en el stock del balance del depósito
-    const { groupedData, generalMetrics } = useMemo(() => {
-        const general = { kilos: 0, units: 0, positions: new Set<string>() };
-        if (!depotId) return { groupedData: [], generalMetrics: null };
+    // Agrupación de Alto Rendimiento basada exclusivamente en el stock del balance del depósito
+    const { groupedData } = useMemo(() => {
+        if (!depotId) return { groupedData: [] };
         const groups: Record<string, any> = {};
         const searchWords = normalizeText(searchTerm).split(' ').filter(w => w.length > 0);
 
@@ -813,13 +812,6 @@ export default function DashboardDepositoPage() {
             if (searchWords.length > 0) {
                 const matches = searchWords.every(word => searchStr.includes(word));
                 if (!matches) return;
-            }
-
-            // Exclusión de métricas si el ojito está apagado
-            if (!excludedItemIds[itemId]) {
-                general.kilos += Number(entry.qtyPrincipal || 0);
-                if (entry.qtySecundaria) general.units += Number(entry.qtySecundaria);
-                if (entry.posicionId) general.positions.add(entry.posicionId);
             }
 
             if (!groups[itemId]) {
@@ -862,10 +854,9 @@ export default function DashboardDepositoPage() {
         });
 
         return {
-            groupedData: allGroups,
-            generalMetrics: { ...general, positionsCount: general.positions.size }
+            groupedData: allGroups
         };
-    }, [indexedStock, searchTerm, excludedItemIds, depotId]);
+    }, [indexedStock, searchTerm, depotId]);
 
     // Paginación de alto rendimiento en cliente (24 tarjetas por página para 60 FPS garantizados)
     const pagination = useClientPagination(groupedData, viewMode === 'grid' ? 24 : 25);
@@ -876,8 +867,6 @@ export default function DashboardDepositoPage() {
     }, [searchTerm, depotId]);
 
     const detailGroup = useMemo(() => groupedData.find((g: any) => g.item.id === detailGroupId), [groupedData, detailGroupId]);
-
-    const totalPositionsCount = (depots.find((d: any) => d.id === depotId)?.positions || []).filter((p: any) => p.activo).length;
 
     return (
         <Box sx={{ p: isMobile ? 1.5 : 3.5, maxWidth: '1440px', margin: '0 auto', color: colors.text, minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 2.5 }}>
