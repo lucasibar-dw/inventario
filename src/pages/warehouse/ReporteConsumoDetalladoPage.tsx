@@ -16,29 +16,25 @@ import {
     TableRow,
     CircularProgress,
     Tooltip,
-    Tabs,
-    Tab,
-    Autocomplete
+    Drawer,
+    Divider
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import CategoryIcon from '@mui/icons-material/Category';
-import ViewModuleIcon from '@mui/icons-material/ViewModule';
-import Inventory2Icon from '@mui/icons-material/Inventory2';
-import AssessmentIcon from '@mui/icons-material/Assessment';
+import CloseIcon from '@mui/icons-material/Close';
 import ClearIcon from '@mui/icons-material/Clear';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import * as XLSX from 'xlsx';
 import {
-    ResponsiveContainer, BarChart, Bar, AreaChart, Area,
+    ResponsiveContainer, BarChart, Bar,
     XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
     PieChart, Pie, Cell, Legend
 } from 'recharts';
 
 import { useGetRecentMovementsQuery, useGetStockQuery } from '../../features/warehouse/stock/api/stock.api';
 import { useGetDepotsQuery } from '../../features/warehouse/deposito/api/deposito.api';
-import { useGetItemsQuery, useGetItemCategoriesQuery } from '../../features/warehouse/materiales/api/items.api';
+import { useGetItemCategoriesQuery } from '../../features/warehouse/materiales/api/items.api';
 import { useLazyGetRemitoSalidaQuery } from '../../features/warehouse/remitosSalida/api/remitos-salida.api';
 import { RemitoDetailModal } from '../../features/warehouse/remitos/ui/RemitoDetailModal';
 import { PaginationControls, useClientPagination } from '../../shared/pagination';
@@ -46,7 +42,6 @@ import { PaginationControls, useClientPagination } from '../../shared/pagination
 const themeColors = {
     primary: '#f59e0b',
     primaryLight: 'rgba(245, 158, 11, 0.15)',
-    secondary: 'var(--text-mui-secondary, #475569)',
     bg: 'var(--bg-primary, #0f1117)',
     cardBg: 'var(--bg-hover-row, rgba(255,255,255,0.03))',
     border: 'rgba(255, 255, 255, 0.08)',
@@ -82,81 +77,40 @@ const formatDate = (dateStr: string) => {
 };
 
 export default function ReporteConsumoDetalladoPage() {
-    // ── Pestaña Activa ──
-    // 0: Ficha por Material, 1: Histórico Mensual (Matriz), 2: Por Categoría
-    const [currentTab, setCurrentTab] = useState<number>(0);
-
-    // ── Filtros Globales de Período ──
+    // ── Filtros Globales Reales del Sistema ──
     const currentYear = new Date().getFullYear();
     const [selectedYear, setSelectedYear] = useState<number>(currentYear);
-    const [periodPreset, setPeriodPreset] = useState<'30D' | '90D' | 'YEAR' | 'ALL'>('YEAR');
-
-    const [desde, setDesde] = useState(() => `${currentYear}-01-01`);
-    const [hasta, setHasta] = useState(() => new Date().toISOString().split('T')[0]);
-
-    // Manejo de presets
-    const handlePresetChange = (preset: '30D' | '90D' | 'YEAR' | 'ALL') => {
-        setPeriodPreset(preset);
-        const today = new Date();
-        const endStr = today.toISOString().split('T')[0];
-        setHasta(endStr);
-
-        if (preset === '30D') {
-            const d = new Date();
-            d.setDate(d.getDate() - 30);
-            setDesde(d.toISOString().split('T')[0]);
-        } else if (preset === '90D') {
-            const d = new Date();
-            d.setDate(d.getDate() - 90);
-            setDesde(d.toISOString().split('T')[0]);
-        } else if (preset === 'YEAR') {
-            setDesde(`${selectedYear}-01-01`);
-            setHasta(`${selectedYear}-12-31`);
-        } else if (preset === 'ALL') {
-            setDesde('');
-            setHasta('');
-        }
-    };
-
-    const handleYearChange = (year: number) => {
-        setSelectedYear(year);
-        if (periodPreset === 'YEAR') {
-            setDesde(`${year}-01-01`);
-            setHasta(`${year}-12-31`);
-        }
-    };
-
-    // ── Depósito y Categoría ──
     const [depositoId, setDepositoId] = useState<string>('');
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
-
-    // ── Material Seleccionado (para Tab 0: Ficha) ──
-    const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
-
-    // ── Búsqueda de texto en listas ──
     const [searchQuery, setSearchQuery] = useState('');
 
-    // ── Consultas Backend ──
+    // Rango de fechas correspondiente al año seleccionado
+    const desde = `${selectedYear}-01-01`;
+    const hasta = `${selectedYear}-12-31`;
+
+    // ── Material Seleccionado para el Drawer Lateral ──
+    const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+
+    // ── Consultas Backend Reales (Sin endpoints inventados) ──
     const { data: rawDepots = [] } = useGetDepotsQuery();
     const depots = useMemo(() => rawDepots.filter((d: any) => d.activo !== false), [rawDepots]);
 
     const { data: categories = [] } = useGetItemCategoriesQuery(depositoId || undefined);
-    const { data: allItems = [], isFetching: isFetchingItems } = useGetItemsQuery({});
 
-    // Consulta exclusiva de REMITO_SALIDA en el rango seleccionado
+    // Movimientos reales: solo REMITO_SALIDA en el año seleccionado
     const { data: rawMovements = [], isFetching: isFetchingMovements } = useGetRecentMovementsQuery({
-        desde: desde || undefined,
-        hasta: hasta || undefined,
+        desde,
+        hasta,
         depositoId: depositoId || undefined,
         tipo: 'REMITO_SALIDA'
     });
 
-    // Stock actual disponible
+    // Stock actual disponible real
     const { data: rawStock = [], isFetching: isFetchingStock } = useGetStockQuery({
         depotId: depositoId || undefined
     });
 
-    // Modal de comprobante de remito
+    // Remito modal detail
     const [selectedRemito, setSelectedRemito] = useState<any | null>(null);
     const [showRemitoModal, setShowRemitoModal] = useState(false);
     const [triggerGetRemitoDetail] = useLazyGetRemitoSalidaQuery();
@@ -175,7 +129,7 @@ export default function ReporteConsumoDetalladoPage() {
         }
     };
 
-    // ── Stock agrupado por itemId ──
+    // ── Mapa de Stock Actual Disponible por itemId ──
     const stockMap = useMemo(() => {
         const map = new Map<string, number>();
         rawStock.forEach((s: any) => {
@@ -185,12 +139,12 @@ export default function ReporteConsumoDetalladoPage() {
         return map;
     }, [rawStock]);
 
-    // ── Helper cliente ──
+    // ── Helper cliente real del remito ──
     const getClientName = (m: any): string => {
-        return m.documento?.partner?.name || m.partner?.name || 'Consumidor Final / Sin Asignar';
+        return m.documento?.partner?.name || m.partner?.name || 'Sin Asignar';
     };
 
-    // ── Movimientos válidos (REMITO_SALIDA sin anulados) ──
+    // ── Filtrado estricto: REMITO_SALIDA y no ANULADO ──
     const validMovements = useMemo(() => {
         return rawMovements.filter((m: any) => {
             if (m.status === 'ANULADO') return false;
@@ -199,8 +153,12 @@ export default function ReporteConsumoDetalladoPage() {
         });
     }, [rawMovements]);
 
-    // ── Agrupación maestra de consumos por material ──
-    const materialsSummaryMap = useMemo(() => {
+    // Mes actual para cálculos de promedio transcurrido
+    const now = new Date();
+    const monthsElapsed = selectedYear === currentYear ? (now.getMonth() + 1) : 12;
+
+    // ── Agrupación Maestra por Material ──
+    const materialsMap = useMemo(() => {
         const map = new Map<string, {
             id: string;
             codigoInterno: string;
@@ -212,12 +170,13 @@ export default function ReporteConsumoDetalladoPage() {
             totalKilos: number;
             totalBultos: number;
             stockActual: number;
-            movements: any[];
-            monthlyKilos: number[]; // 12 meses (0 a 11)
+            promedioMensual: number;
+            mesesCobertura: number;
+            monthlyKilos: number[]; // 12 meses
             clientsMap: Record<string, number>;
+            movements: any[];
         }>();
 
-        // Inicializar con todos los items que tengan movimientos o stock
         validMovements.forEach((m: any) => {
             if (!m.item) return;
             const item = m.item;
@@ -239,9 +198,11 @@ export default function ReporteConsumoDetalladoPage() {
                     totalKilos: 0,
                     totalBultos: 0,
                     stockActual: stockMap.get(itemId) || 0,
-                    movements: [],
+                    promedioMensual: 0,
+                    mesesCobertura: Infinity,
                     monthlyKilos: Array(12).fill(0),
-                    clientsMap: {}
+                    clientsMap: {},
+                    movements: []
                 };
                 map.set(itemId, entry);
             }
@@ -251,172 +212,156 @@ export default function ReporteConsumoDetalladoPage() {
             entry.movements.push(m);
             entry.clientsMap[client] = (entry.clientsMap[client] || 0) + qty;
 
-            // Extraer mes de la fecha del remito
             if (m.fecha) {
                 const datePart = String(m.fecha).slice(0, 10);
-                const [yStr, mStr] = datePart.split('-');
-                const y = parseInt(yStr, 10);
+                const [, mStr] = datePart.split('-');
                 const monthIndex = parseInt(mStr, 10) - 1;
-                // Si coincide con el año seleccionado (o para la matriz anual)
-                if (monthIndex >= 0 && monthIndex < 12 && (!selectedYear || y === selectedYear)) {
+                if (monthIndex >= 0 && monthIndex < 12) {
                     entry.monthlyKilos[monthIndex] += qty;
                 }
             }
         });
 
+        // Calcular promedios mensuales y cobertura real de stock
+        map.forEach((entry) => {
+            entry.promedioMensual = monthsElapsed > 0 ? (entry.totalKilos / monthsElapsed) : 0;
+            entry.mesesCobertura = entry.promedioMensual > 0 ? (entry.stockActual / entry.promedioMensual) : Infinity;
+        });
+
         return map;
-    }, [validMovements, stockMap, selectedYear]);
+    }, [validMovements, stockMap, monthsElapsed]);
 
     // Lista ordenada de materiales por consumo total descendente
-    const materialsList = useMemo(() => {
-        let list = Array.from(materialsSummaryMap.values());
+    const allMaterialsList = useMemo(() => {
+        return Array.from(materialsMap.values()).sort((a, b) => b.totalKilos - a.totalKilos);
+    }, [materialsMap]);
+
+    // Lista filtrada por categoría y búsqueda de texto
+    const filteredMaterialsList = useMemo(() => {
+        let list = allMaterialsList;
+
         if (selectedCategoryId) {
             list = list.filter(m => m.categoryId === selectedCategoryId || m.categoria === selectedCategoryId);
         }
-        return list.sort((a, b) => b.totalKilos - a.totalKilos);
-    }, [materialsSummaryMap, selectedCategoryId]);
 
-    // Autoseleccionar el primer material para la Ficha si no hay uno seleccionado
-    const currentMaterial = useMemo(() => {
-        if (!materialsList.length) return null;
-        if (selectedMaterialId) {
-            const found = materialsSummaryMap.get(selectedMaterialId);
-            if (found) return found;
+        const q = normalizeText(searchQuery);
+        if (q) {
+            list = list.filter(m =>
+                normalizeText(m.codigoInterno).includes(q) ||
+                normalizeText(m.descripcion).includes(q) ||
+                normalizeText(m.proveedor).includes(q)
+            );
         }
-        return materialsList[0];
-    }, [materialsList, selectedMaterialId, materialsSummaryMap]);
 
-    // ── Resumen por Categorías ──
+        return list;
+    }, [allMaterialsList, selectedCategoryId, searchQuery]);
+
+    const pagination = useClientPagination(filteredMaterialsList, 15);
+
+    // Material actualmente abierto en el Drawer lateral
+    const currentDrawerMaterial = useMemo(() => {
+        if (!selectedMaterialId) return null;
+        return materialsMap.get(selectedMaterialId) || null;
+    }, [selectedMaterialId, materialsMap]);
+
+    // ── Resumen Global Mensual (Macro: 12 meses sumados de todos los materiales) ──
+    const globalMonthlyEvolution = useMemo(() => {
+        const months = Array(12).fill(0);
+        validMovements.forEach((m: any) => {
+            if (m.fecha) {
+                const datePart = String(m.fecha).slice(0, 10);
+                const [, mStr] = datePart.split('-');
+                const monthIndex = parseInt(mStr, 10) - 1;
+                if (monthIndex >= 0 && monthIndex < 12) {
+                    months[monthIndex] += Math.abs(Number(m.qtyPrincipal || 0));
+                }
+            }
+        });
+
+        return MONTH_NAMES.map((name, idx) => ({
+            mes: name,
+            kilos: Number(months[idx].toFixed(1))
+        }));
+    }, [validMovements]);
+
+    // ── Resumen por Categorías Reales ──
     const categoriesSummary = useMemo(() => {
-        const catMap: Record<string, {
-            nombre: string;
-            totalKilos: number;
-            totalMateriales: number;
-            materiales: { codigo: string; descripcion: string; kilos: number }[];
-        }> = {};
+        const catMap: Record<string, { nombre: string; totalKilos: number; totalMateriales: number }> = {};
 
-        materialsList.forEach((m) => {
+        allMaterialsList.forEach((m) => {
             const catName = m.categoria || 'Sin Categoría';
             if (!catMap[catName]) {
-                catMap[catName] = {
-                    nombre: catName,
-                    totalKilos: 0,
-                    totalMateriales: 0,
-                    materiales: []
-                };
+                catMap[catName] = { nombre: catName, totalKilos: 0, totalMateriales: 0 };
             }
             catMap[catName].totalKilos += m.totalKilos;
             catMap[catName].totalMateriales += 1;
-            catMap[catName].materiales.push({
-                codigo: m.codigoInterno,
-                descripcion: m.descripcion,
-                kilos: m.totalKilos
-            });
         });
 
         return Object.values(catMap).sort((a, b) => b.totalKilos - a.totalKilos);
-    }, [materialsList]);
+    }, [allMaterialsList]);
 
-    // ── KPIs Globales Rápidos ──
-    const globalKPIs = useMemo(() => {
-        let totalConsumoKilos = 0;
+    // ── KPIs Ejecutivos ──
+    const kpis = useMemo(() => {
+        let totalKilos = 0;
         let totalBultos = 0;
-        let remitosSet = new Set<string>();
+        const remitosSet = new Set<string>();
 
         validMovements.forEach((m: any) => {
-            totalConsumoKilos += Math.abs(Number(m.qtyPrincipal || 0));
+            totalKilos += Math.abs(Number(m.qtyPrincipal || 0));
             totalBultos += Math.abs(Number(m.qtySecundaria || 0));
             if (m.documentoId || m.documentoNumero) {
                 remitosSet.add(m.documentoId || m.documentoNumero);
             }
         });
 
-        const activeMaterialsCount = materialsSummaryMap.size;
-        const topMaterial = materialsList[0] || null;
+        const promMensualGlobal = monthsElapsed > 0 ? (totalKilos / monthsElapsed) : 0;
+        const topMaterial = allMaterialsList[0] || null;
 
         return {
-            totalConsumoKilos,
+            totalKilos,
             totalBultos,
             totalRemitos: remitosSet.size || validMovements.length,
-            activeMaterialsCount,
+            promMensualGlobal,
             topMaterial
         };
-    }, [validMovements, materialsSummaryMap, materialsList]);
-
-    // ── Filtro de búsqueda en la Matriz Histórica ──
-    const filteredMatrixRows = useMemo(() => {
-        const q = normalizeText(searchQuery);
-        if (!q) return materialsList;
-        return materialsList.filter(m =>
-            normalizeText(m.codigoInterno).includes(q) ||
-            normalizeText(m.descripcion).includes(q) ||
-            normalizeText(m.proveedor).includes(q)
-        );
-    }, [materialsList, searchQuery]);
-
-    const matrixPagination = useClientPagination(filteredMatrixRows, 15);
+    }, [validMovements, monthsElapsed, allMaterialsList]);
 
     // ── Exportación a Excel ──
     const handleExportExcel = () => {
-        let rows: any[] = [];
-
-        if (currentTab === 1) {
-            // Exportar Matriz Histórica Mensual
-            rows = filteredMatrixRows.map(m => {
-                const rowObj: Record<string, any> = {
-                    'Código': m.codigoInterno,
-                    'Descripción': m.descripcion,
-                    'Categoría': m.categoria,
-                    'Proveedor': m.proveedor,
-                };
-                MONTH_NAMES.forEach((mes, idx) => {
-                    rowObj[mes] = Number(m.monthlyKilos[idx].toFixed(2));
-                });
-                rowObj[`Total ${selectedYear}`] = Number(m.totalKilos.toFixed(2));
-                rowObj['Stock Actual'] = Number(m.stockActual.toFixed(2));
-                return rowObj;
+        const rows = filteredMaterialsList.map(m => {
+            const rowObj: Record<string, any> = {
+                'Código': m.codigoInterno,
+                'Descripción': m.descripcion,
+                'Categoría': m.categoria,
+                'Proveedor': m.proveedor,
+            };
+            MONTH_NAMES.forEach((mes, idx) => {
+                rowObj[mes] = Number(m.monthlyKilos[idx].toFixed(2));
             });
-        } else if (currentTab === 2) {
-            // Exportar Resumen por Categoría
-            rows = categoriesSummary.map(c => ({
-                'Categoría': c.nombre,
-                'Materiales Distintos': c.totalMateriales,
-                'Consumo Total (kg)': Number(c.totalKilos.toFixed(2)),
-                '% del Total': globalKPIs.totalConsumoKilos > 0
-                    ? `${((c.totalKilos / globalKPIs.totalConsumoKilos) * 100).toFixed(1)}%`
-                    : '0%'
-            }));
-        } else if (currentMaterial) {
-            // Exportar Detalle del Material Seleccionado
-            rows = currentMaterial.movements.map((m: any) => ({
-                'Fecha': formatDate(m.fecha),
-                'N° Remito': m.documentoNumero || m.documento?.numero || 'S/N',
-                'Cliente': getClientName(m),
-                'Cantidad (kg)': Math.abs(Number(m.qtyPrincipal || 0)),
-                'Bultos': Math.abs(Number(m.qtySecundaria || 0)),
-                'Lote': m.batch?.lotNumber || '—',
-                'Observaciones': m.observaciones || '—'
-            }));
-        }
+            rowObj[`Total Salidas ${selectedYear}`] = Number(m.totalKilos.toFixed(2));
+            rowObj['Promedio Mensual (kg)'] = Number(m.promedioMensual.toFixed(2));
+            rowObj['Stock Actual (kg)'] = Number(m.stockActual.toFixed(2));
+            rowObj['Meses de Cobertura'] = m.mesesCobertura !== Infinity ? Number(m.mesesCobertura.toFixed(1)) : 'Sin salida regular';
+            return rowObj;
+        });
 
         const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        const sheetTitle = currentTab === 1 ? 'Historico_Mensual' : (currentTab === 2 ? 'Consumo_Categorias' : 'Ficha_Material');
-        XLSX.utils.book_append_sheet(wb, ws, sheetTitle);
-        XLSX.writeFile(wb, `${sheetTitle}_${desde || 'inicio'}_al_${hasta || 'hoy'}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, `Consumo_${selectedYear}`);
+        XLSX.writeFile(wb, `Consumo_Materiales_${selectedYear}.xlsx`);
     };
 
-    const isLoading = isFetchingMovements || isFetchingStock || isFetchingItems;
+    const isLoading = isFetchingMovements || isFetchingStock;
 
     return (
         <Box sx={{ p: { xs: 2, md: 3 }, display: 'flex', flexDirection: 'column', gap: 2.5, bgcolor: themeColors.bg, minHeight: '100vh', color: themeColors.text }}>
 
-            {/* ── HEADER PRINCIPAL ── */}
+            {/* ── HEADER PRINCIPAL Y ACCIONES ── */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5 }}>
                 <Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Typography variant="h5" sx={{ fontWeight: 900, color: themeColors.primary, letterSpacing: '-0.5px' }}>
-                            📊 Consumo de Materiales
+                            📊 Consumo y Salidas de Materiales
                         </Typography>
                         <Chip
                             label="Remitos de Salida"
@@ -425,88 +370,65 @@ export default function ReporteConsumoDetalladoPage() {
                         />
                     </Box>
                     <Typography variant="caption" sx={{ color: themeColors.textDim }}>
-                        Análisis real y limpio de materiales despachados por remito a clientes
+                        Análisis operativo de salidas reales por remito, evolución mensual y cobertura de stock
                     </Typography>
                 </Box>
 
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Button
-                        size="small"
-                        variant="contained"
-                        startIcon={<FileDownloadIcon />}
-                        onClick={handleExportExcel}
-                        sx={{
-                            bgcolor: '#10b981',
-                            color: '#fff',
-                            fontWeight: 800,
-                            borderRadius: 2,
-                            textTransform: 'none',
-                            '&:hover': { bgcolor: '#059669' }
-                        }}
-                    >
-                        Exportar Excel
-                    </Button>
-                </Box>
+                <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<FileDownloadIcon />}
+                    onClick={handleExportExcel}
+                    sx={{
+                        bgcolor: '#10b981',
+                        color: '#fff',
+                        fontWeight: 800,
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        '&:hover': { bgcolor: '#059669' }
+                    }}
+                >
+                    Exportar Tabla Completa
+                </Button>
             </Box>
 
-            {/* ── BARRA SUPERIOR DE FILTROS LIMPIOS ── */}
+            {/* ── BARRA SUPERIOR DE FILTROS REALES ── */}
             <Paper sx={{ p: 2, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', justifyContent: 'space-between' }}>
                     
-                    {/* Presets Rápidos */}
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, mr: 0.5 }}>
-                            PERÍODO:
+                    {/* Selector de Año */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700 }}>
+                            AÑO:
                         </Typography>
-                        {(['30D', '90D', 'YEAR', 'ALL'] as const).map((preset) => (
+                        {[currentYear, currentYear - 1, currentYear - 2].map(y => (
                             <Button
-                                key={preset}
+                                key={y}
                                 size="small"
-                                variant={periodPreset === preset ? 'contained' : 'outlined'}
-                                onClick={() => handlePresetChange(preset)}
+                                variant={selectedYear === y ? 'contained' : 'outlined'}
+                                onClick={() => setSelectedYear(y)}
                                 sx={{
                                     borderRadius: 2,
-                                    py: 0.4,
+                                    py: 0.3,
                                     px: 1.5,
-                                    fontSize: '0.75rem',
-                                    fontWeight: 700,
-                                    textTransform: 'none',
-                                    bgcolor: periodPreset === preset ? themeColors.primary : 'transparent',
-                                    color: periodPreset === preset ? '#000' : themeColors.textDim,
-                                    borderColor: periodPreset === preset ? themeColors.primary : themeColors.border,
+                                    fontSize: '0.8rem',
+                                    fontWeight: 800,
+                                    bgcolor: selectedYear === y ? themeColors.primary : 'transparent',
+                                    color: selectedYear === y ? '#000' : themeColors.textDim,
+                                    borderColor: selectedYear === y ? themeColors.primary : themeColors.border,
                                     '&:hover': {
                                         borderColor: themeColors.primary,
-                                        bgcolor: periodPreset === preset ? themeColors.primary : 'rgba(245, 158, 11, 0.08)'
+                                        bgcolor: selectedYear === y ? themeColors.primary : 'rgba(245, 158, 11, 0.08)'
                                     }
                                 }}
                             >
-                                {preset === '30D' ? 'Últimos 30 días' :
-                                 preset === '90D' ? 'Últimos 90 días' :
-                                 preset === 'YEAR' ? `Año ${selectedYear}` : 'Histórico Total'}
+                                {y}
                             </Button>
                         ))}
                     </Box>
 
-                    {/* Selector de Año, Depósito y Categoría */}
+                    {/* Filtros de Depósito y Categoría */}
                     <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-                        {/* Selector de Año */}
-                        <TextField
-                            select
-                            size="small"
-                            label="Año"
-                            value={selectedYear}
-                            onChange={(e) => handleYearChange(Number(e.target.value))}
-                            sx={{
-                                width: 105,
-                                '& .MuiOutlinedInput-root': { bgcolor: themeColors.inputBg, borderRadius: 2, fontSize: '0.85rem' }
-                            }}
-                        >
-                            {[currentYear, currentYear - 1, currentYear - 2, currentYear - 3].map(y => (
-                                <MenuItem key={y} value={y}>{y}</MenuItem>
-                            ))}
-                        </TextField>
-
-                        {/* Selector de Depósito */}
                         <TextField
                             select
                             size="small"
@@ -514,7 +436,7 @@ export default function ReporteConsumoDetalladoPage() {
                             value={depositoId}
                             onChange={(e) => setDepositoId(e.target.value)}
                             sx={{
-                                minWidth: 150,
+                                minWidth: 160,
                                 '& .MuiOutlinedInput-root': { bgcolor: themeColors.inputBg, borderRadius: 2, fontSize: '0.85rem' }
                             }}
                         >
@@ -524,7 +446,6 @@ export default function ReporteConsumoDetalladoPage() {
                             ))}
                         </TextField>
 
-                        {/* Selector de Categoría */}
                         <TextField
                             select
                             size="small"
@@ -532,7 +453,7 @@ export default function ReporteConsumoDetalladoPage() {
                             value={selectedCategoryId}
                             onChange={(e) => setSelectedCategoryId(e.target.value)}
                             sx={{
-                                minWidth: 160,
+                                minWidth: 170,
                                 '& .MuiOutlinedInput-root': { bgcolor: themeColors.inputBg, borderRadius: 2, fontSize: '0.85rem' }
                             }}
                         >
@@ -545,30 +466,31 @@ export default function ReporteConsumoDetalladoPage() {
                 </Box>
             </Paper>
 
-            {/* ── KPIS GLOBALES RESUMIDOS ── */}
+            {/* ── 4 KPIS EJECUTIVOS ── */}
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 1.5 }}>
                 <Paper sx={{ p: 1.8, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
                     <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem' }}>
-                        Total Salidas del Período
+                        Total Despachado ({selectedYear})
                     </Typography>
                     <Typography variant="h5" sx={{ fontWeight: 900, color: themeColors.primary, mt: 0.5 }}>
-                        {globalKPIs.totalConsumoKilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
+                        {kpis.totalKilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
                         <small style={{ fontSize: '0.8rem', fontWeight: 500 }}>kg</small>
                     </Typography>
                     <Typography variant="caption" sx={{ color: themeColors.textDim, fontSize: '0.72rem' }}>
-                        Despachado en {globalKPIs.totalRemitos} remitos
+                        {kpis.totalBultos.toLocaleString('es-AR')} bultos en {kpis.totalRemitos} remitos
                     </Typography>
                 </Paper>
 
                 <Paper sx={{ p: 1.8, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
                     <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem' }}>
-                        Bultos Despachados
+                        Promedio Mensual Real
                     </Typography>
                     <Typography variant="h5" sx={{ fontWeight: 900, color: themeColors.info, mt: 0.5 }}>
-                        {globalKPIs.totalBultos.toLocaleString('es-AR')}
+                        {kpis.promMensualGlobal.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
+                        <small style={{ fontSize: '0.8rem', fontWeight: 500 }}>kg/mes</small>
                     </Typography>
                     <Typography variant="caption" sx={{ color: themeColors.textDim, fontSize: '0.72rem' }}>
-                        Cajas / bolsas registradas
+                        Calculado sobre {monthsElapsed} meses transcurridos
                     </Typography>
                 </Paper>
 
@@ -577,520 +499,455 @@ export default function ReporteConsumoDetalladoPage() {
                         Materiales con Salida
                     </Typography>
                     <Typography variant="h5" sx={{ fontWeight: 900, color: themeColors.text, mt: 0.5 }}>
-                        {globalKPIs.activeMaterialsCount}
+                        {allMaterialsList.length}
                     </Typography>
                     <Typography variant="caption" sx={{ color: themeColors.textDim, fontSize: '0.72rem' }}>
-                        Artículos con consumo en el período
+                        Artículos diferentes con movimiento
                     </Typography>
                 </Paper>
 
                 <Paper sx={{ p: 1.8, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
                     <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem' }}>
-                        Material Más Despachado
+                        Mayor Salida ({selectedYear})
                     </Typography>
                     <Typography variant="h6" sx={{ fontWeight: 900, color: themeColors.success, mt: 0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {globalKPIs.topMaterial ? globalKPIs.topMaterial.codigoInterno : '—'}
+                        {kpis.topMaterial ? kpis.topMaterial.codigoInterno : '—'}
                     </Typography>
                     <Typography variant="caption" sx={{ color: themeColors.textDim, fontSize: '0.72rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {globalKPIs.topMaterial ? `${globalKPIs.topMaterial.totalKilos.toLocaleString('es-AR', { maximumFractionDigits: 0 })} kg (${globalKPIs.topMaterial.descripcion})` : 'Sin datos'}
+                        {kpis.topMaterial ? `${kpis.topMaterial.totalKilos.toLocaleString('es-AR', { maximumFractionDigits: 0 })} kg (${kpis.topMaterial.descripcion})` : 'Sin datos'}
                     </Typography>
                 </Paper>
             </Box>
 
-            {/* ── PESTAÑAS PRINCIPALES DE NAVEGACIÓN ── */}
-            <Box sx={{ borderBottom: 1, borderColor: themeColors.border }}>
-                <Tabs
-                    value={currentTab}
-                    onChange={(_, val) => setCurrentTab(val)}
-                    textColor="inherit"
-                    TabIndicatorProps={{ sx: { bgcolor: themeColors.primary, height: 3 } }}
-                    sx={{
-                        '& .MuiTab-root': {
-                            textTransform: 'none',
-                            fontWeight: 800,
-                            fontSize: '0.92rem',
-                            color: themeColors.textDim,
-                            '&.Mui-selected': { color: themeColors.primary }
-                        }
-                    }}
-                >
-                    <Tab icon={<AssessmentIcon sx={{ fontSize: '1.2rem', mr: 0.8 }} />} iconPosition="start" label="Ficha por Material" />
-                    <Tab icon={<ViewModuleIcon sx={{ fontSize: '1.2rem', mr: 0.8 }} />} iconPosition="start" label="Histórico Mensual (Matriz)" />
-                    <Tab icon={<CategoryIcon sx={{ fontSize: '1.2rem', mr: 0.8 }} />} iconPosition="start" label="Consumo por Categorías" />
-                </Tabs>
+            {/* ── VISIÓN MACRO: BARRAS MENSUALES TOTALES + CATEGORÍAS (Lado a lado) ── */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.6fr 1fr' }, gap: 2 }}>
+                
+                {/* Evolución Mensual Global de Salidas */}
+                <Paper sx={{ p: 2.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                        <Box>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: themeColors.text }}>
+                                📈 Salidas Totales por Mes ({selectedYear})
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: themeColors.textDim }}>
+                                Volumen consolidado despachado por remito mes a mes
+                            </Typography>
+                        </Box>
+                    </Box>
+
+                    <Box sx={{ height: 210, width: '100%' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={globalMonthlyEvolution}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                <XAxis dataKey="mes" stroke={themeColors.textDim} fontSize={12} tickLine={false} />
+                                <YAxis stroke={themeColors.textDim} fontSize={12} tickLine={false} unit=" kg" />
+                                <RechartsTooltip
+                                    contentStyle={{ backgroundColor: '#1e2230', borderColor: themeColors.border, borderRadius: 8, color: '#fff' }}
+                                    formatter={(value: any) => [`${Number(value).toLocaleString('es-AR')} kg`, 'Total Despachado']}
+                                />
+                                <Bar dataKey="kilos" fill={themeColors.primary} radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </Box>
+                </Paper>
+
+                {/* Distribución por Categoría Real */}
+                <Paper sx={{ p: 2.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5, display: 'flex', flexDirection: 'column' }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: themeColors.text }}>
+                        🏷️ Participación por Categoría
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, mb: 1.5 }}>
+                        Porcentaje del volumen total despachado
+                    </Typography>
+
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.2, overflowY: 'auto', maxHeight: 200 }}>
+                        {categoriesSummary.map((cat, idx) => {
+                            const pct = kpis.totalKilos > 0 ? (cat.totalKilos / kpis.totalKilos) * 100 : 0;
+                            return (
+                                <Box
+                                    key={cat.nombre}
+                                    sx={{
+                                        p: 1,
+                                        bgcolor: 'rgba(255,255,255,0.02)',
+                                        borderRadius: 1.5,
+                                        border: `1px solid ${themeColors.border}`,
+                                        cursor: 'pointer',
+                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }
+                                    }}
+                                    onClick={() => setSelectedCategoryId(selectedCategoryId === cat.nombre ? '' : cat.nombre)}
+                                >
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.4 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: PIE_PALETTE[idx % PIE_PALETTE.length] }} />
+                                            <Typography variant="caption" sx={{ fontWeight: 800, color: themeColors.text }}>
+                                                {cat.nombre}
+                                            </Typography>
+                                        </Box>
+                                        <Typography variant="caption" sx={{ fontWeight: 900, color: themeColors.primary }}>
+                                            {cat.totalKilos.toLocaleString('es-AR', { maximumFractionDigits: 0 })} kg ({pct.toFixed(0)}%)
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ width: '100%', height: 4, bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                                        <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: PIE_PALETTE[idx % PIE_PALETTE.length] }} />
+                                    </Box>
+                                </Box>
+                            );
+                        })}
+                    </Box>
+                </Paper>
             </Box>
 
-            {isLoading && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
-                    <CircularProgress sx={{ color: themeColors.primary }} />
+            {/* ── TABLA MAESTRA INTEGRADA: MATRIZ MENSUAL + COBERTURA + ACCESO A FICHA ── */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                
+                {/* Barra de Búsqueda sobre la Tabla */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
+                    <TextField
+                        size="small"
+                        placeholder="Buscar por código de material, descripción o proveedor..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        InputProps={{
+                            startAdornment: <SearchIcon sx={{ color: themeColors.textDim, mr: 1, fontSize: '1.2rem' }} />,
+                            endAdornment: searchQuery ? (
+                                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                                    <ClearIcon fontSize="small" />
+                                </IconButton>
+                            ) : null
+                        }}
+                        sx={{
+                            minWidth: 340,
+                            '& .MuiOutlinedInput-root': { bgcolor: themeColors.cardBg, borderRadius: 2 }
+                        }}
+                    />
+
+                    <Typography variant="caption" sx={{ color: themeColors.textDim }}>
+                        Mostrando <strong>{filteredMaterialsList.length}</strong> materiales con salida en {selectedYear}
+                    </Typography>
                 </Box>
-            )}
 
-            {!isLoading && (
-                <>
-                    {/* ══════════════════════════════════════════════════════════════════
-                        TAB 0: FICHA ESPECÍFICA POR MATERIAL
-                       ══════════════════════════════════════════════════════════════════ */}
-                    {currentTab === 0 && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                            {/* Selector / Buscador Rápido del Material */}
-                            <Paper sx={{ p: 2, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                                    <Box sx={{ flex: 1, minWidth: 280 }}>
-                                        <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, display: 'block', mb: 0.5 }}>
-                                            SELECCIONÁ O BUSCÁ UN MATERIAL PARA VER SU CONSUMO DETALLADO:
-                                        </Typography>
-                                        <Autocomplete
-                                            options={materialsList}
-                                            getOptionLabel={(option) => `${option.codigoInterno} - ${option.descripcion} (${option.totalKilos.toLocaleString('es-AR', { maximumFractionDigits: 0 })} kg consumidos)`}
-                                            value={currentMaterial}
-                                            onChange={(_, val) => setSelectedMaterialId(val?.id || null)}
-                                            isOptionEqualToValue={(option, val) => option.id === val.id}
-                                            renderInput={(params) => (
-                                                <TextField
-                                                    {...params}
+                {/* Tabla Maestra */}
+                <Paper sx={{ bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5, overflow: 'hidden' }}>
+                    <TableContainer sx={{ maxHeight: 600 }}>
+                        <MuiTable size="small" stickyHeader>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, minWidth: 100 }}>Código</TableCell>
+                                    <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, minWidth: 220 }}>Descripción</TableCell>
+                                    <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, minWidth: 120 }}>Categoría</TableCell>
+                                    {MONTH_NAMES.map((m) => (
+                                        <TableCell key={m} sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, textAlign: 'right', minWidth: 60, fontSize: '0.75rem' }}>
+                                            {m}
+                                        </TableCell>
+                                    ))}
+                                    <TableCell sx={{ bgcolor: '#161922', color: themeColors.primary, fontWeight: 900, textAlign: 'right', minWidth: 95 }}>
+                                        Total {selectedYear}
+                                    </TableCell>
+                                    <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, textAlign: 'right', minWidth: 85 }}>
+                                        Prom/Mes
+                                    </TableCell>
+                                    <TableCell sx={{ bgcolor: '#161922', color: themeColors.info, fontWeight: 800, textAlign: 'right', minWidth: 85 }}>
+                                        Stock
+                                    </TableCell>
+                                    <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, textAlign: 'center', minWidth: 90 }}>
+                                        Cobertura
+                                    </TableCell>
+                                    <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, textAlign: 'center', minWidth: 60 }}>
+                                        Ficha
+                                    </TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {isLoading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={19} sx={{ textAlign: 'center', py: 5 }}>
+                                            <CircularProgress size={30} sx={{ color: themeColors.primary }} />
+                                        </TableCell>
+                                    </TableRow>
+                                ) : pagination.paginatedItems.map((m) => {
+                                    // Cobertura visual: meses de stock restantes
+                                    const cob = m.mesesCobertura;
+                                    let cobColor = themeColors.success;
+                                    let cobLabel = `${cob.toFixed(1)} m`;
+
+                                    if (cob === Infinity) {
+                                        cobColor = themeColors.textDim;
+                                        cobLabel = '—';
+                                    } else if (cob < 0.5) { // menos de 15 días
+                                        cobColor = themeColors.danger;
+                                    } else if (cob < 1) { // menos de 1 mes
+                                        cobColor = themeColors.warning;
+                                    }
+
+                                    return (
+                                        <TableRow
+                                            key={m.id}
+                                            hover
+                                            sx={{
+                                                cursor: 'pointer',
+                                                bgcolor: selectedMaterialId === m.id ? 'rgba(245, 158, 11, 0.08)' : 'transparent',
+                                                '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.04)' }
+                                            }}
+                                            onClick={() => setSelectedMaterialId(m.id)}
+                                        >
+                                            <TableCell sx={{ color: themeColors.primary, fontWeight: 800, fontSize: '0.82rem' }}>
+                                                {m.codigoInterno}
+                                            </TableCell>
+                                            <TableCell sx={{ color: themeColors.text, fontSize: '0.82rem' }}>
+                                                {m.descripcion}
+                                            </TableCell>
+                                            <TableCell sx={{ color: themeColors.textDim, fontSize: '0.78rem' }}>
+                                                {m.categoria}
+                                            </TableCell>
+                                            {MONTH_NAMES.map((_, idx) => {
+                                                const val = m.monthlyKilos[idx];
+                                                return (
+                                                    <TableCell
+                                                        key={idx}
+                                                        sx={{
+                                                            textAlign: 'right',
+                                                            fontSize: '0.76rem',
+                                                            color: val > 0 ? themeColors.text : 'rgba(255,255,255,0.12)',
+                                                            fontWeight: val > 0 ? 600 : 400
+                                                        }}
+                                                    >
+                                                        {val > 0 ? Math.round(val).toLocaleString('es-AR') : '—'}
+                                                    </TableCell>
+                                                );
+                                            })}
+                                            <TableCell sx={{ textAlign: 'right', color: themeColors.primary, fontWeight: 900, fontSize: '0.85rem' }}>
+                                                {m.totalKilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            </TableCell>
+                                            <TableCell sx={{ textAlign: 'right', color: themeColors.textDim, fontSize: '0.8rem' }}>
+                                                {m.promedioMensual.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                            </TableCell>
+                                            <TableCell sx={{ textAlign: 'right', color: themeColors.info, fontWeight: 800, fontSize: '0.82rem' }}>
+                                                {m.stockActual.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                            </TableCell>
+                                            <TableCell sx={{ textAlign: 'center' }}>
+                                                <Chip
+                                                    label={cobLabel}
                                                     size="small"
-                                                    placeholder="Escribí código o descripción del material..."
                                                     sx={{
-                                                        '& .MuiOutlinedInput-root': {
-                                                            bgcolor: themeColors.inputBg,
-                                                            borderRadius: 2,
-                                                            color: themeColors.text
-                                                        }
+                                                        bgcolor: `${cobColor}15`,
+                                                        color: cobColor,
+                                                        fontWeight: 800,
+                                                        fontSize: '0.72rem',
+                                                        height: 20
                                                     }}
                                                 />
-                                            )}
-                                        />
-                                    </Box>
+                                            </TableCell>
+                                            <TableCell sx={{ textAlign: 'center' }}>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedMaterialId(m.id);
+                                                    }}
+                                                    sx={{ color: themeColors.info }}
+                                                >
+                                                    <VisibilityIcon fontSize="small" />
+                                                </IconButton>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
 
-                                    {currentMaterial && (
-                                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                                            <Box sx={{ p: 1.2, px: 2, bgcolor: 'rgba(245, 158, 11, 0.08)', borderRadius: 2, border: `1px solid rgba(245, 158, 11, 0.2)` }}>
-                                                <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, display: 'block' }}>
-                                                    TOTAL SALIDAS
-                                                </Typography>
-                                                <Typography variant="h6" sx={{ fontWeight: 900, color: themeColors.primary }}>
-                                                    {currentMaterial.totalKilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg
-                                                </Typography>
-                                            </Box>
+                                {!isLoading && pagination.paginatedItems.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={19} sx={{ textAlign: 'center', py: 4, color: themeColors.textDim }}>
+                                            No se encontraron salidas para los filtros seleccionados.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </MuiTable>
+                    </TableContainer>
 
-                                            <Box sx={{ p: 1.2, px: 2, bgcolor: 'rgba(56, 189, 248, 0.08)', borderRadius: 2, border: `1px solid rgba(56, 189, 248, 0.2)` }}>
-                                                <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, display: 'block' }}>
-                                                    STOCK ACTUAL
-                                                </Typography>
-                                                <Typography variant="h6" sx={{ fontWeight: 900, color: themeColors.info }}>
-                                                    {currentMaterial.stockActual.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg
-                                                </Typography>
-                                            </Box>
-                                        </Box>
-                                    )}
-                                </Box>
-                            </Paper>
+                    {/* Controles de Paginación */}
+                    <Box sx={{ p: 1.5, borderTop: `1px solid ${themeColors.border}` }}>
+                        <PaginationControls
+                            currentPage={pagination.page}
+                            totalPages={pagination.totalPages}
+                            totalItems={pagination.totalItems}
+                            pageSize={pagination.pageSize}
+                            onPageChange={pagination.setPage}
+                            onPageSizeChange={pagination.setPageSize}
+                        />
+                    </Box>
+                </Paper>
+            </Box>
 
-                            {!currentMaterial ? (
-                                <Paper sx={{ p: 4, textAlign: 'center', bgcolor: themeColors.cardBg, borderRadius: 2.5 }}>
-                                    <Typography variant="body1" sx={{ color: themeColors.textDim }}>
-                                        No se encontraron salidas para los filtros seleccionados.
-                                    </Typography>
-                                </Paper>
-                            ) : (
-                                <>
-                                    {/* Gráfico Histórico Mes a Mes del Material Seleccionado */}
-                                    <Paper sx={{ p: 2.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                                            <Box>
-                                                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: themeColors.text }}>
-                                                    📈 Evolución de Consumo Mes a Mes ({selectedYear})
-                                                </Typography>
-                                                <Typography variant="caption" sx={{ color: themeColors.textDim }}>
-                                                    Salidas mensuales por remito para <strong>{currentMaterial.codigoInterno}</strong> ({currentMaterial.descripcion})
-                                                </Typography>
-                                            </Box>
-                                            <Chip
-                                                label={`Categoría: ${currentMaterial.categoria}`}
-                                                size="small"
-                                                sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: themeColors.textDim, fontWeight: 700 }}
-                                            />
-                                        </Box>
-
-                                        <Box sx={{ height: 260, width: '100%' }}>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={MONTH_NAMES.map((name, idx) => ({
-                                                    mes: name,
-                                                    kilos: Number(currentMaterial.monthlyKilos[idx].toFixed(1))
-                                                }))}>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                                    <XAxis dataKey="mes" stroke={themeColors.textDim} fontSize={12} tickLine={false} />
-                                                    <YAxis stroke={themeColors.textDim} fontSize={12} tickLine={false} unit=" kg" />
-                                                    <RechartsTooltip
-                                                        contentStyle={{ backgroundColor: '#1e2230', borderColor: themeColors.border, borderRadius: 8, color: '#fff' }}
-                                                        formatter={(value: any) => [`${Number(value).toLocaleString('es-AR')} kg`, 'Consumo']}
-                                                    />
-                                                    <Bar dataKey="kilos" fill={themeColors.primary} radius={[4, 4, 0, 0]} />
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </Box>
-                                    </Paper>
-
-                                    {/* Grilla 2 Columnas: Clientes Destino + Tabla de Movimientos */}
-                                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 2fr' }, gap: 2 }}>
-                                        
-                                        {/* Ranking de Clientes */}
-                                        <Paper sx={{ p: 2, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
-                                            <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: themeColors.text }}>
-                                                🏢 Destino / Clientes
-                                            </Typography>
-                                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                                {Object.entries(currentMaterial.clientsMap)
-                                                    .sort(([, a], [, b]) => b - a)
-                                                    .map(([client, qty], idx) => {
-                                                        const pct = currentMaterial.totalKilos > 0 ? (qty / currentMaterial.totalKilos) * 100 : 0;
-                                                        return (
-                                                            <Box key={client} sx={{ p: 1, bgcolor: 'rgba(255,255,255,0.02)', borderRadius: 1.5, border: `1px solid ${themeColors.border}` }}>
-                                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                                                    <Typography variant="caption" sx={{ fontWeight: 700, color: themeColors.text }}>
-                                                                        {idx + 1}. {client}
-                                                                    </Typography>
-                                                                    <Typography variant="caption" sx={{ fontWeight: 800, color: themeColors.primary }}>
-                                                                        {qty.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg ({pct.toFixed(0)}%)
-                                                                    </Typography>
-                                                                </Box>
-                                                                <Box sx={{ width: '100%', height: 4, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
-                                                                    <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: themeColors.primary }} />
-                                                                </Box>
-                                                            </Box>
-                                                        );
-                                                    })}
-                                            </Box>
-                                        </Paper>
-
-                                        {/* Detalle de Remitos de Salida */}
-                                        <Paper sx={{ p: 2, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
-                                            <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: themeColors.text }}>
-                                                📋 Remitos de Salida Registrados ({currentMaterial.movements.length})
-                                            </Typography>
-                                            <TableContainer sx={{ maxHeight: 380 }}>
-                                                <MuiTable size="small" stickyHeader>
-                                                    <TableHead>
-                                                        <TableRow>
-                                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, py: 1 }}>Fecha</TableCell>
-                                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, py: 1 }}>Remito</TableCell>
-                                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, py: 1 }}>Cliente</TableCell>
-                                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, py: 1, textAlign: 'right' }}>Kilos</TableCell>
-                                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, py: 1, textAlign: 'right' }}>Bultos</TableCell>
-                                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, py: 1, textAlign: 'center' }}>Ver</TableCell>
-                                                        </TableRow>
-                                                    </TableHead>
-                                                    <TableBody>
-                                                        {currentMaterial.movements.map((m: any, idx: number) => (
-                                                            <TableRow key={m.id || idx} hover sx={{ '&:last-child td': { border: 0 } }}>
-                                                                <TableCell sx={{ color: themeColors.text, fontSize: '0.8rem' }}>
-                                                                    {formatDate(m.fecha)}
-                                                                </TableCell>
-                                                                <TableCell sx={{ color: themeColors.info, fontWeight: 700, fontSize: '0.8rem' }}>
-                                                                    {m.documentoNumero || m.documento?.numero || 'S/N'}
-                                                                </TableCell>
-                                                                <TableCell sx={{ color: themeColors.text, fontSize: '0.8rem' }}>
-                                                                    {getClientName(m)}
-                                                                </TableCell>
-                                                                <TableCell sx={{ color: themeColors.primary, fontWeight: 800, textAlign: 'right', fontSize: '0.82rem' }}>
-                                                                    {Math.abs(Number(m.qtyPrincipal || 0)).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                                                                </TableCell>
-                                                                <TableCell sx={{ color: themeColors.textDim, textAlign: 'right', fontSize: '0.8rem' }}>
-                                                                    {Math.abs(Number(m.qtySecundaria || 0)) || '—'}
-                                                                </TableCell>
-                                                                <TableCell sx={{ textAlign: 'center', py: 0.5 }}>
-                                                                    {m.documentoId ? (
-                                                                        <Tooltip title="Ver Remito Formal">
-                                                                            <IconButton
-                                                                                size="small"
-                                                                                onClick={() => handleViewRemito(m.documentoId)}
-                                                                                sx={{ color: themeColors.textDim, '&:hover': { color: themeColors.info } }}
-                                                                            >
-                                                                                <VisibilityIcon fontSize="small" />
-                                                                            </IconButton>
-                                                                        </Tooltip>
-                                                                    ) : '—'}
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </MuiTable>
-                                            </TableContainer>
-                                        </Paper>
-                                    </Box>
-                                </>
-                            )}
-                        </Box>
-                    )}
-
-                    {/* ══════════════════════════════════════════════════════════════════
-                        TAB 1: MATRIZ HISTÓRICA MENSUAL (TODOS LOS MATERIALES)
-                       ══════════════════════════════════════════════════════════════════ */}
-                    {currentTab === 1 && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {/* Barra de Filtro de Matriz */}
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
-                                <TextField
-                                    size="small"
-                                    placeholder="Buscar material por código o descripción..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    InputProps={{
-                                        startAdornment: <SearchIcon sx={{ color: themeColors.textDim, mr: 1, fontSize: '1.2rem' }} />,
-                                        endAdornment: searchQuery ? (
-                                            <IconButton size="small" onClick={() => setSearchQuery('')}>
-                                                <ClearIcon fontSize="small" />
-                                            </IconButton>
-                                        ) : null
-                                    }}
-                                    sx={{
-                                        minWidth: 320,
-                                        '& .MuiOutlinedInput-root': { bgcolor: themeColors.cardBg, borderRadius: 2 }
-                                    }}
-                                />
-
+            {/* ── PANEL LATERAL (DRAWER): FICHA EN PROFUNDIDAD DEL MATERIAL SELECCIONADO ── */}
+            <Drawer
+                anchor="right"
+                open={Boolean(currentDrawerMaterial)}
+                onClose={() => setSelectedMaterialId(null)}
+                PaperProps={{
+                    sx: {
+                        width: { xs: '100%', sm: 540, md: 620 },
+                        bgcolor: '#131620',
+                        color: themeColors.text,
+                        borderLeft: `1px solid ${themeColors.border}`,
+                        p: 3,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 2.5
+                    }
+                }}
+            >
+                {currentDrawerMaterial && (
+                    <>
+                        {/* Header del Drawer */}
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <Box>
+                                <Typography variant="h6" sx={{ fontWeight: 900, color: themeColors.primary }}>
+                                    {currentDrawerMaterial.codigoInterno}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: themeColors.text }}>
+                                    {currentDrawerMaterial.descripcion}
+                                </Typography>
                                 <Typography variant="caption" sx={{ color: themeColors.textDim }}>
-                                    Mostrando <strong>{filteredMatrixRows.length}</strong> materiales con salida en {selectedYear}
+                                    Categoría: <strong>{currentDrawerMaterial.categoria}</strong> · Proveedor: <strong>{currentDrawerMaterial.proveedor}</strong>
                                 </Typography>
                             </Box>
+                            <IconButton onClick={() => setSelectedMaterialId(null)} sx={{ color: themeColors.textDim }}>
+                                <CloseIcon />
+                            </IconButton>
+                        </Box>
 
-                            {/* Tabla Matriz Anual */}
-                            <Paper sx={{ bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5, overflow: 'hidden' }}>
-                                <TableContainer sx={{ maxHeight: 600 }}>
-                                    <MuiTable size="small" stickyHeader>
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, minWidth: 100 }}>Código</TableCell>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, minWidth: 200 }}>Descripción</TableCell>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, minWidth: 120 }}>Categoría</TableCell>
-                                                {MONTH_NAMES.map((m) => (
-                                                    <TableCell key={m} sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, textAlign: 'right', minWidth: 65 }}>
-                                                        {m}
-                                                    </TableCell>
-                                                ))}
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.primary, fontWeight: 900, textAlign: 'right', minWidth: 95 }}>
-                                                    Total {selectedYear}
-                                                </TableCell>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.info, fontWeight: 800, textAlign: 'right', minWidth: 85 }}>
-                                                    Stock
-                                                </TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {matrixPagination.paginatedItems.map((row) => (
-                                                <TableRow
-                                                    key={row.id}
-                                                    hover
-                                                    sx={{
-                                                        cursor: 'pointer',
-                                                        '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.04)' }
-                                                    }}
-                                                    onClick={() => {
-                                                        setSelectedMaterialId(row.id);
-                                                        setCurrentTab(0);
-                                                    }}
-                                                >
-                                                    <TableCell sx={{ color: themeColors.primary, fontWeight: 800, fontSize: '0.82rem' }}>
-                                                        {row.codigoInterno}
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: themeColors.text, fontSize: '0.82rem' }}>
-                                                        {row.descripcion}
-                                                    </TableCell>
-                                                    <TableCell sx={{ color: themeColors.textDim, fontSize: '0.78rem' }}>
-                                                        {row.categoria}
-                                                    </TableCell>
-                                                    {MONTH_NAMES.map((_, idx) => {
-                                                        const val = row.monthlyKilos[idx];
-                                                        return (
-                                                            <TableCell
-                                                                key={idx}
-                                                                sx={{
-                                                                    textAlign: 'right',
-                                                                    fontSize: '0.78rem',
-                                                                    color: val > 0 ? themeColors.text : 'rgba(255,255,255,0.15)',
-                                                                    fontWeight: val > 0 ? 600 : 400
-                                                                }}
-                                                            >
-                                                                {val > 0 ? Math.round(val).toLocaleString('es-AR') : '—'}
-                                                            </TableCell>
-                                                        );
-                                                    })}
-                                                    <TableCell sx={{ textAlign: 'right', color: themeColors.primary, fontWeight: 900, fontSize: '0.85rem' }}>
-                                                        {row.totalKilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                                                    </TableCell>
-                                                    <TableCell sx={{ textAlign: 'right', color: themeColors.info, fontWeight: 700, fontSize: '0.82rem' }}>
-                                                        {row.stockActual.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                            {matrixPagination.paginatedItems.length === 0 && (
-                                                <TableRow>
-                                                    <TableCell colSpan={17} sx={{ textAlign: 'center', py: 4, color: themeColors.textDim }}>
-                                                        No hay datos de consumo para los filtros aplicados.
-                                                    </TableCell>
-                                                </TableRow>
-                                            )}
-                                        </TableBody>
-                                    </MuiTable>
-                                </TableContainer>
+                        <Divider sx={{ borderColor: themeColors.border }} />
 
-                                {/* Paginador */}
-                                <Box sx={{ p: 1.5, borderTop: `1px solid ${themeColors.border}` }}>
-                                    <PaginationControls
-                                        currentPage={matrixPagination.page}
-                                        totalPages={matrixPagination.totalPages}
-                                        totalItems={matrixPagination.totalItems}
-                                        pageSize={matrixPagination.pageSize}
-                                        onPageChange={matrixPagination.setPage}
-                                        onPageSizeChange={matrixPagination.setPageSize}
-                                    />
-                                </Box>
+                        {/* Tarjetas Clave de Stock y Consumo del Material */}
+                        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5 }}>
+                            <Paper sx={{ p: 1.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2 }}>
+                                <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, fontSize: '0.65rem' }}>
+                                    TOTAL {selectedYear}
+                                </Typography>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 900, color: themeColors.primary }}>
+                                    {currentDrawerMaterial.totalKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg
+                                </Typography>
+                            </Paper>
+
+                            <Paper sx={{ p: 1.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2 }}>
+                                <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, fontSize: '0.65rem' }}>
+                                    STOCK ACTUAL
+                                </Typography>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 900, color: themeColors.info }}>
+                                    {currentDrawerMaterial.stockActual.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg
+                                </Typography>
+                            </Paper>
+
+                            <Paper sx={{ p: 1.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2 }}>
+                                <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, fontSize: '0.65rem' }}>
+                                    COBERTURA
+                                </Typography>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 900, color: currentDrawerMaterial.mesesCobertura < 1 ? themeColors.danger : themeColors.success }}>
+                                    {currentDrawerMaterial.mesesCobertura !== Infinity ? `${currentDrawerMaterial.mesesCobertura.toFixed(1)} meses` : '—'}
+                                </Typography>
                             </Paper>
                         </Box>
-                    )}
 
-                    {/* ══════════════════════════════════════════════════════════════════
-                        TAB 2: CONSUMO POR CATEGORÍAS
-                       ══════════════════════════════════════════════════════════════════ */}
-                    {currentTab === 2 && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.2fr 1fr' }, gap: 2 }}>
-                                
-                                {/* Gráfico de Torta / Distribución por Categoría */}
-                                <Paper sx={{ p: 2.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
-                                    <Typography variant="subtitle1" sx={{ fontWeight: 800, mb: 1, color: themeColors.text }}>
-                                        Distribución de Consumo por Categoría
-                                    </Typography>
-                                    <Typography variant="caption" sx={{ color: themeColors.textDim, display: 'block', mb: 2 }}>
-                                        Proporción del volumen despachado según familia de producto
-                                    </Typography>
+                        {/* Gráfico Histórico Mensual Específico */}
+                        <Paper sx={{ p: 2, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2 }}>
+                            <Typography variant="caption" sx={{ fontWeight: 800, color: themeColors.textDim, display: 'block', mb: 1.5, textTransform: 'uppercase' }}>
+                                📈 Evolución Mes a Mes ({selectedYear})
+                            </Typography>
+                            <Box sx={{ height: 180, width: '100%' }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={MONTH_NAMES.map((name, idx) => ({
+                                        mes: name,
+                                        kilos: Number(currentDrawerMaterial.monthlyKilos[idx].toFixed(1))
+                                    }))}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                        <XAxis dataKey="mes" stroke={themeColors.textDim} fontSize={11} tickLine={false} />
+                                        <YAxis stroke={themeColors.textDim} fontSize={11} tickLine={false} unit=" kg" />
+                                        <RechartsTooltip
+                                            contentStyle={{ backgroundColor: '#1e2230', borderColor: themeColors.border, borderRadius: 8, color: '#fff' }}
+                                            formatter={(value: any) => [`${Number(value).toLocaleString('es-AR')} kg`, 'Salida']}
+                                        />
+                                        <Bar dataKey="kilos" fill={themeColors.primary} radius={[3, 3, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </Box>
+                        </Paper>
 
-                                    <Box sx={{ height: 280, width: '100%' }}>
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={categoriesSummary}
-                                                    dataKey="totalKilos"
-                                                    nameKey="nombre"
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    outerRadius={95}
-                                                    innerRadius={50}
-                                                    paddingAngle={3}
-                                                >
-                                                    {categoriesSummary.map((_, index) => (
-                                                        <Cell key={`cell-${index}`} fill={PIE_PALETTE[index % PIE_PALETTE.length]} />
-                                                    ))}
-                                                </Pie>
-                                                <RechartsTooltip
-                                                    contentStyle={{ backgroundColor: '#1e2230', borderColor: themeColors.border, borderRadius: 8, color: '#fff' }}
-                                                    formatter={(value: any) => [`${Number(value).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg`, 'Consumo']}
-                                                />
-                                                <Legend />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    </Box>
-                                </Paper>
-
-                                {/* Resumen Numérico por Categoría */}
-                                <Paper sx={{ p: 2.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                                    <Typography variant="subtitle1" sx={{ fontWeight: 800, color: themeColors.text }}>
-                                        Ranking de Familias de Materiales
-                                    </Typography>
-
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 310, overflowY: 'auto' }}>
-                                        {categoriesSummary.map((cat, idx) => {
-                                            const pct = globalKPIs.totalConsumoKilos > 0 ? (cat.totalKilos / globalKPIs.totalConsumoKilos) * 100 : 0;
-                                            return (
-                                                <Box
-                                                    key={cat.nombre}
-                                                    sx={{
-                                                        p: 1.5,
-                                                        bgcolor: 'rgba(255,255,255,0.02)',
-                                                        borderRadius: 2,
-                                                        border: `1px solid ${themeColors.border}`,
-                                                        cursor: 'pointer',
-                                                        '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }
-                                                    }}
-                                                    onClick={() => {
-                                                        setSelectedCategoryId(cat.nombre);
-                                                        setCurrentTab(1); // Ir a la matriz filtrada
-                                                    }}
-                                                >
-                                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.8 }}>
-                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: PIE_PALETTE[idx % PIE_PALETTE.length] }} />
-                                                            <Typography variant="body2" sx={{ fontWeight: 800, color: themeColors.text }}>
-                                                                {cat.nombre}
-                                                            </Typography>
-                                                            <Typography variant="caption" sx={{ color: themeColors.textDim }}>
-                                                                ({cat.totalMateriales} materiales)
-                                                            </Typography>
-                                                        </Box>
-                                                        <Typography variant="body2" sx={{ fontWeight: 900, color: themeColors.primary }}>
-                                                            {cat.totalKilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg{' '}
-                                                            <span style={{ fontSize: '0.75rem', color: themeColors.textDim }}>({pct.toFixed(1)}%)</span>
-                                                        </Typography>
-                                                    </Box>
-                                                    <Box sx={{ width: '100%', height: 5, bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                                                        <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: PIE_PALETTE[idx % PIE_PALETTE.length] }} />
-                                                    </Box>
+                        {/* Ranking de Clientes */}
+                        <Box>
+                            <Typography variant="caption" sx={{ fontWeight: 800, color: themeColors.textDim, display: 'block', mb: 1, textTransform: 'uppercase' }}>
+                                🏢 Destinos / Clientes del Material
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                {Object.entries(currentDrawerMaterial.clientsMap)
+                                    .sort(([, a], [, b]) => b - a)
+                                    .map(([client, qty], idx) => {
+                                        const pct = currentDrawerMaterial.totalKilos > 0 ? (qty / currentDrawerMaterial.totalKilos) * 100 : 0;
+                                        return (
+                                            <Box key={client} sx={{ p: 1, bgcolor: 'rgba(255,255,255,0.02)', borderRadius: 1.5, border: `1px solid ${themeColors.border}` }}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.3 }}>
+                                                    <Typography variant="caption" sx={{ fontWeight: 700, color: themeColors.text }}>
+                                                        {idx + 1}. {client}
+                                                    </Typography>
+                                                    <Typography variant="caption" sx={{ fontWeight: 800, color: themeColors.primary }}>
+                                                        {qty.toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg ({pct.toFixed(0)}%)
+                                                    </Typography>
                                                 </Box>
-                                            );
-                                        })}
-                                    </Box>
-                                </Paper>
+                                                <Box sx={{ width: '100%', height: 4, bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
+                                                    <Box sx={{ width: `${pct}%`, height: '100%', bgcolor: themeColors.primary }} />
+                                                </Box>
+                                            </Box>
+                                        );
+                                    })}
                             </Box>
-
-                            {/* Desglose de Materiales por Categoría */}
-                            <Paper sx={{ p: 2, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: themeColors.text }}>
-                                    Detalle de Materiales por Cada Categoría
-                                </Typography>
-                                <TableContainer sx={{ maxHeight: 400 }}>
-                                    <MuiTable size="small">
-                                        <TableHead>
-                                            <TableRow>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700 }}>Categoría</TableCell>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700 }}>Código Material</TableCell>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700 }}>Descripción</TableCell>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, textAlign: 'right' }}>Consumo (kg)</TableCell>
-                                                <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, fontWeight: 700, textAlign: 'center' }}>Acción</TableCell>
-                                            </TableRow>
-                                        </TableHead>
-                                        <TableBody>
-                                            {materialsList.map((m) => (
-                                                <TableRow key={m.id} hover>
-                                                    <TableCell sx={{ color: themeColors.textDim, fontSize: '0.8rem' }}>{m.categoria}</TableCell>
-                                                    <TableCell sx={{ color: themeColors.primary, fontWeight: 700, fontSize: '0.8rem' }}>{m.codigoInterno}</TableCell>
-                                                    <TableCell sx={{ color: themeColors.text, fontSize: '0.8rem' }}>{m.descripcion}</TableCell>
-                                                    <TableCell sx={{ color: themeColors.text, fontWeight: 800, textAlign: 'right', fontSize: '0.8rem' }}>
-                                                        {m.totalKilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                                                    </TableCell>
-                                                    <TableCell sx={{ textAlign: 'center' }}>
-                                                        <Button
-                                                            size="small"
-                                                            variant="text"
-                                                            onClick={() => {
-                                                                setSelectedMaterialId(m.id);
-                                                                setCurrentTab(0);
-                                                            }}
-                                                            sx={{ fontSize: '0.75rem', textTransform: 'none', color: themeColors.info }}
-                                                        >
-                                                            Ver Ficha
-                                                        </Button>
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </MuiTable>
-                                </TableContainer>
-                            </Paper>
                         </Box>
-                    )}
-                </>
-            )}
+
+                        {/* Remitos Detallados */}
+                        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <Typography variant="caption" sx={{ fontWeight: 800, color: themeColors.textDim, display: 'block', mb: 1, textTransform: 'uppercase' }}>
+                                📋 Últimos Remitos de Salida ({currentDrawerMaterial.movements.length})
+                            </Typography>
+                            <TableContainer sx={{ maxHeight: 250, bgcolor: 'rgba(0,0,0,0.2)', borderRadius: 2 }}>
+                                <MuiTable size="small" stickyHeader>
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, py: 0.8, fontSize: '0.75rem' }}>Fecha</TableCell>
+                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, py: 0.8, fontSize: '0.75rem' }}>Remito</TableCell>
+                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, py: 0.8, fontSize: '0.75rem' }}>Cliente</TableCell>
+                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, py: 0.8, fontSize: '0.75rem', textAlign: 'right' }}>Kilos</TableCell>
+                                            <TableCell sx={{ bgcolor: '#161922', color: themeColors.textDim, py: 0.8, fontSize: '0.75rem', textAlign: 'center' }}>Ver</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {currentDrawerMaterial.movements.map((m: any, idx: number) => (
+                                            <TableRow key={m.id || idx}>
+                                                <TableCell sx={{ color: themeColors.text, fontSize: '0.75rem', py: 0.6 }}>{formatDate(m.fecha)}</TableCell>
+                                                <TableCell sx={{ color: themeColors.info, fontWeight: 700, fontSize: '0.75rem', py: 0.6 }}>
+                                                    {m.documentoNumero || m.documento?.numero || 'S/N'}
+                                                </TableCell>
+                                                <TableCell sx={{ color: themeColors.textDim, fontSize: '0.75rem', py: 0.6 }}>{getClientName(m)}</TableCell>
+                                                <TableCell sx={{ color: themeColors.primary, fontWeight: 800, textAlign: 'right', fontSize: '0.75rem', py: 0.6 }}>
+                                                    {Math.abs(Number(m.qtyPrincipal || 0)).toLocaleString('es-AR', { maximumFractionDigits: 1 })}
+                                                </TableCell>
+                                                <TableCell sx={{ textAlign: 'center', py: 0.4 }}>
+                                                    {m.documentoId ? (
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={() => handleViewRemito(m.documentoId)}
+                                                            sx={{ color: themeColors.textDim, '&:hover': { color: themeColors.info } }}
+                                                        >
+                                                            <VisibilityIcon sx={{ fontSize: '1rem' }} />
+                                                        </IconButton>
+                                                    ) : '—'}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </MuiTable>
+                            </TableContainer>
+                        </Box>
+                    </>
+                )}
+            </Drawer>
 
             {/* Modal de Remito Formal */}
             {showRemitoModal && selectedRemito && (
