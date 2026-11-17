@@ -15,7 +15,6 @@ import {
     TableHead,
     TableRow,
     CircularProgress,
-    Divider,
     Autocomplete
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -23,7 +22,6 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ClearIcon from '@mui/icons-material/Clear';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import WhatshotIcon from '@mui/icons-material/Whatshot';
 import BedtimeIcon from '@mui/icons-material/Bedtime';
 import ViewListIcon from '@mui/icons-material/ViewList';
@@ -54,8 +52,6 @@ const themeColors = {
     info: '#38bdf8',
     inputBg: 'var(--bg-action-btn, rgba(255,255,255,0.05))'
 };
-
-const PIE_PALETTE = ['#f59e0b', '#38bdf8', '#10b981', '#ec4899', '#8b5cf6', '#f97316', '#06b6d4', '#64748b'];
 
 const MONTH_NAMES = [
     'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
@@ -230,24 +226,29 @@ export default function ReporteConsumoDetalladoPage() {
         return Array.from(materialsMap.values()).sort((a, b) => b.totalKilos - a.totalKilos);
     }, [materialsMap]);
 
-    // Material activo para la Ficha Destacada
+    // Materiales filtrados por la categoría seleccionada
+    const categoryMaterialsList = useMemo(() => {
+        if (!selectedCategoryId) return allMaterialsList;
+        return allMaterialsList.filter(m => m.categoryId === selectedCategoryId || m.categoria === selectedCategoryId);
+    }, [allMaterialsList, selectedCategoryId]);
+
+    // Material activo para la Ficha Destacada (se adapta a la categoría seleccionada)
     const activeMaterial = useMemo(() => {
-        if (!allMaterialsList.length) return null;
+        if (!categoryMaterialsList.length) return null;
         if (selectedMaterialId) {
-            const found = materialsMap.get(selectedMaterialId);
+            const found = categoryMaterialsList.find(m => m.id === selectedMaterialId);
             if (found) return found;
         }
-        return allMaterialsList[0];
-    }, [allMaterialsList, selectedMaterialId, materialsMap]);
+        return categoryMaterialsList[0];
+    }, [categoryMaterialsList, selectedMaterialId]);
 
-    // Conteo para los botones de foco
-    const countCritical = useMemo(() => allMaterialsList.filter(m => m.mesesCobertura < 1 && m.mesesCobertura !== Infinity).length, [allMaterialsList]);
-    const countTop = useMemo(() => allMaterialsList.slice(0, 10).length, [allMaterialsList]);
-    const countLow = useMemo(() => allMaterialsList.filter(m => m.mesesCobertura > 6 && m.stockActual > 0).length, [allMaterialsList]);
+    // Conteo para los botones de foco (respetando la categoría seleccionada)
+    const countCritical = useMemo(() => categoryMaterialsList.filter(m => m.mesesCobertura < 1 && m.mesesCobertura !== Infinity).length, [categoryMaterialsList]);
+    const countLow = useMemo(() => categoryMaterialsList.filter(m => m.mesesCobertura > 6 && m.stockActual > 0).length, [categoryMaterialsList]);
 
     // Lista filtrada según Foco + Categoría + Búsqueda
     const filteredMaterialsList = useMemo(() => {
-        let list = allMaterialsList;
+        let list = categoryMaterialsList;
 
         if (filterFocus === 'CRITICAL') {
             list = list.filter(m => m.mesesCobertura < 1 && m.mesesCobertura !== Infinity);
@@ -255,10 +256,6 @@ export default function ReporteConsumoDetalladoPage() {
             list = list.slice(0, 10);
         } else if (filterFocus === 'LOW') {
             list = list.filter(m => m.mesesCobertura > 6 && m.stockActual > 0);
-        }
-
-        if (selectedCategoryId) {
-            list = list.filter(m => m.categoryId === selectedCategoryId || m.categoria === selectedCategoryId);
         }
 
         const q = normalizeText(searchQuery);
@@ -271,33 +268,52 @@ export default function ReporteConsumoDetalladoPage() {
         }
 
         return list;
-    }, [allMaterialsList, filterFocus, selectedCategoryId, searchQuery]);
+    }, [categoryMaterialsList, filterFocus, searchQuery]);
 
     const pagination = useClientPagination(filteredMaterialsList, 15);
 
-    // Totales rápidos para los KPIs
+    // ── Resumen de Evolución Mensual de la Categoría Seleccionada (o Global si no hay filtro) ──
+    const monthlyCategoryEvolution = useMemo(() => {
+        const months = Array(12).fill(0);
+        categoryMaterialsList.forEach((m) => {
+            m.monthlyKilos.forEach((kg, idx) => {
+                months[idx] += kg;
+            });
+        });
+
+        return MONTH_NAMES.map((name, idx) => ({
+            mes: name,
+            kilos: Number(months[idx].toFixed(1))
+        }));
+    }, [categoryMaterialsList]);
+
+    // Totales rápidos para los KPIs (respetando la categoría seleccionada)
     const kpis = useMemo(() => {
         let totalKilos = 0;
         let totalBultos = 0;
         const remitosSet = new Set<string>();
 
-        validMovements.forEach((m: any) => {
-            totalKilos += Math.abs(Number(m.qtyPrincipal || 0));
-            totalBultos += Math.abs(Number(m.qtySecundaria || 0));
-            if (m.documentoId || m.documentoNumero) {
-                remitosSet.add(m.documentoId || m.documentoNumero);
-            }
+        categoryMaterialsList.forEach((m) => {
+            totalKilos += m.totalKilos;
+            totalBultos += m.totalBultos;
+            m.movements.forEach((mov: any) => {
+                if (mov.documentoId || mov.documentoNumero) {
+                    remitosSet.add(mov.documentoId || mov.documentoNumero);
+                }
+            });
         });
 
         const promMensualGlobal = monthsElapsed > 0 ? (totalKilos / monthsElapsed) : 0;
+        const topMaterial = categoryMaterialsList[0] || null;
 
         return {
             totalKilos,
             totalBultos,
-            totalRemitos: remitosSet.size || validMovements.length,
-            promMensualGlobal
+            totalRemitos: remitosSet.size,
+            promMensualGlobal,
+            topMaterial
         };
-    }, [validMovements, monthsElapsed]);
+    }, [categoryMaterialsList, monthsElapsed]);
 
     // Exportación a Excel
     const handleExportExcel = () => {
@@ -425,7 +441,10 @@ export default function ReporteConsumoDetalladoPage() {
                             size="small"
                             label="Categoría"
                             value={selectedCategoryId}
-                            onChange={(e) => setSelectedCategoryId(e.target.value)}
+                            onChange={(e) => {
+                                setSelectedCategoryId(e.target.value);
+                                setSelectedMaterialId(null); // Resetear material seleccionado al cambiar de categoría
+                            }}
                             sx={{
                                 minWidth: 170,
                                 '& .MuiOutlinedInput-root': { bgcolor: themeColors.inputBg, borderRadius: 2, fontSize: '0.85rem' }
@@ -440,6 +459,95 @@ export default function ReporteConsumoDetalladoPage() {
                 </Box>
             </Paper>
 
+            {/* ── KPIS RESUMIDOS DE LA SELECCIÓN ── */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 1.5 }}>
+                <Paper sx={{ p: 1.8, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                        Total Despachado {selectedCategoryId ? `(${selectedCategoryId})` : `(${selectedYear})`}
+                    </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 900, color: themeColors.primary, mt: 0.5 }}>
+                        {kpis.totalKilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
+                        <small style={{ fontSize: '0.8rem', fontWeight: 500 }}>kg</small>
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, fontSize: '0.72rem' }}>
+                        {kpis.totalBultos.toLocaleString('es-AR')} bultos en {kpis.totalRemitos} remitos
+                    </Typography>
+                </Paper>
+
+                <Paper sx={{ p: 1.8, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                        Promedio Mensual Real
+                    </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 900, color: themeColors.info, mt: 0.5 }}>
+                        {kpis.promMensualGlobal.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
+                        <small style={{ fontSize: '0.8rem', fontWeight: 500 }}>kg/mes</small>
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, fontSize: '0.72rem' }}>
+                        Calculado sobre {monthsElapsed} meses transcurridos
+                    </Typography>
+                </Paper>
+
+                <Paper sx={{ p: 1.8, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                        Materiales en esta selección
+                    </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 900, color: themeColors.text, mt: 0.5 }}>
+                        {categoryMaterialsList.length}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, fontSize: '0.72rem' }}>
+                        Artículos con salida registrada
+                    </Typography>
+                </Paper>
+
+                <Paper sx={{ p: 1.8, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                        Mayor Salida {selectedCategoryId ? 'en Categoría' : `(${selectedYear})`}
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 900, color: themeColors.success, mt: 0.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {kpis.topMaterial ? kpis.topMaterial.codigoInterno : '—'}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: themeColors.textDim, fontSize: '0.72rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {kpis.topMaterial ? `${kpis.topMaterial.totalKilos.toLocaleString('es-AR', { maximumFractionDigits: 0 })} kg (${kpis.topMaterial.descripcion})` : 'Sin datos'}
+                    </Typography>
+                </Paper>
+            </Box>
+
+            {/* ── GRÁFICO DE EVOLUCIÓN MENSUAL DEL CONJUNTO SELECCIONADO ── */}
+            <Paper sx={{ p: 2.5, bgcolor: themeColors.cardBg, border: `1px solid ${themeColors.border}`, borderRadius: 2.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                    <Box>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: themeColors.text }}>
+                            📈 Salidas Mensuales {selectedCategoryId ? `de Categoría: ${selectedCategoryId}` : `Totales de Fábrica`} ({selectedYear})
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: themeColors.textDim }}>
+                            {selectedCategoryId
+                                ? `Volumen consolidado despachado por remito para todos los materiales de ${selectedCategoryId}`
+                                : `Volumen consolidado despachado por remito de todos los materiales`}
+                        </Typography>
+                    </Box>
+                    <Chip
+                        label={`${kpis.totalKilos.toLocaleString('es-AR', { maximumFractionDigits: 0 })} kg en el año`}
+                        size="small"
+                        sx={{ bgcolor: themeColors.primaryLight, color: themeColors.primary, fontWeight: 800 }}
+                    />
+                </Box>
+
+                <Box sx={{ height: 210, width: '100%' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={monthlyCategoryEvolution}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                            <XAxis dataKey="mes" stroke={themeColors.textDim} fontSize={12} tickLine={false} />
+                            <YAxis stroke={themeColors.textDim} fontSize={12} tickLine={false} unit=" kg" />
+                            <RechartsTooltip
+                                contentStyle={{ backgroundColor: '#1e2230', borderColor: themeColors.border, borderRadius: 8, color: '#fff' }}
+                                formatter={(value: any) => [`${Number(value).toLocaleString('es-AR')} kg`, selectedCategoryId ? `Salida ${selectedCategoryId}` : 'Salida Total']}
+                            />
+                            <Bar dataKey="kilos" fill={themeColors.primary} radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </Box>
+            </Paper>
+
             {/* ══════════════════════════════════════════════════════════════════════
                 SECCIÓN 1: CONSULTA RÁPIDA Y FICHA DEL MATERIAL (El 80% del uso)
                ══════════════════════════════════════════════════════════════════════ */}
@@ -451,7 +559,7 @@ export default function ReporteConsumoDetalladoPage() {
                             🔍 CONSULTA DIRECTA DE CUALQUIER MATERIAL:
                         </Typography>
                         <Autocomplete
-                            options={allMaterialsList}
+                            options={categoryMaterialsList}
                             getOptionLabel={(option) => `${option.codigoInterno} - ${option.descripcion} (${option.totalKilos.toLocaleString('es-AR', { maximumFractionDigits: 0 })} kg)`}
                             value={activeMaterial}
                             onChange={(_, val) => setSelectedMaterialId(val?.id || null)}
@@ -460,7 +568,7 @@ export default function ReporteConsumoDetalladoPage() {
                                 <TextField
                                     {...params}
                                     size="small"
-                                    placeholder="Escribí código o nombre del material para ver su ficha inmediata..."
+                                    placeholder={selectedCategoryId ? `Filtrando por ${selectedCategoryId}... Escribí código o nombre` : "Escribí código o nombre del material para ver su ficha inmediata..."}
                                     sx={{
                                         '& .MuiOutlinedInput-root': {
                                             bgcolor: 'rgba(255,255,255,0.06)',
