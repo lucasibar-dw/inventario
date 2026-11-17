@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
     Box,
     Typography,
@@ -15,7 +15,6 @@ import {
     TableHead,
     TableRow,
     CircularProgress,
-    Tooltip,
     Drawer,
     Divider
 } from '@mui/material';
@@ -24,12 +23,10 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CloseIcon from '@mui/icons-material/Close';
 import ClearIcon from '@mui/icons-material/Clear';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import * as XLSX from 'xlsx';
 import {
     ResponsiveContainer, BarChart, Bar,
-    XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
-    PieChart, Pie, Cell, Legend
+    XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip
 } from 'recharts';
 
 import { useGetRecentMovementsQuery, useGetStockQuery } from '../../features/warehouse/stock/api/stock.api';
@@ -664,7 +661,7 @@ export default function ReporteConsumoDetalladoPage() {
                                             <CircularProgress size={30} sx={{ color: themeColors.primary }} />
                                         </TableCell>
                                     </TableRow>
-                                ) : pagination.paginatedItems.map((m) => {
+                                ) : pagination.pageItems.map((m) => {
                                     // Cobertura visual: meses de stock restantes
                                     const cob = m.mesesCobertura;
                                     let cobColor = themeColors.success;
@@ -753,7 +750,7 @@ export default function ReporteConsumoDetalladoPage() {
                                     );
                                 })}
 
-                                {!isLoading && pagination.paginatedItems.length === 0 && (
+                                {!isLoading && pagination.pageItems.length === 0 && (
                                     <TableRow>
                                         <TableCell colSpan={19} sx={{ textAlign: 'center', py: 4, color: themeColors.textDim }}>
                                             No se encontraron salidas para los filtros seleccionados.
@@ -767,9 +764,8 @@ export default function ReporteConsumoDetalladoPage() {
                     {/* Controles de Paginación */}
                     <Box sx={{ p: 1.5, borderTop: `1px solid ${themeColors.border}` }}>
                         <PaginationControls
-                            currentPage={pagination.page}
-                            totalPages={pagination.totalPages}
-                            totalItems={pagination.totalItems}
+                            count={filteredMaterialsList.length}
+                            page={pagination.page}
                             pageSize={pagination.pageSize}
                             onPageChange={pagination.setPage}
                             onPageSizeChange={pagination.setPageSize}
