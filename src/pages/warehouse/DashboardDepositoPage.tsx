@@ -40,6 +40,9 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import EditIcon from '@mui/icons-material/Edit';
 
 import { 
     useGetStockQuery, 
@@ -148,6 +151,7 @@ export default function DashboardDepositoPage() {
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [deletingKeys, setDeletingKeys] = useState<string[]>([]);
     const [detailGroupId, setDetailGroupId] = useState<string | null>(null);
+    const [expandedItemIds, setExpandedItemIds] = useState<Record<string, boolean>>({});
     const [emptyPositionsModal, setEmptyPositionsModal] = useState<boolean>(false);
     const [editItemTarget, setEditItemTarget] = useState<any | null>(null);
 
@@ -245,14 +249,6 @@ export default function DashboardDepositoPage() {
             [itemId]: !prev[itemId]
         }));
     };
-
-    const handleIncludeAll = () => {
-        setExcludedItemIds({});
-    };
-
-    const excludedCount = useMemo(() => {
-        return Object.values(excludedItemIds).filter(Boolean).length;
-    }, [excludedItemIds]);
 
     const getKilosPorCajaRatio = (entry: any) => {
         if (!entry) return null;
@@ -1197,7 +1193,7 @@ export default function DashboardDepositoPage() {
                     <MuiTable size="small">
                         <TableHead sx={{ bgcolor: 'rgba(0,0,0,0.25)' }}>
                             <TableRow sx={{ '& th': { color: colors.textDim, fontWeight: 800, fontSize: '0.72rem', textTransform: 'uppercase', py: 1.2 } }}>
-                                <TableCell align="center" sx={{ width: 44 }}>Métrica</TableCell>
+                                <TableCell sx={{ width: 36 }}></TableCell>
                                 <TableCell>Código</TableCell>
                                 <TableCell>Descripción</TableCell>
                                 <TableCell>Categoría</TableCell>
@@ -1211,115 +1207,225 @@ export default function DashboardDepositoPage() {
                             {pagination.pageItems.map((group: any) => {
                                 const categoryName = group.item.category?.nombre || group.item.categoria || 'General';
                                 const positionsList = Array.from(group.uniquePositions as Set<string>);
-                                const isExcluded = !!excludedItemIds[group.item.id];
+                                const isExpanded = !!expandedItemIds[group.item.id];
 
                                 return (
-                                    <TableRow 
-                                        key={group.item.id} 
-                                        onClick={() => setDetailGroupId(group.item.id)}
-                                        className="hoverable-row"
-                                        sx={{ 
-                                            cursor: 'pointer', 
-                                            borderBottom: `1px solid ${colors.border}`, 
-                                            opacity: isExcluded ? 0.45 : 1,
-                                            '& td': { py: 1 } 
-                                        }}
-                                    >
-                                        <TableCell align="center" onClick={(e) => e.stopPropagation()}>
-                                            <Tooltip title={isExcluded ? "Excluido de métricas. Clic para volver a incluirlo" : "Incluido en métricas. Clic para excluir del cálculo"}>
-                                                <IconButton
-                                                    size="small"
-                                                    onClick={(e) => toggleItemInclusion(e, group.item.id)}
-                                                    sx={{
-                                                        p: 0.4,
-                                                        color: isExcluded ? '#ef4444' : colors.textDim,
-                                                        bgcolor: isExcluded ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-                                                        borderRadius: 1.5,
-                                                        '&:hover': { color: isExcluded ? '#f87171' : '#fff' }
+                                    <>
+                                        <TableRow 
+                                            key={group.item.id} 
+                                            onClick={() => setExpandedItemIds(prev => ({ ...prev, [group.item.id]: !prev[group.item.id] }))}
+                                            className="hoverable-row"
+                                            sx={{ 
+                                                cursor: 'pointer', 
+                                                bgcolor: isExpanded ? 'rgba(255, 255, 255, 0.03)' : 'transparent',
+                                                borderBottom: isExpanded ? 'none' : `1px solid ${colors.border}`, 
+                                                '& td': { py: 1.1 } 
+                                            }}
+                                        >
+                                            <TableCell align="center" onClick={(e) => { e.stopPropagation(); setExpandedItemIds(prev => ({ ...prev, [group.item.id]: !prev[group.item.id] })); }}>
+                                                <IconButton size="small" sx={{ p: 0.2, color: isExpanded ? colors.primary : colors.textDim }}>
+                                                    {isExpanded ? <KeyboardArrowUpIcon sx={{ fontSize: 20 }} /> : <KeyboardArrowDownIcon sx={{ fontSize: 20 }} />}
+                                                </IconButton>
+                                            </TableCell>
+                                            <TableCell onClick={(e) => { e.stopPropagation(); setEditItemTarget(group.item); }}>
+                                                <Tooltip title="Toca para editar ficha del material">
+                                                    <Typography sx={{ color: colors.primary, fontWeight: 800, fontSize: '0.78rem', textDecoration: 'underline dotted' }}>
+                                                        {group.item.codigoInterno}
+                                                    </Typography>
+                                                </Tooltip>
+                                            </TableCell>
+                                            <TableCell sx={{ fontWeight: 700, color: '#fff', fontSize: '0.82rem' }}>
+                                                {group.item.descripcion}
+                                            </TableCell>
+                                            <TableCell sx={{ color: colors.textDim, fontSize: '0.75rem' }}>
+                                                {categoryName}
+                                            </TableCell>
+                                            <TableCell>
+                                                {positionsList.length === 0 ? (
+                                                    <Typography variant="caption" sx={{ color: colors.textDim, fontStyle: 'italic' }}>—</Typography>
+                                                ) : (
+                                                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                                        {positionsList.slice(0, 3).map((p, idx) => (
+                                                            <Chip key={idx} size="small" label={`📍 ${p}`} sx={{ fontSize: '0.68rem', height: '20px', bgcolor: 'rgba(59, 130, 246, 0.12)', color: colors.info, fontWeight: 700 }} />
+                                                        ))}
+                                                        {positionsList.length > 3 && (
+                                                            <Chip size="small" label={`+${positionsList.length - 3}`} sx={{ fontSize: '0.68rem', height: '20px' }} />
+                                                        )}
+                                                    </Box>
+                                                )}
+                                            </TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 900, color: '#fff', fontSize: '0.85rem' }}>
+                                                {group.metrics.kilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} <small style={{ color: colors.textDim }}>{group.item.unidadPrincipal}</small>
+                                            </TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 700, color: colors.success, fontSize: '0.8rem' }}>
+                                                {group.metrics.units > 0 ? `${group.metrics.units.toLocaleString('es-AR')} ${group.item.unidadSecundaria || 'un'}` : '—'}
+                                            </TableCell>
+                                            <TableCell align="center">
+                                                <Button 
+                                                    size="small" 
+                                                    variant={isExpanded ? "contained" : "outlined"} 
+                                                    onClick={(e) => { 
+                                                        e.stopPropagation(); 
+                                                        setExpandedItemIds(prev => ({ ...prev, [group.item.id]: !prev[group.item.id] })); 
+                                                    }}
+                                                    sx={{ 
+                                                        fontSize: '0.7rem', 
+                                                        py: 0.3, 
+                                                        px: 1.2, 
+                                                        bgcolor: isExpanded ? colors.primary : 'transparent',
+                                                        color: isExpanded ? '#000' : colors.primary, 
+                                                        borderColor: colors.primary, 
+                                                        borderRadius: 1.5, 
+                                                        fontWeight: 800,
+                                                        textTransform: 'none'
                                                     }}
                                                 >
-                                                    {isExcluded ? <VisibilityOffIcon sx={{ fontSize: 17 }} /> : <VisibilityIcon sx={{ fontSize: 17 }} />}
-                                                </IconButton>
-                                            </Tooltip>
-                                        </TableCell>
-                                        <TableCell onClick={(e) => { e.stopPropagation(); setEditItemTarget(group.item); }}>
-                                            <Tooltip title="Toca para editar ficha del material">
-                                                <Typography sx={{ color: colors.primary, fontWeight: 800, fontSize: '0.78rem', textDecoration: 'underline dotted' }}>
-                                                    {group.item.codigoInterno}
-                                                </Typography>
-                                            </Tooltip>
-                                        </TableCell>
-                                        <TableCell sx={{ fontWeight: 700, color: '#fff', fontSize: '0.82rem', textDecoration: isExcluded ? 'line-through' : 'none' }}>
-                                            {group.item.descripcion}
-                                            {isExcluded && (
-                                                <Chip 
-                                                    label="Excluido" 
-                                                    size="small" 
-                                                    sx={{ 
-                                                        height: 16, 
-                                                        fontSize: '0.6rem', 
-                                                        bgcolor: 'rgba(239, 68, 68, 0.15)', 
-                                                        color: '#f87171', 
-                                                        fontWeight: 800, 
-                                                        ml: 1 
-                                                    }} 
-                                                />
-                                            )}
-                                        </TableCell>
-                                        <TableCell sx={{ color: colors.textDim, fontSize: '0.75rem' }}>
-                                            {categoryName}
-                                            {group.oldestBatchLot && (
-                                                <Box sx={{ mt: 0.3 }}>
-                                                    <Chip 
-                                                        size="small" 
-                                                        label={`⏳ ${group.oldestBatchLot} (📍 ${group.oldestBatchPosition || 'S/P'})`} 
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setDetailGroupId(group.item.id);
-                                                        }}
-                                                        sx={{ 
-                                                            height: 18, 
-                                                            fontSize: '0.62rem', 
-                                                            fontWeight: 800, 
-                                                            bgcolor: 'rgba(245, 158, 11, 0.15)', 
-                                                            color: colors.primary,
-                                                            cursor: 'pointer' 
-                                                        }} 
-                                                    />
-                                                </Box>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            {positionsList.length === 0 ? (
-                                                <Typography variant="caption" sx={{ color: colors.textDim, fontStyle: 'italic' }}>—</Typography>
-                                            ) : (
-                                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                                    {positionsList.slice(0, 3).map((p, idx) => (
-                                                        <Chip key={idx} size="small" label={p} sx={{ fontSize: '0.68rem', height: '20px', bgcolor: 'rgba(59, 130, 246, 0.12)', color: colors.info, fontWeight: 700 }} />
-                                                    ))}
-                                                    {positionsList.length > 3 && (
-                                                        <Chip size="small" label={`+${positionsList.length - 3}`} sx={{ fontSize: '0.68rem', height: '20px' }} />
-                                                    )}
-                                                </Box>
-                                            )}
-                                        </TableCell>
-                                        <TableCell align="right" sx={{ fontWeight: 900, color: '#fff', fontSize: '0.85rem' }}>
-                                            {group.metrics.kilos.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} <small style={{ color: colors.textDim }}>{group.item.unidadPrincipal}</small>
-                                        </TableCell>
-                                        <TableCell align="right" sx={{ fontWeight: 700, color: colors.success, fontSize: '0.8rem' }}>
-                                            {group.metrics.units > 0 ? `${group.metrics.units.toLocaleString('es-AR')} ${group.item.unidadSecundaria || 'un'}` : '—'}
-                                        </TableCell>
-                                        <TableCell align="center">
-                                            <Button 
-                                                size="small" 
-                                                variant="outlined" 
-                                                onClick={(e) => { e.stopPropagation(); setDetailGroupId(group.item.id); }}
-                                                sx={{ fontSize: '0.7rem', py: 0.3, px: 1.2, color: colors.primary, borderColor: colors.primary, borderRadius: 1.5, fontWeight: 800 }}
-                                            >
-                                                Detalle
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
+                                                    {isExpanded ? 'Ocultar' : `Ver Partidas (${group.entries.length})`}
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+
+                                        {/* Fila Desplegable Inline con las Partidas y Acciones Directas */}
+                                        {isExpanded && (
+                                            <TableRow sx={{ bgcolor: 'rgba(0,0,0,0.3)', borderBottom: `1px solid ${colors.border}` }}>
+                                                <TableCell colSpan={8} sx={{ p: 0 }}>
+                                                    <Box sx={{ p: 1.5, pl: 5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                                        <Typography variant="caption" sx={{ color: colors.textDim, fontWeight: 800, textTransform: 'uppercase', fontSize: '0.68rem' }}>
+                                                            Partidas y Posiciones Físicas de {group.item.codigoInterno}:
+                                                        </Typography>
+                                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+                                                            {group.entries.map((entry: any) => {
+                                                                const isOldest = entry.batch?.lotNumber === group.oldestBatchLot;
+                                                                const maxCajas = Number(entry.qtySecundaria || 0);
+                                                                const maxKilos = Number(entry.qtyPrincipal || 0);
+
+                                                                return (
+                                                                    <Paper 
+                                                                        key={entry.id}
+                                                                        sx={{
+                                                                            p: 1.2,
+                                                                            px: 1.8,
+                                                                            bgcolor: 'rgba(255,255,255,0.02)',
+                                                                            border: `1px solid ${colors.border}`,
+                                                                            borderRadius: 2,
+                                                                            display: 'flex',
+                                                                            justifyContent: 'space-between',
+                                                                            alignItems: 'center',
+                                                                            flexWrap: 'wrap',
+                                                                            gap: 1.5
+                                                                        }}
+                                                                    >
+                                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                                                                            {/* Ubicación */}
+                                                                            <Chip 
+                                                                                size="small"
+                                                                                icon={<SwapHorizIcon style={{ fontSize: 14, color: colors.info }} />}
+                                                                                label={`📍 Posición: ${entry.posicion?.codigo || 'S/P'}`}
+                                                                                onClick={() => openQuickMove(entry)}
+                                                                                sx={{
+                                                                                    bgcolor: 'rgba(59, 130, 246, 0.15)',
+                                                                                    color: colors.info,
+                                                                                    fontWeight: 800,
+                                                                                    cursor: 'pointer',
+                                                                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                                                                    '&:hover': { bgcolor: 'rgba(59, 130, 246, 0.28)' }
+                                                                                }}
+                                                                            />
+                                                                            {/* Lote */}
+                                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+                                                                                <Typography variant="body2" sx={{ fontWeight: 800, color: '#fff' }}>
+                                                                                    Lote: {entry.batch?.lotNumber || '—'}
+                                                                                </Typography>
+                                                                                {isOldest && (
+                                                                                    <Chip label="FIFO" size="small" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 900, bgcolor: 'rgba(245, 158, 11, 0.2)', color: colors.primary }} />
+                                                                                )}
+                                                                            </Box>
+                                                                            {entry.batch?.supplier?.name && (
+                                                                                <Typography variant="caption" sx={{ color: colors.textDim }}>
+                                                                                    Prov: {entry.batch.supplier.name}
+                                                                                </Typography>
+                                                                            )}
+                                                                        </Box>
+
+                                                                        {/* Cantidades y Acciones Directas */}
+                                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                                                                            <Box sx={{ textAlign: 'right' }}>
+                                                                                <Typography variant="body2" sx={{ fontWeight: 900, color: '#fff' }}>
+                                                                                    {maxKilos.toFixed(1)} <small style={{ color: colors.textDim }}>{group.item.unidadPrincipal || 'kg'}</small>
+                                                                                </Typography>
+                                                                                <Typography variant="caption" sx={{ color: colors.success, fontWeight: 700, display: 'block' }}>
+                                                                                    {maxCajas > 0 ? `${maxCajas} ${group.item.unidadSecundaria || 'cajas'}` : 'Sin cajas'}
+                                                                                </Typography>
+                                                                            </Box>
+
+                                                                            {/* Botonera Operativa Directa (3 Clics) */}
+                                                                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                                                                <Button
+                                                                                    size="small"
+                                                                                    variant="contained"
+                                                                                    startIcon={<SwapHorizIcon sx={{ fontSize: 15 }} />}
+                                                                                    onClick={() => openQuickMove(entry)}
+                                                                                    sx={{
+                                                                                        bgcolor: colors.info,
+                                                                                        color: '#fff',
+                                                                                        fontWeight: 800,
+                                                                                        fontSize: '0.72rem',
+                                                                                        textTransform: 'none',
+                                                                                        py: 0.3,
+                                                                                        px: 1.2,
+                                                                                        borderRadius: 1.5,
+                                                                                        '&:hover': { bgcolor: '#2563eb' }
+                                                                                    }}
+                                                                                >
+                                                                                    Mover
+                                                                                </Button>
+
+                                                                                <Button
+                                                                                    size="small"
+                                                                                    variant="outlined"
+                                                                                    startIcon={<LocalShippingIcon sx={{ fontSize: 15 }} />}
+                                                                                    onClick={() => openDespacho(entry)}
+                                                                                    sx={{
+                                                                                        color: colors.primary,
+                                                                                        borderColor: colors.primary,
+                                                                                        fontWeight: 800,
+                                                                                        fontSize: '0.72rem',
+                                                                                        textTransform: 'none',
+                                                                                        py: 0.3,
+                                                                                        px: 1.2,
+                                                                                        borderRadius: 1.5,
+                                                                                        '&:hover': { bgcolor: 'rgba(245, 158, 11, 0.1)' }
+                                                                                    }}
+                                                                                >
+                                                                                    Despachar
+                                                                                </Button>
+
+                                                                                <Tooltip title="Ajustar stock (kilos/cajas)">
+                                                                                    <IconButton
+                                                                                        size="small"
+                                                                                        onClick={() => setAdjustStockEntry(entry)}
+                                                                                        sx={{
+                                                                                            p: 0.5,
+                                                                                            color: colors.textDim,
+                                                                                            border: `1px solid ${colors.border}`,
+                                                                                            borderRadius: 1.5,
+                                                                                            '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' }
+                                                                                        }}
+                                                                                    >
+                                                                                        <EditIcon sx={{ fontSize: 16 }} />
+                                                                                    </IconButton>
+                                                                                </Tooltip>
+                                                                            </Box>
+                                                                        </Box>
+                                                                    </Paper>
+                                                                );
+                                                            })}
+                                                        </Box>
+                                                    </Box>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </>
                                 );
                             })}
                         </TableBody>
