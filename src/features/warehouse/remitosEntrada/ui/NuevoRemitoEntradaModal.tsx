@@ -102,12 +102,10 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
         return availablePositions;
     }, [availablePositions, depositoId]);
 
-    // Priorizar materiales del proveedor si está seleccionado, pero permitir buscar todos
+    // Filtrar estrictamente los materiales asociados al proveedor seleccionado
     const availableItems = useMemo(() => {
         if (!supplierId) return items;
-        const provItems = items.filter((it: any) => it.supplierId === supplierId);
-        const otherItems = items.filter((it: any) => it.supplierId !== supplierId);
-        return [...provItems, ...otherItems];
+        return items.filter((it: any) => it.supplierId === supplierId);
     }, [items, supplierId]);
 
     // Modal de nuevo material y nuevo proveedor
@@ -460,7 +458,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                         {/* Selector de Material */}
                                         <Autocomplete
                                             options={lineOptions}
-                                            noOptionsText="No se encontraron materiales"
+                                            noOptionsText={supplierId ? "No hay materiales asignados a este proveedor" : "Selecciona un proveedor primero"}
                                             getOptionLabel={(option: any) => `${option.codigoInterno} — ${option.descripcion}`}
                                             value={selectedItem || null}
                                             onChange={(_e, val: any) => {
