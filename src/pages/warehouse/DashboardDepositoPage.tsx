@@ -138,9 +138,9 @@ export default function DashboardDepositoPage() {
     const isAdmin = user?.role?.toUpperCase() === 'ADMIN';
     const isMobile = useIsMobile();
 
-    // Vista Grilla vs Lista
+    // Vista Grilla vs Lista (Por defecto 'list' para consola operativa de depósito)
     const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
-        return (sessionStorage.getItem('stockViewMode') as 'grid' | 'list') || (isMobile ? 'list' : 'grid');
+        return (sessionStorage.getItem('stockViewMode') as 'grid' | 'list') || 'list';
     });
 
     useEffect(() => {
