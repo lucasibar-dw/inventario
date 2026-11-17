@@ -102,6 +102,14 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
         return availablePositions;
     }, [availablePositions, depositoId]);
 
+    // Priorizar materiales del proveedor si está seleccionado, pero permitir buscar todos
+    const availableItems = useMemo(() => {
+        if (!supplierId) return items;
+        const provItems = items.filter((it: any) => it.supplierId === supplierId);
+        const otherItems = items.filter((it: any) => it.supplierId !== supplierId);
+        return [...provItems, ...otherItems];
+    }, [items, supplierId]);
+
     // Modal de nuevo material y nuevo proveedor
     const [isCreateItemOpen, setIsCreateItemOpen] = useState(false);
     const [isCreatePartnerOpen, setIsCreatePartnerOpen] = useState(false);
@@ -431,14 +439,6 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                             const uPrinc = selectedItem?.unidadPrincipal || 'kg';
                             const labelSec = uSec ? (uSec.trim().charAt(0).toUpperCase() + uSec.trim().slice(1)) : 'Bultos / Cajas';
                             const labelPrinc = uPrinc.toLowerCase() === 'kg' ? 'Kg Recibidos *' : `${uPrinc.trim().charAt(0).toUpperCase() + uPrinc.trim().slice(1)} Recibidos *`;
-
-                            // Priorizar materiales del proveedor si está seleccionado, pero permitir buscar todos
-                            const availableItems = useMemo(() => {
-                                if (!supplierId) return items;
-                                const provItems = items.filter((it: any) => it.supplierId === supplierId);
-                                const otherItems = items.filter((it: any) => it.supplierId !== supplierId);
-                                return [...provItems, ...otherItems];
-                            }, [items, supplierId]);
 
                             const lineOptions = availableItems;
 
