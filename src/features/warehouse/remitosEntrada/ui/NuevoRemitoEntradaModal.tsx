@@ -222,9 +222,14 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
             return;
         }
 
+        if (!supplierId) {
+            setError('Seleccioná el proveedor emisor del remito.');
+            return;
+        }
+
         const validLines = lines.filter(l => l.itemId && parseFloat(l.qtyPrincipal.replace(',', '.')) > 0);
         if (validLines.length === 0) {
-            setError('Ingresá al menos una línea con material y kilos recibidos.');
+            setError('Ingresá al menos una línea con material y kilos recibidos mayores a 0.');
             return;
         }
 
@@ -242,7 +247,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                 lines: validLines.map(l => ({
                     itemId: l.itemId,
                     lotNumber: l.lotNumber?.trim() || `REM-${Date.now().toString().slice(-6)}`,
-                    posicionId: l.posicionId || undefined, // Si no se pasa, backend usa ENTRADA
+                    posicionId: (l.posicionId && l.posicionId !== 'ENTRADA') ? l.posicionId : undefined, // Si es 'ENTRADA' o vacío, backend lo resuelve de forma segura
                     qtyPrincipal: parseFloat(l.qtyPrincipal.replace(',', '.')),
                     qtySecundaria: l.qtySecundaria ? parseFloat(l.qtySecundaria.replace(',', '.')) : undefined,
                     observaciones: l.observaciones?.trim() || undefined,
@@ -251,7 +256,8 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
 
             onSuccess();
         } catch (e: any) {
-            setError(e?.data?.message || 'Error al registrar el remito de entrada');
+            const msg = e?.data?.message || e?.error || e?.message || 'Error al registrar el remito de entrada';
+            setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
         }
     };
 
@@ -314,7 +320,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                 renderInput={(params) => (
                                     <TextField 
                                         {...params} 
-                                        label="Proveedor" 
+                                        label="Proveedor *" 
                                         placeholder="Buscar o seleccionar proveedor..."
                                         InputLabelProps={{ sx: { color: colors.textDim } }}
                                         InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
@@ -407,15 +413,15 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                             const labelSec = uSec ? (uSec.trim().charAt(0).toUpperCase() + uSec.trim().slice(1)) : 'Bultos / Cajas';
                             const labelPrinc = uPrinc.toLowerCase() === 'kg' ? 'Kg Recibidos *' : `${uPrinc.trim().charAt(0).toUpperCase() + uPrinc.trim().slice(1)} Recibidos *`;
 
-                            // Si se seleccionó un proveedor, filtrar solo los materiales de ese proveedor
-                            const availableItems = supplierId
-                                ? items.filter((it: any) => it.supplierId === supplierId)
-                                : items;
+                            // Priorizar materiales del proveedor si está seleccionado, pero permitir buscar todos
+                            const availableItems = useMemo(() => {
+                                if (!supplierId) return items;
+                                const provItems = items.filter((it: any) => it.supplierId === supplierId);
+                                const otherItems = items.filter((it: any) => it.supplierId !== supplierId);
+                                return [...provItems, ...otherItems];
+                            }, [items, supplierId]);
 
-                            // Preservar el item ya seleccionado en la línea en caso de haber sido elegido previamente
-                            const lineOptions = selectedItem && !availableItems.some((it: any) => it.id === selectedItem.id)
-                                ? [selectedItem, ...availableItems]
-                                : availableItems;
+                            const lineOptions = availableItems;
 
                             return (
                                 <Paper
@@ -435,7 +441,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                         {/* Selector de Material */}
                                         <Autocomplete
                                             options={lineOptions}
-                                            noOptionsText={supplierId ? "No hay materiales registrados para este proveedor" : "No hay materiales"}
+                                            noOptionsText="No se encontraron materiales"
                                             getOptionLabel={(option: any) => `${option.codigoInterno} — ${option.descripcion}`}
                                             value={selectedItem || null}
                                             onChange={(_e, val: any) => {

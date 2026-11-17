@@ -15,7 +15,11 @@ import {
     TableHead,
     TableRow,
     CircularProgress,
-    Tooltip
+    Tooltip,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
@@ -208,14 +212,28 @@ export default function RemitosEntradaPage() {
         }
     };
 
-    const handleDelete = async (e: React.MouseEvent, remitoId: string) => {
-        e.stopPropagation();
-        if (!window.confirm('¿Estás seguro de anular este remito de entrada completo? El stock ingresado se descontará del inventario.')) return;
+    const [remitoToCancel, setRemitoToCancel] = useState<any>(null);
+    const [cancelError, setCancelError] = useState('');
+    const [isCanceling, setIsCanceling] = useState(false);
+
+    const handleConfirmCancel = async () => {
+        if (!remitoToCancel) return;
+        setIsCanceling(true);
+        setCancelError('');
         try {
-            await deleteRemito(remitoId).unwrap();
+            await deleteRemito(remitoToCancel.id).unwrap();
+            setRemitoToCancel(null);
         } catch (err: any) {
-            alert(err?.data?.message || err?.message || 'Error al anular remito de entrada');
+            setCancelError(err?.data?.message || err?.message || 'Error al anular remito de entrada');
+        } finally {
+            setIsCanceling(false);
         }
+    };
+
+    const handleDelete = (e: React.MouseEvent, remito: any) => {
+        e.stopPropagation();
+        setCancelError('');
+        setRemitoToCancel(remito);
     };
 
     return (
@@ -349,6 +367,32 @@ export default function RemitosEntradaPage() {
                             InputLabelProps={{ shrink: true, sx: { color: colors.textDim } }}
                             sx={{ width: '145px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
                         />
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => {
+                                const today = new Date().toISOString().slice(0, 10);
+                                setFechaDesde(today);
+                                setFechaHasta(today);
+                            }}
+                            sx={{ color: colors.primary, borderColor: 'rgba(245, 158, 11, 0.4)', textTransform: 'none', height: '38px', borderRadius: 2, fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                            Hoy
+                        </Button>
+                        <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => {
+                                const now = new Date();
+                                const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+                                const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+                                setFechaDesde(firstDay);
+                                setFechaHasta(lastDay);
+                            }}
+                            sx={{ color: colors.primary, borderColor: 'rgba(245, 158, 11, 0.4)', textTransform: 'none', height: '38px', borderRadius: 2, fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                            Este Mes
+                        </Button>
                         {(fechaDesde || fechaHasta || search || selectedDepotId || statusFilter !== 'ALL') && (
                             <Button 
                                 size="small"
@@ -518,7 +562,7 @@ export default function RemitosEntradaPage() {
                                                         <Tooltip title="Anular Remito Completo">
                                                             <IconButton 
                                                                 size="small" 
-                                                                onClick={(e) => handleDelete(e, remito.id)}
+                                                                onClick={(e) => handleDelete(e, remito)}
                                                                 sx={{ color: colors.danger, '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.15)' } }}
                                                             >
                                                                 <DeleteIcon fontSize="small" />
@@ -570,6 +614,58 @@ export default function RemitosEntradaPage() {
                     remito={selectedRemito}
                 />
             )}
+            {/* Modal de Confirmación de Anulación */}
+            <Dialog
+                open={Boolean(remitoToCancel)}
+                onClose={() => !isCanceling && setRemitoToCancel(null)}
+                PaperProps={{
+                    sx: {
+                        bgcolor: colors.bg,
+                        color: colors.text,
+                        border: `1px solid ${colors.danger}`,
+                        borderRadius: 3,
+                        p: 1,
+                        maxWidth: '460px'
+                    }
+                }}
+            >
+                <DialogTitle sx={{ fontWeight: 800, color: colors.danger }}>
+                    ⚠️ Confirmar anulación de remito
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" sx={{ color: colors.textDim, mb: 2 }}>
+                        Estás a punto de anular el remito de entrada <strong>{remitoToCancel?.numero || remitoToCancel?.documentId || 'S/N'}</strong> de <strong>{remitoToCancel?.partner?.name || remitoToCancel?.supplier?.name || 'Proveedor'}</strong>.
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: colors.text, bgcolor: 'rgba(239, 68, 68, 0.1)', p: 1.5, borderRadius: 2, borderLeft: `3px solid ${colors.danger}` }}>
+                        El stock ingresado será revertido y descontado del inventario. Esta acción no se puede deshacer.
+                    </Typography>
+
+                    {cancelError && (
+                        <Box sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(239, 68, 68, 0.15)', borderRadius: 2, border: `1px solid ${colors.danger}` }}>
+                            <Typography variant="caption" sx={{ color: colors.danger, fontWeight: 700 }}>
+                                ⚠️ {cancelError}
+                            </Typography>
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ px: 3, pb: 2 }}>
+                    <Button 
+                        onClick={() => setRemitoToCancel(null)} 
+                        disabled={isCanceling}
+                        sx={{ color: colors.textDim, fontWeight: 700 }}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button 
+                        variant="contained"
+                        onClick={handleConfirmCancel}
+                        disabled={isCanceling}
+                        sx={{ bgcolor: colors.danger, color: '#fff', fontWeight: 800, '&:hover': { bgcolor: '#dc2626' } }}
+                    >
+                        {isCanceling ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Sí, anular remito'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }
