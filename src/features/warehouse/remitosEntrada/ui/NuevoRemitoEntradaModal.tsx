@@ -138,29 +138,36 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
         }
     };
 
-    // Auto-foco en el primer material al abrir el modal
+    // Auto-foco en el selector de proveedor o en el primer material al abrir el modal
     useEffect(() => {
         const timer = setTimeout(() => {
-            focusCell(0, 'material');
+            if (!supplierId) {
+                const supEl = document.getElementById('input-remito-supplier');
+                if (supEl) supEl.focus();
+            } else {
+                focusCell(0, 'material');
+            }
         }, 150);
         return () => clearTimeout(timer);
     }, []);
 
     const addLine = () => {
-        const nextIdx = lines.length;
-        setLines(prev => [
-            ...prev,
-            { itemId: '', itemDesc: '', itemCode: '', lotNumber: '', posicionId: defaultPosId, qtyPrincipal: '', qtySecundaria: '', observaciones: '', kilosPorCaja: null }
-        ]);
-        setTimeout(() => {
-            focusCell(nextIdx, 'material');
-            if (linesContainerRef.current) {
-                linesContainerRef.current.scrollTo({
-                    top: linesContainerRef.current.scrollHeight,
-                    behavior: 'smooth'
-                });
-            }
-        }, 60);
+        setLines(prev => {
+            const nextIdx = prev.length;
+            setTimeout(() => {
+                focusCell(nextIdx, 'material');
+                if (linesContainerRef.current) {
+                    linesContainerRef.current.scrollTo({
+                        top: linesContainerRef.current.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                }
+            }, 80);
+            return [
+                ...prev,
+                { itemId: '', itemDesc: '', itemCode: '', lotNumber: '', posicionId: defaultPosId, qtyPrincipal: '', qtySecundaria: '', observaciones: '', kilosPorCaja: null }
+            ];
+        });
     };
 
     const removeLine = (index: number) => {
@@ -323,6 +330,18 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                         label="Proveedor *" 
                                         placeholder="Buscar o seleccionar proveedor..."
                                         InputLabelProps={{ sx: { color: colors.textDim } }}
+                                        inputProps={{
+                                            ...params.inputProps,
+                                            id: 'input-remito-supplier',
+                                            onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+                                                if (params.inputProps.onKeyDown) {
+                                                    params.inputProps.onKeyDown(e);
+                                                }
+                                                if (e.key === 'Enter') {
+                                                    setTimeout(() => focusCell(0, 'material'), 60);
+                                                }
+                                            }
+                                        }}
                                         InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
                                     />
                                 )}
@@ -400,7 +419,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                 onClick={addLine}
                                 sx={{ bgcolor: colors.primary, color: '#000', fontWeight: 800, borderRadius: 2, fontSize: '0.75rem', textTransform: 'none', '&:hover': { bgcolor: '#d97706' } }}
                             >
-                                + Agregar Línea
+                                + Agregar Línea (o Enter en Kilos)
                             </Button>
                         </Box>
                     </Box>
@@ -452,6 +471,8 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                             }}
                                             size="small"
                                             autoHighlight
+                                            openOnFocus
+                                            clearOnBlur={false}
                                             sx={{ flex: '3 1 260px' }}
                                             renderInput={(params) => (
                                                 <TextField
@@ -467,10 +488,9 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                                 params.inputProps.onKeyDown(e);
                                                             }
                                                             if (e.key === 'Enter') {
-                                                                if (line.itemId) {
-                                                                    e.preventDefault();
-                                                                    focusCell(idx, 'lotNumber');
-                                                                }
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                setTimeout(() => focusCell(idx, 'lotNumber'), 100);
                                                             }
                                                         }
                                                     }}
@@ -492,9 +512,8 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                 onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
                                                     if (e.key === 'Enter') {
                                                         e.preventDefault();
-                                                        if (line.lotNumber && line.lotNumber.trim().length > 0) {
-                                                            focusCell(idx, 'posicionId');
-                                                        }
+                                                        e.stopPropagation();
+                                                        focusCell(idx, 'posicionId');
                                                     }
                                                 }
                                             }}
@@ -521,6 +540,8 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                     isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id || option?.codigo === value?.codigo}
                                                     size="small"
                                                     autoHighlight
+                                                    openOnFocus
+                                                    clearOnBlur={false}
                                                     disabled={!depositoId}
                                                     sx={{ flex: '2 1 180px' }}
                                                     renderOption={(props, option: any) => (
@@ -542,11 +563,9 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                                         params.inputProps.onKeyDown(e);
                                                                     }
                                                                     if (e.key === 'Enter') {
-                                                                        const curPos = line.posicionId || defaultPosId;
-                                                                        if (curPos) {
-                                                                            e.preventDefault();
-                                                                            focusCell(idx, 'qtySecundaria');
-                                                                        }
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        focusCell(idx, 'qtySecundaria');
                                                                     }
                                                                 }
                                                             }}
@@ -576,10 +595,8 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                 onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
                                                     if (e.key === 'Enter') {
                                                         e.preventDefault();
-                                                        const hasValue = line.qtySecundaria.trim().length > 0;
-                                                        if (hasValue || !uSec) {
-                                                            focusCell(idx, 'qtyPrincipal');
-                                                        }
+                                                        e.stopPropagation();
+                                                        focusCell(idx, 'qtyPrincipal');
                                                     }
                                                 }
                                             }}
@@ -602,13 +619,11 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                 onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
                                                     if (e.key === 'Enter') {
                                                         e.preventDefault();
-                                                        const kg = parseFloat(line.qtyPrincipal.replace(',', '.'));
-                                                        if (!isNaN(kg) && kg > 0) {
-                                                            if (idx < lines.length - 1) {
-                                                                focusCell(idx + 1, 'material');
-                                                            } else {
-                                                                addLine();
-                                                            }
+                                                        e.stopPropagation();
+                                                        if (idx < lines.length - 1) {
+                                                            focusCell(idx + 1, 'material');
+                                                        } else {
+                                                            addLine();
                                                         }
                                                     }
                                                 }
