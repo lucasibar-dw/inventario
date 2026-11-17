@@ -354,10 +354,29 @@ export default function DashboardDepositoPage() {
         const initialMap: Record<string, { selected: boolean; kilos: string; cajas: string; isManualKilos: boolean }> = {};
         itemsToInit.forEach((item: any) => {
             const isTarget = item.id === entry.id;
+            // Por defecto, si tiene cajas, seleccionamos 1 caja o el total si tiene 1 sola
+            const totalCajas = Number(item.qtySecundaria || 0);
+            const totalKilos = Number(item.qtyPrincipal || 0);
+            let defaultCajas = '';
+            let defaultKilos = String(totalKilos);
+
+            if (totalCajas > 0) {
+                // Si es el target, default a 1 caja si hay varias, o todas si hay 1
+                defaultCajas = totalCajas > 1 ? '1' : String(totalCajas);
+                const ratio = getKilosPorCajaRatio(item);
+                if (ratio != null) {
+                    defaultKilos = String(Math.min(totalKilos, Math.round(Number(defaultCajas) * ratio * 100) / 100));
+                } else if (totalCajas === 1) {
+                    defaultKilos = String(totalKilos);
+                } else {
+                    defaultKilos = String(Math.round((totalKilos / totalCajas) * 100) / 100);
+                }
+            }
+
             initialMap[item.id] = {
                 selected: isTarget,
-                kilos: String(item.qtyPrincipal || 0),
-                cajas: item.qtySecundaria ? String(item.qtySecundaria) : '',
+                kilos: isTarget ? defaultKilos : String(totalKilos),
+                cajas: isTarget ? defaultCajas : (item.qtySecundaria ? String(item.qtySecundaria) : ''),
                 isManualKilos: false
             };
         });
@@ -615,6 +634,20 @@ export default function DashboardDepositoPage() {
         if (!moveDestPos) return null;
         return destPositions.find((p: any) => p.id === moveDestPos) || null;
     }, [destPositions, moveDestPos]);
+
+    const sameItemPositions = useMemo(() => {
+        if (!moveEntry || !destPositions.length) return [];
+        const itemId = moveEntry.batch?.item?.id || moveEntry.itemId;
+        return destPositions.filter((p: any) => 
+            p.id !== moveEntry.posicionId && 
+            p.currentStock?.some((s: any) => (s.batch?.item?.id || s.itemId) === itemId)
+        ).slice(0, 4);
+    }, [moveEntry, destPositions]);
+
+    const emptyPositionsSuggested = useMemo(() => {
+        if (!destPositions.length) return [];
+        return destPositions.filter((p: any) => !p.isOccupied).slice(0, 4);
+    }, [destPositions]);
 
     // Ítems presentes en la posición de origen del movimiento
     const originStockItems = useMemo(() => {
@@ -1837,25 +1870,78 @@ export default function DashboardDepositoPage() {
                                             </Box>
 
                                             {isSelected && (
-                                                <Box sx={{ mt: 1.2, pt: 1.2, borderTop: `1px dashed ${colors.border}`, display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-                                                    <TextField
-                                                        label={`Cajas a mover (${entry.batch?.item?.unidadSecundaria || 'un'})`}
-                                                        type="number"
-                                                        size="small"
-                                                        placeholder={maxCajas > 0 ? `Máx: ${maxCajas}` : '0'}
-                                                        value={lineState.cajas}
-                                                        onChange={(e) => handleLineCajasChange(entry, e.target.value)}
-                                                        sx={{ flex: '1 1 130px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
-                                                    />
-                                                    <TextField
-                                                        label={`Kilos a mover * (${entry.batch?.item?.unidadPrincipal || 'kg'})`}
-                                                        type="number"
-                                                        size="small"
-                                                        placeholder={`Máx: ${maxKilos}`}
-                                                        value={lineState.kilos}
-                                                        onChange={(e) => handleLineKilosChange(entry.id, e.target.value)}
-                                                        sx={{ flex: '1 1 130px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
-                                                    />
+                                                <Box sx={{ mt: 1.2, pt: 1.2, borderTop: `1px dashed ${colors.border}`, display: 'flex', flexDirection: 'column', gap: 1.2 }}>
+                                                    {/* Botones de selección rápida de cajas */}
+                                                    {maxCajas > 0 && (
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                                                            <Typography variant="caption" sx={{ color: colors.textDim, fontSize: '0.7rem', fontWeight: 700 }}>
+                                                                Rápido:
+                                                            </Typography>
+                                                            {[1, 2, 3, 5, 10].filter(n => n <= maxCajas).map((num) => (
+                                                                <Button
+                                                                    key={num}
+                                                                    size="small"
+                                                                    variant={String(lineState.cajas) === String(num) ? 'contained' : 'outlined'}
+                                                                    onClick={() => handleLineCajasChange(entry, String(num))}
+                                                                    sx={{
+                                                                        minWidth: 32,
+                                                                        height: 24,
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 800,
+                                                                        p: '0 8px',
+                                                                        borderRadius: 1.5,
+                                                                        bgcolor: String(lineState.cajas) === String(num) ? colors.info : 'rgba(255,255,255,0.04)',
+                                                                        color: String(lineState.cajas) === String(num) ? '#fff' : colors.textDim,
+                                                                        borderColor: String(lineState.cajas) === String(num) ? colors.info : 'rgba(255,255,255,0.15)',
+                                                                        '&:hover': { bgcolor: String(lineState.cajas) === String(num) ? '#2563eb' : 'rgba(255,255,255,0.1)' }
+                                                                    }}
+                                                                >
+                                                                    {num} {num === 1 ? 'caja' : 'cajas'}
+                                                                </Button>
+                                                            ))}
+                                                            {maxCajas > 1 && (
+                                                                <Button
+                                                                    size="small"
+                                                                    variant={String(lineState.cajas) === String(maxCajas) ? 'contained' : 'outlined'}
+                                                                    onClick={() => handleLineCajasChange(entry, String(maxCajas))}
+                                                                    sx={{
+                                                                        height: 24,
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 800,
+                                                                        p: '0 8px',
+                                                                        borderRadius: 1.5,
+                                                                        bgcolor: String(lineState.cajas) === String(maxCajas) ? colors.primary : 'rgba(245, 158, 11, 0.08)',
+                                                                        color: String(lineState.cajas) === String(maxCajas) ? '#000' : colors.primary,
+                                                                        borderColor: colors.primary,
+                                                                        '&:hover': { bgcolor: String(lineState.cajas) === String(maxCajas) ? '#d97706' : 'rgba(245, 158, 11, 0.2)' }
+                                                                    }}
+                                                                >
+                                                                    Todas ({maxCajas})
+                                                                </Button>
+                                                            )}
+                                                        </Box>
+                                                    )}
+
+                                                    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                        <TextField
+                                                            label={`Cajas a mover (${entry.batch?.item?.unidadSecundaria || 'un'})`}
+                                                            type="number"
+                                                            size="small"
+                                                            placeholder={maxCajas > 0 ? `Máx: ${maxCajas}` : '0'}
+                                                            value={lineState.cajas}
+                                                            onChange={(e) => handleLineCajasChange(entry, e.target.value)}
+                                                            sx={{ flex: '1 1 130px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
+                                                        />
+                                                        <TextField
+                                                            label={`Kilos a mover * (${entry.batch?.item?.unidadPrincipal || 'kg'})`}
+                                                            type="number"
+                                                            size="small"
+                                                            placeholder={`Máx: ${maxKilos}`}
+                                                            value={lineState.kilos}
+                                                            onChange={(e) => handleLineKilosChange(entry.id, e.target.value)}
+                                                            sx={{ flex: '1 1 130px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
+                                                        />
+                                                    </Box>
                                                 </Box>
                                             )}
                                         </Box>
@@ -1869,6 +1955,62 @@ export default function DashboardDepositoPage() {
                             <Typography variant="subtitle2" sx={{ color: colors.textDim, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.5px', mb: 1.5 }}>
                                 2. Posición de Destino
                             </Typography>
+
+                            {/* Sugerencias Rápidas de Destino: Mismo artículo o Libres */}
+                            {(sameItemPositions.length > 0 || emptyPositionsSuggested.length > 0) && (
+                                <Box sx={{ mb: 1.5, display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+                                    {sameItemPositions.length > 0 && (
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                                            <Typography variant="caption" sx={{ color: colors.primary, fontSize: '0.7rem', fontWeight: 800 }}>
+                                                Consolidar stock con:
+                                            </Typography>
+                                            {sameItemPositions.map((p: any) => (
+                                                <Chip
+                                                    key={p.id}
+                                                    size="small"
+                                                    label={`📍 ${p.codigo}`}
+                                                    onClick={() => setMoveDestPos(p.id)}
+                                                    sx={{
+                                                        height: 22,
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 800,
+                                                        bgcolor: moveDestPos === p.id ? colors.primary : 'rgba(245, 158, 11, 0.12)',
+                                                        color: moveDestPos === p.id ? '#000' : colors.primary,
+                                                        border: `1px solid ${colors.primary}`,
+                                                        cursor: 'pointer',
+                                                        '&:hover': { bgcolor: colors.primary, color: '#000' }
+                                                    }}
+                                                />
+                                            ))}
+                                        </Box>
+                                    )}
+                                    {emptyPositionsSuggested.length > 0 && (
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                                            <Typography variant="caption" sx={{ color: colors.success, fontSize: '0.7rem', fontWeight: 800 }}>
+                                                Posiciones libres:
+                                            </Typography>
+                                            {emptyPositionsSuggested.map((p: any) => (
+                                                <Chip
+                                                    key={p.id}
+                                                    size="small"
+                                                    label={`📍 ${p.codigo}`}
+                                                    onClick={() => setMoveDestPos(p.id)}
+                                                    sx={{
+                                                        height: 22,
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 800,
+                                                        bgcolor: moveDestPos === p.id ? colors.success : 'rgba(16, 185, 129, 0.12)',
+                                                        color: moveDestPos === p.id ? '#000' : colors.success,
+                                                        border: `1px solid ${colors.success}`,
+                                                        cursor: 'pointer',
+                                                        '&:hover': { bgcolor: colors.success, color: '#000' }
+                                                    }}
+                                                />
+                                            ))}
+                                        </Box>
+                                    )}
+                                </Box>
+                            )}
 
                             <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mb: 1.5 }}>
                                 {depots.length > 1 && (
@@ -1920,7 +2062,33 @@ export default function DashboardDepositoPage() {
                                     onChange={(_e, val: any) => setMoveDestPos(val?.id || '')}
                                     size="small"
                                     sx={{ flex: '2 1 240px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
-                                    renderInput={(params) => <TextField {...params} label="Posición Destino *" placeholder="Escribí o seleccioná posición..." />}
+                                    renderInput={(params) => (
+                                        <TextField 
+                                            {...params} 
+                                            label="Posición Destino *" 
+                                            placeholder="Escribí posición y Enter..." 
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    const inputVal = (e.target as HTMLInputElement).value?.trim();
+                                                    if (!moveDestPos && inputVal) {
+                                                        const matched = destPositions.find((p: any) => 
+                                                            normalizeText(p.codigo) === normalizeText(inputVal)
+                                                        );
+                                                        if (matched) {
+                                                            setMoveDestPos(matched.id);
+                                                            e.preventDefault();
+                                                            return;
+                                                        }
+                                                    }
+                                                    if (moveDestPos && selectedLinesToMove.length > 0 && totalKilosToMove > 0 && !isMovingStock) {
+                                                        e.preventDefault();
+                                                        handleConfirmMove();
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    )}
                                 />
                             </Box>
 
