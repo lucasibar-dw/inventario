@@ -1,1295 +1,1715 @@
-import { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader, Card, Btn, Badge, Spinner, useIsMobile } from '../../shared/ui';
+import { PageHeader, Card, Btn, Badge, Spinner, Modal, Input, useIsMobile } from '../../shared/ui';
 import {
     useGetUltimaPlanillaProduccionQuery,
-    useListarPlanillasProduccionQuery,
-    useLazyGetPlanillaProduccionByIdQuery,
     useParseOrdenesProduccionMutation,
-    useRecalcularPlanillaMutation,
+    useVincularCodigoSusanaMutation,
+    useActualizarHoraCambioMutation,
+    useGetCatalogoParaMatcheoQuery,
 } from '../../features/quality/ordenes-produccion/api/ordenesProduccion.api';
+import type {
+    ProduccionParseResult,
+    HiladoPlanillaItem,
+    CambioPlanillaItem,
+    PendientePlanillaItem,
+    CambioArticuloRef,
+} from '../../features/quality/ordenes-produccion/types/ordenesProduccion.types';
 import {
-    useGetMachineChangeReportQuery,
-    useGetMachinesQuery,
-} from '../../entities/maintenance/api/maintenance.api';
-import type { ProduccionParseResult } from '../../features/quality/ordenes-produccion/types/ordenesProduccion.types';
-import {
-    exportHojaPickingToExcel,
-    exportInformeCambiosToExcel,
+    exportListadoHiladoDiaToExcel,
+    exportListadoCambiosDiaToExcel,
 } from '../../features/quality/ordenes-produccion/utils/excelExport';
+
+/**
+ * Señal discreta (mini símbolo con cartelito flotante al pasar el mouse o tocar)
+ */
+const InfoSignal: React.FC<{ text: string; color?: string }> = ({ text, color = '#f59e0b' }) => {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <span
+            style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: '5px', cursor: 'help' }}
+            onMouseEnter={() => setOpen(true)}
+            onMouseLeave={() => setOpen(false)}
+            onClick={(e) => {
+                e.stopPropagation();
+                setOpen((prev) => !prev);
+            }}
+        >
+            <span
+                style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    color,
+                    background: `${color}1f`,
+                    border: `1px solid ${color}55`,
+                    lineHeight: 1,
+                    userSelect: 'none',
+                }}
+            >
+                !
+            </span>
+            {open && (
+                <span
+                    style={{
+                        position: 'absolute',
+                        bottom: 'calc(100% + 6px)',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 60,
+                        width: '250px',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        background: '#111827',
+                        border: `1px solid ${color}66`,
+                        boxShadow: '0 8px 20px rgba(0, 0, 0, 0.45)',
+                        color: '#f3f4f6',
+                        fontSize: '11px',
+                        fontWeight: 500,
+                        lineHeight: 1.35,
+                        textAlign: 'left',
+                        pointerEvents: 'none',
+                        whiteSpace: 'normal',
+                    }}
+                >
+                    {text}
+                </span>
+            )}
+        </span>
+    );
+};
 
 export default function CargaProduccionDiaPage() {
     const isMobile = useIsMobile();
     const navigate = useNavigate();
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const folderInputRef = useRef<HTMLInputElement>(null);
+    const filesInputRef = useRef<HTMLInputElement>(null);
 
-    // 1. Datos de Planilla de Producción
-    const { data: ultimaPlanilla, isLoading: loadingPlanilla, refetch: refetchUltima } = useGetUltimaPlanillaProduccionQuery();
-    const { data: historialPlanillas = [], refetch: refetchHistorial } = useListarPlanillasProduccionQuery();
-    const [fetchPlanillaById] = useLazyGetPlanillaProduccionByIdQuery();
+    // Filtros superiores predeterminados: Der Will + Tejeduría
+    const [plantaSeleccionada, setPlantaSeleccionada] = useState<string>('Der Will');
+    const [sectorSeleccionado, setSectorSeleccionado] = useState<string>('TEJEDURIA');
+
+    // UNA sola consulta al cargar o volver de completar estructuras
+    const {
+        data: ultimaPlanilla,
+        isLoading: loadingPlanilla,
+        isFetching: fetchingPlanilla,
+        refetch: refetchPlanilla,
+    } = useGetUltimaPlanillaProduccionQuery({
+        plantaId: plantaSeleccionada,
+        sector: sectorSeleccionado,
+    });
+
     const [parseOrdenes, { isLoading: isUploading }] = useParseOrdenesProduccionMutation();
-    const [recalcular, { isLoading: isRecalculating }] = useRecalcularPlanillaMutation();
+    const [vincularSusi, { isLoading: isLinking }] = useVincularCodigoSusanaMutation();
+    const [actualizarHora, { isLoading: isSavingHora }] = useActualizarHoraCambioMutation();
 
-    const [selectedPlanilla, setSelectedPlanilla] = useState<ProduccionParseResult | null>(null);
-    const activePlanilla = selectedPlanilla || ultimaPlanilla;
+    const [localPlanilla, setLocalPlanilla] = useState<ProduccionParseResult | null>(null);
+    const activePlanilla = localPlanilla || ultimaPlanilla;
 
-    // 2. Datos de Máquinas en Vivo (para calcular cuántas NO están activas)
-    const { data: allMachines = [], isLoading: loadingMachines } = useGetMachinesQuery({});
-
-    const machinesStatusSummary = useMemo(() => {
-        const total = allMachines.length;
-        const activas = allMachines.filter((m: any) => m.status === 'ACTIVA').length;
-        const noActivas = allMachines.filter((m: any) => m.status !== 'ACTIVA');
-
-        // Desglose por motivo
-        const breakdown: Record<string, number> = {};
-        noActivas.forEach((m: any) => {
-            const st = m.status || 'OTRO';
-            breakdown[st] = (breakdown[st] || 0) + 1;
-        });
-
-        return {
-            total,
-            activas,
-            noActivasCount: noActivas.length,
-            noActivasList: noActivas,
-            breakdown,
-        };
-    }, [allMachines]);
-
-    // 3. Tiempos Históricos de Cambios cargados por Marina (Mantenimiento)
-    const { data: marinaChangesReport } = useGetMachineChangeReportQuery({});
-
-    const marinaDurationsMap = useMemo(() => {
-        const map = new Map<string, { medianMs: number; formatted: string; count: number }>();
-        if (!marinaChangesReport?.report) return map;
-
-        marinaChangesReport.report.forEach((item: any) => {
-            const key = (item.combination || []).slice().sort().join('+').toUpperCase();
-            if (key) {
-                map.set(key, {
-                    medianMs: item.medianDurationMs || 0,
-                    formatted: item.medianDurationFormatted || item.avgDurationFormatted || `${Math.round((item.medianDurationMs || 0) / 60000)}m`,
-                    count: item.count || 0,
-                });
-            }
-        });
-        return map;
-    }, [marinaChangesReport]);
-
-    // Subida de Archivos PDFs
-    const [showUploadBox, setShowUploadBox] = useState(!activePlanilla);
-    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    // Selección de carpeta/archivos PDFs
+    const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+    const [selectedDateFromFiles, setSelectedDateFromFiles] = useState<string>('');
     const [uploadError, setUploadError] = useState<string | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
 
-    const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            setSelectedFiles(Array.from(e.target.files));
-            setUploadError(null);
+    // Filtros de búsqueda locales para las dos tablas
+    const [searchHilado, setSearchHilado] = useState('');
+    const [filterTipoHilado, setFilterTipoHilado] = useState<string>('TODOS');
+    const [expandedHiladoId, setExpandedHiladoId] = useState<string | null>(null);
+
+    const [searchCambios, setSearchCambios] = useState('');
+    const [filterAreaCambio, setFilterAreaCambio] = useState<string>('TODAS');
+
+    // Edición inline de hora de cambio
+    const [editingHoraId, setEditingHoraId] = useState<string | null>(null);
+    const [editingHoraValue, setEditingHoraValue] = useState<string>('07:00');
+
+    // Modal para matchear un artículo sin matchear o cambiar su vínculo
+    const [modalPendiente, setModalPendiente] = useState<PendientePlanillaItem | null>(null);
+    const [searchCatalogo, setSearchCatalogo] = useState('');
+    const [selectedCatalogoArtId, setSelectedCatalogoArtId] = useState<string>('');
+
+    const { data: catalogoOpciones = [], isFetching: loadingCatalogo } = useGetCatalogoParaMatcheoQuery(
+        {
+            search: searchCatalogo,
+            etapa: 'TODOS',
+        },
+        { skip: !modalPendiente },
+    );
+
+    // Detectar fechas dentro de la carpeta seleccionada (por si una carpeta trae varios días como fwd 4)
+    const datesInStagedFiles = useMemo(() => {
+        const set = new Set<string>();
+        stagedFiles.forEach((f) => {
+            const m = f.name.match(/(\d{2}-\d{2})\s+\d+\s+[MN]\.pdf/i);
+            if (m) set.add(m[1]);
+        });
+        return Array.from(set).sort();
+    }, [stagedFiles]);
+
+    const handleSelectFilesList = (fileList: FileList | File[]) => {
+        const pdfs = Array.from(fileList).filter(
+            (f) => f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf',
+        );
+        if (pdfs.length === 0) {
+            setUploadError('No se encontraron archivos PDF en la carpeta o selección.');
+            return;
+        }
+        setUploadError(null);
+        setStagedFiles(pdfs);
+
+        // Detectar fechas únicas
+        const detectedDates = new Set<string>();
+        pdfs.forEach((f) => {
+            const m = f.name.match(/(\d{2}-\d{2})\s+\d+\s+[MN]\.pdf/i);
+            if (m) detectedDates.add(m[1]);
+        });
+        const sortedDates = Array.from(detectedDates).sort();
+        const defaultDate = sortedDates.length > 0 ? sortedDates[sortedDates.length - 1] : '';
+        setSelectedDateFromFiles(defaultDate);
+
+        // Si todos los PDFs pertenecen a un solo día, procesarlos directamente sin pasos extra
+        if (sortedDates.length <= 1) {
+            void submitFilesToBackend(pdfs, defaultDate);
         }
     };
 
-    const handleUploadSubmit = async () => {
-        if (selectedFiles.length === 0) {
-            setUploadError('Por favor seleccioná al menos un archivo PDF de planilla.');
+    const submitFilesToBackend = async (filesToUpload: File[], dateFilter?: string) => {
+        const filtered =
+            dateFilter && datesInStagedFiles.length > 1
+                ? filesToUpload.filter((f) => f.name.includes(dateFilter))
+                : filesToUpload;
+
+        if (filtered.length === 0) {
+            setUploadError('No hay archivos PDF para la fecha seleccionada.');
             return;
         }
 
         const formData = new FormData();
-        selectedFiles.forEach((f) => formData.append('files', f));
+        filtered.forEach((f) => formData.append('files', f));
+        formData.append('plantaId', plantaSeleccionada);
+        formData.append('sector', sectorSeleccionado);
+        if (dateFilter) formData.append('fechaFiltro', dateFilter);
 
         try {
-            const result = await parseOrdenes(formData).unwrap();
-            setSelectedPlanilla(result);
-            setSelectedFiles([]);
-            setShowUploadBox(false);
-            refetchUltima();
-            refetchHistorial();
+            setUploadError(null);
+            const res = await parseOrdenes(formData).unwrap();
+            setLocalPlanilla(res);
         } catch (err: any) {
-            setUploadError(err?.data?.message || err?.message || 'Error al procesar las planillas de producción');
+            setUploadError(err?.data?.message || err?.message || 'Error al analizar los PDFs del día.');
         }
     };
 
-    const handleRecalcular = async () => {
-        if (!activePlanilla?.planillaId) return;
-        try {
-            const res = await recalcular(activePlanilla.planillaId).unwrap();
-            if (res) {
-                setSelectedPlanilla(res);
-                alert('Planilla recalculada exitosamente con el stock y estructuras actuales.');
-            }
-        } catch (err: any) {
-            alert('Error al recalcular: ' + (err?.data?.message || err?.message || 'Error desconocido'));
-        }
-    };
-
-    const handleSelectPlanillaHistorica = async (id: string) => {
-        if (!id) {
-            setSelectedPlanilla(null);
-            return;
-        }
-        try {
-            const data = await fetchPlanillaById(id).unwrap();
-            if (data) setSelectedPlanilla(data);
-        } catch {
-            alert('Error al cargar la planilla seleccionada');
-        }
-    };
-
-    // Pestaña activa: 'PICKING' o 'CAMBIOS'
-    const [activeTab, setActiveTab] = useState<'PICKING' | 'CAMBIOS'>('PICKING');
-    const [searchQuery, setSearchQuery] = useState('');
-    const [filtroArea, setFiltroArea] = useState('ALL');
-    const [filtroEstadoPicking, setFiltroEstadoPicking] = useState<'ALL' | 'BAJAR' | 'FALTANTE' | 'OK'>('ALL');
-    const [showNoActivasModal, setShowNoActivasModal] = useState(false);
-
-    // =========================================================================
-    // INFORME 1: Abastecimiento y Picking de Hilado
-    // =========================================================================
-    const itemsPicking = useMemo(() => {
-        if (!activePlanilla) return [];
-
-        if (activePlanilla.hojaPicking && activePlanilla.hojaPicking.length > 0) {
-            return activePlanilla.hojaPicking;
-        }
-
-        if (activePlanilla.materiales && activePlanilla.materiales.length > 0) {
-            return activePlanilla.materiales
-                .filter((m) => {
-                    const cat = (m.categoriaNombre || '').toUpperCase();
-                    const rol = (m.rol || '').toUpperCase();
-                    const desc = (m.descripcion || '').toUpperCase();
-                    return (
-                        rol === 'HILADO' ||
-                        cat.includes('HILADO') ||
-                        cat.includes('ALGODON') ||
-                        cat.includes('GOMA') ||
-                        cat.includes('LYCRA') ||
-                        cat.includes('POLIAMIDA') ||
-                        cat.includes('NYLON') ||
-                        cat.includes('POLYSOFT') ||
-                        desc.includes('HILADO') ||
-                        m.unidadPrincipal === 'KG'
-                    );
-                })
-                .map((m) => {
-                    const consumo = Number(m.consumoTotalKg) || 0;
-                    const picking = Number(m.stockEnPickingKg) || 0;
-                    const reserva = Number(m.stockEnReservaKg) || 0;
-                    const aPasar = Number(m.aPasarAPickingKg) || Math.max(0, Math.min(reserva, consumo - picking));
-                    const total = Number(m.stockActualTotalKg) || (picking + reserva);
-
-                    let estadoAbast: 'OK' | 'BAJAR_A_PICKING' | 'CRITICO_COMPRAR' = 'OK';
-                    if (total < consumo) {
-                        estadoAbast = 'CRITICO_COMPRAR';
-                    } else if (picking < consumo) {
-                        estadoAbast = 'BAJAR_A_PICKING';
-                    }
-
-                    return {
-                        codigoMaterial: m.codigoInterno,
-                        descripcionMaterial: m.descripcion,
-                        categoriaNombre: m.categoriaNombre || 'HILADO',
-                        rol: m.rol || 'HILADO',
-                        tono: m.tono || '',
-                        colorNombre: m.colorNombre || '',
-                        proveedor: m.proveedor || '',
-                        consumoDiaKg: consumo,
-                        conosNecesarios: m.conosTotales || Math.ceil(consumo / 1.5),
-                        stockEnPickingKg: picking,
-                        stockEnReservaKg: reserva,
-                        aPasarAPickingKg: aPasar,
-                        posicionesPickingSugeridas: m.posicionesPickingSugeridas || [],
-                        posicionesStockReserva: [],
-                        stockRestanteTotalKg: Math.max(0, total - consumo),
-                        aComprarKg: Math.max(0, consumo - total),
-                        estadoAbastecimiento: estadoAbast,
-                        maquinasCount: m.maquinasCount || 0,
-                        maquinas: m.maquinas || [],
-                        areas: [],
-                        articulos: (m.articulosAsignados || []).map((a) => a.codigoArticulo),
-                        partidaSugerida: m.partidaSugerida,
-                        posicionOrigenSugerida: m.posicionOrigenSugerida,
-                        esSustituto: m.esSustituto,
-                        prioridad: m.prioridad,
-                        sustitutoMotivo: m.sustitutoMotivo,
-                    };
-                });
-        }
-
-        return [];
+    // Formatear fecha con el año actual
+    const fechaDiaFormateada = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        const rawDates = activePlanilla?.fechas || [];
+        if (rawDates.length === 0) return `Año ${currentYear}`;
+        return rawDates
+            .map((d) => {
+                const parts = d.split('-');
+                if (parts.length === 2) return `${parts[0]}/${parts[1]}/${currentYear}`;
+                return d;
+            })
+            .join(', ');
     }, [activePlanilla]);
 
-    const filteredPicking = useMemo(() => {
-        return itemsPicking.filter((it: any) => {
-            if (filtroEstadoPicking === 'BAJAR') {
-                if (it.aPasarAPickingKg <= 0 && it.estadoAbastecimiento !== 'BAJAR_A_PICKING') return false;
-            } else if (filtroEstadoPicking === 'FALTANTE') {
-                if (it.estadoAbastecimiento !== 'CRITICO_COMPRAR' && (it.aComprarKg || 0) <= 0) return false;
-            } else if (filtroEstadoPicking === 'OK') {
-                if (it.estadoAbastecimiento !== 'OK' && it.aPasarAPickingKg > 0) return false;
-            }
+    // Listado 1: Hilado (con fallback a materiales si una planilla vieja no tenía listadoHilado)
+    const listadoHilado: HiladoPlanillaItem[] = useMemo(() => {
+        if (activePlanilla?.listadoHilado) return activePlanilla.listadoHilado;
+        return (activePlanilla?.materiales || []).map((m) => ({
+            id: m.itemId,
+            itemId: m.itemId,
+            codigoHilado: m.codigoInterno,
+            codigoComponenteBom: m.codigoComponenteBom || m.codigoInterno,
+            descripcionHilado: m.descripcion,
+            categoria: m.categoriaNombre || 'HILADO',
+            tipoMaterialCono: 'ALGODON',
+            kilosPedido: m.consumoTotalKg || 0,
+            kilosManana: m.consumoMananaKg || 0,
+            kilosNoche: m.consumoNocheKg || 0,
+            pesoConoKg: m.pesoConoKg || 1,
+            pesoConoEsEstimado: true,
+            motivoPesoCono: 'Valor estimado por tipo de hilado.',
+            conos: m.conosTotales || 0,
+            stockTotalKg: m.stockActualTotalKg || 0,
+            stockPickingKg: m.stockEnPickingKg || 0,
+            stockReservaKg: m.stockEnReservaKg || 0,
+            posicionesPicking: m.posicionesPickingSugeridas || [],
+            sinEquivalenciaItem: false,
+            esSustituto: Boolean(m.esSustituto),
+            sustitutoMotivo: m.sustitutoMotivo || null,
+            maquinasCount: m.maquinasCount,
+            maquinas: m.maquinas || [],
+            articulosDetalle: (m.articulosAsignados || []).map((a) => ({
+                codigoArticulo: a.codigoArticulo,
+                codigoSusana: a.codigoArticulo,
+                descripcion: a.descripcionArticulo,
+                maquinas: a.maquinas,
+                horasTejido: 0,
+                docenas: a.docenasTejidas || 0,
+                kilos: a.consumoKg || 0,
+                ritmoEsEstimado: true,
+            })),
+        }));
+    }, [activePlanilla]);
 
-            if (searchQuery.trim()) {
-                const term = searchQuery.toLowerCase();
-                const matchCod = (it.codigoMaterial || '').toLowerCase().includes(term);
-                const matchDesc = (it.descripcionMaterial || '').toLowerCase().includes(term);
-                const matchTono = (it.tono || it.colorNombre || '').toLowerCase().includes(term);
-                const matchArt = (it.articulos || []).some((a: string) => a.toLowerCase().includes(term));
-                if (!matchCod && !matchDesc && !matchTono && !matchArt) return false;
-            }
-
-            return true;
+    const filteredHilado = useMemo(() => {
+        const q = searchHilado.trim().toLowerCase();
+        return listadoHilado.filter((h) => {
+            if (filterTipoHilado !== 'TODOS' && h.tipoMaterialCono !== filterTipoHilado) return false;
+            if (!q) return true;
+            return (
+                h.codigoHilado.toLowerCase().includes(q) ||
+                h.descripcionHilado.toLowerCase().includes(q) ||
+                h.categoria.toLowerCase().includes(q) ||
+                h.articulosDetalle.some((a) => a.codigoArticulo.toLowerCase().includes(q))
+            );
         });
-    }, [itemsPicking, filtroEstadoPicking, searchQuery]);
+    }, [listadoHilado, searchHilado, filterTipoHilado]);
 
-    const statsPicking = useMemo(() => {
-        let totalKilosConsumo = 0;
-        let totalItems = itemsPicking.length;
-        let cubiertosEnPicking = 0;
-        let requierenBajar = 0;
-        let faltantesCriticos = 0;
-        let kilosABajarTotal = 0;
-
-        itemsPicking.forEach((it: any) => {
-            totalKilosConsumo += Number(it.consumoDiaKg) || 0;
-            const aPasar = Number(it.aPasarAPickingKg) || 0;
-            const aComprar = Number(it.aComprarKg) || 0;
-
-            if (it.estadoAbastecimiento === 'CRITICO_COMPRAR' || aComprar > 0) {
-                faltantesCriticos++;
-            } else if (it.estadoAbastecimiento === 'BAJAR_A_PICKING' || aPasar > 0) {
-                requierenBajar++;
-                kilosABajarTotal += aPasar;
-            } else {
-                cubiertosEnPicking++;
-            }
-        });
-
-        return {
-            totalKilosConsumo: Math.round(totalKilosConsumo * 10) / 10,
-            totalItems,
-            cubiertosEnPicking,
-            requierenBajar,
-            faltantesCriticos,
-            kilosABajarTotal: Math.round(kilosABajarTotal * 10) / 10,
-        };
-    }, [itemsPicking]);
-
-    // =========================================================================
-    // INFORME 2: Matriz de Cambios de Máquina & Hilados Entrantes
-    // =========================================================================
-    const cambiosDetallados = useMemo(() => {
-        if (!activePlanilla || !activePlanilla.maquinas) return [];
-
-        const porMaquina: Record<number, any[]> = {};
-        activePlanilla.maquinas.forEach((m) => {
-            if (!porMaquina[m.machine]) porMaquina[m.machine] = [];
-            porMaquina[m.machine].push(m);
-        });
-
-        const listaCambios: any[] = [];
-
-        Object.entries(porMaquina).forEach(([mStr, entries]) => {
-            const machineNum = parseInt(mStr, 10);
-            const conCambio = entries.find((e) => e.hasChangeover);
-
-            // Si no está explícitamente marcado con hasChangeover:
-            if (!conCambio) {
-                if (entries.length >= 2) {
-                    const e0 = entries[0];
-                    const e1 = entries[1];
-                    const art0 = (e0.articleCode || e0.articleRaw || '').trim().toUpperCase();
-                    const art1 = (e1.articleCode || e1.articleRaw || '').trim().toUpperCase();
-                    const col0 = (e0.colorRaw || '').trim().toUpperCase();
-                    const col1 = (e1.colorRaw || '').trim().toUpperCase();
-                    const tal0 = (e0.talle || '').trim().toUpperCase();
-                    const tal1 = (e1.talle || '').trim().toUpperCase();
-                    if (art0 === art1 && col0 === col1 && tal0 === tal1) {
-                        return; // Mismo artículo entre turnos, sin cambio
-                    }
-                } else {
-                    return; // 1 sola entrada y sin cambio, descartar
-                }
-            }
-
-            let saliente = entries.find((e) => e.changeoverRole === 'SALIENTE_08AM') || conCambio?.salienteArticuloAnterior;
-            let entrante = entries.find((e) => e.changeoverRole === 'ENTRANTE_08AM') || conCambio;
-
-            if (!saliente && !entrante) {
-                const sorted = [...entries].sort((a, b) => (a.orderInShift || 1) - (b.orderInShift || 2));
-                if (sorted.length >= 2) {
-                    saliente = sorted[0];
-                    entrante = sorted[1];
-                } else if (conCambio) {
-                    entrante = conCambio;
-                }
-            }
-
-            // Si saliente y entrante son el mismo artículo idéntico, no reportar cambio
-            const salCode = (saliente?.articleCode || saliente?.articleRaw || '').trim().toUpperCase();
-            const entCode = (entrante?.articleCode || entrante?.articleRaw || '').trim().toUpperCase();
-            const salTalle = (saliente?.talle || '').trim().toUpperCase();
-            const entTalle = (entrante?.talle || '').trim().toUpperCase();
-            const salColor = (saliente?.colorRaw || '').trim().toUpperCase();
-            const entColor = (entrante?.colorRaw || '').trim().toUpperCase();
-            if (salCode && entCode && salCode === entCode && salTalle === entTalle && salColor === entColor && !conCambio?.salienteArticuloAnterior) {
-                return;
-            }
-
-            const activeEntry = entrante || conCambio || entries[0];
-            const area = activeEntry?.area ? `Área ${activeEntry.area}` : 'Planta';
-
-            const tipos: string[] = activeEntry?.changeoverTypes && activeEntry.changeoverTypes.length > 0
-                ? activeEntry.changeoverTypes
-                : (activeEntry?.changeoverType ? [activeEntry.changeoverType] : ['ARTICULO']);
-
-            const keyMarina = tipos.slice().sort().join('+').toUpperCase();
-            const marinaStat = marinaDurationsMap.get(keyMarina);
-
-            let tiempoEstimadoMinutos = 0;
-            let tiempoFormateado = '';
-            let fuenteTiempo: 'MARINA' | 'CALCULADO' = 'CALCULADO';
-
-            if (marinaStat && marinaStat.medianMs > 0) {
-                tiempoEstimadoMinutos = Math.round(marinaStat.medianMs / 60000);
-                tiempoFormateado = marinaStat.formatted;
-                fuenteTiempo = 'MARINA';
-            } else if (activeEntry?.changeoverDurationMinutes) {
-                tiempoEstimadoMinutos = activeEntry.changeoverDurationMinutes;
-                tiempoFormateado = `${tiempoEstimadoMinutos} min`;
-            } else {
-                tiempoEstimadoMinutos = 45;
-                tiempoFormateado = '45 min';
-            }
-
-            const hiladosEntrantes = (entrante?.hiladosMaquina || activeEntry?.hiladosMaquina || []).map((h: any) => ({
-                codigo: h.codigoItem || h.codigoComponente || '-',
-                descripcion: h.descripcion || 'Hilado',
-                consumoKg: Number(h.consumoKg) || 0,
-                conosEstimados: Number(h.conosEstimados) || Math.ceil((Number(h.consumoKg) || 1) / 1.5),
-            }));
-
-            listaCambios.push({
-                maquina: machineNum,
-                area,
-                areaNumero: activeEntry?.area || '',
-                tipoCambio: tipos.join(' + ') || 'CAMBIO',
-                tipos,
-                saliente: {
-                    codigo: saliente?.articleCode || saliente?.articleRaw || '(Anterior)',
-                    descripcion: saliente?.matchedArticle?.descripcion || saliente?.descRaw || '-',
-                    talle: saliente?.talle || '-',
-                    color: saliente?.colorRaw || '-',
-                },
-                entrante: {
-                    codigo: entrante?.articleCode || entrante?.articleRaw || activeEntry?.articleCode || activeEntry?.articleRaw || '(Nuevo)',
-                    descripcion: entrante?.matchedArticle?.descripcion || entrante?.descRaw || activeEntry?.matchedArticle?.descripcion || activeEntry?.descRaw || '-',
-                    talle: entrante?.talle || activeEntry?.talle || '-',
-                    color: entrante?.colorRaw || activeEntry?.colorRaw || '-',
-                },
-                tiempoEstimadoMinutos,
-                tiempoFormateado,
-                fuenteTiempo,
-                muestrasMarina: marinaStat?.count || 0,
-                hiladosEntrantes,
-                horasRestantesTejido: activeEntry?.netHours ?? 10,
-            });
-        });
-
-        return listaCambios.sort((a, b) => a.maquina - b.maquina);
-    }, [activePlanilla, marinaDurationsMap]);
+    // Listado 2: Cambios de Máquina
+    const listadoCambios: CambioPlanillaItem[] = useMemo(() => {
+        return activePlanilla?.listadoCambios || [];
+    }, [activePlanilla]);
 
     const filteredCambios = useMemo(() => {
-        return cambiosDetallados.filter((c) => {
-            if (filtroArea !== 'ALL' && String(c.areaNumero) !== String(filtroArea)) {
-                return false;
-            }
-
-            if (searchQuery.trim()) {
-                const term = searchQuery.toLowerCase();
-                const matchM = `m${c.maquina}`.includes(term) || String(c.maquina).includes(term);
-                const matchSal = (c.saliente.codigo + ' ' + c.saliente.descripcion).toLowerCase().includes(term);
-                const matchEnt = (c.entrante.codigo + ' ' + c.entrante.descripcion).toLowerCase().includes(term);
-                const matchTipo = (c.tipoCambio || '').toLowerCase().includes(term);
-                const matchHil = c.hiladosEntrantes.some((h: any) =>
-                    (h.codigo + ' ' + h.descripcion).toLowerCase().includes(term)
-                );
-                if (!matchM && !matchSal && !matchEnt && !matchTipo && !matchHil) return false;
-            }
-
-            return true;
+        const q = searchCambios.trim().toLowerCase();
+        return listadoCambios.filter((c) => {
+            if (filterAreaCambio !== 'TODAS' && String(c.area) !== filterAreaCambio) return false;
+            if (!q) return true;
+            return (
+                String(c.maquina).includes(q) ||
+                c.articuloSaliente.codigoSusana.toLowerCase().includes(q) ||
+                (c.articuloSaliente.codigoCatalogo || '').toLowerCase().includes(q) ||
+                c.articuloEntrante.codigoSusana.toLowerCase().includes(q) ||
+                (c.articuloEntrante.codigoCatalogo || '').toLowerCase().includes(q) ||
+                c.tipoCambio.toLowerCase().includes(q)
+            );
         });
-    }, [cambiosDetallados, filtroArea, searchQuery]);
+    }, [listadoCambios, searchCambios, filterAreaCambio]);
 
-    const statsCambios = useMemo(() => {
-        const totalCambios = cambiosDetallados.length;
-        const minutosParada = cambiosDetallados.reduce((acc, c) => acc + c.tiempoEstimadoMinutos, 0);
-        const horasParada = Math.round((minutosParada / 60) * 10) / 10;
-        const promedioMin = totalCambios > 0 ? Math.round(minutosParada / totalCambios) : 0;
+    // Pendientes de matchear o cargar estructura
+    const pendientes: PendientePlanillaItem[] = useMemo(() => {
+        return activePlanilla?.pendientesCompletar || [];
+    }, [activePlanilla]);
 
-        return {
-            totalCambios,
-            minutosParada,
-            horasParada,
-            promedioMin,
-        };
-    }, [cambiosDetallados]);
+    const abrirAccionPendiente = (pend: PendientePlanillaItem) => {
+        if (pend.estado === 'SIN_ESTRUCTURA' && pend.articuloMatcheado) {
+            // Si ya está matcheado pero le falta estructura, podemos ir directo a cargarle la estructura o abrir el modal
+            setModalPendiente(pend);
+            setSearchCatalogo(pend.articuloMatcheado.codigo);
+            setSelectedCatalogoArtId(pend.articuloMatcheado.id);
+            return;
+        }
+        const initialQuery = pend.codigoSusana.split(/[\s-]+/)[0] || '';
+        setModalPendiente(pend);
+        setSearchCatalogo(initialQuery);
+        setSelectedCatalogoArtId(pend.candidatosSugeridos?.[0]?.id || '');
+    };
 
-    const handleExportExcel = () => {
-        if (activeTab === 'PICKING') {
-            exportHojaPickingToExcel(filteredPicking as any, `picking_hilados_${activePlanilla?.fechas?.[0] || 'dia'}.xlsx`);
-        } else {
-            const dataToExport = filteredCambios.map((c) => ({
-                maquina: c.maquina,
-                area: c.area,
-                articuloSaliente: `${c.saliente.codigo} (${c.saliente.talle}) - ${c.saliente.descripcion}`,
-                articuloEntrante: `${c.entrante.codigo} (${c.entrante.talle}) - ${c.entrante.descripcion}`,
-                talleColorEntrante: `${c.entrante.talle} / ${c.entrante.color}`,
-                tipoCambio: c.tipoCambio,
-                tiempoEstimado: c.tiempoFormateado,
-                fuenteTiempo: c.fuenteTiempo === 'MARINA' ? `Histórico Marina (${c.muestrasMarina} reg.)` : 'Estimado base',
-                hiladosEntrantes: c.hiladosEntrantes.map((h: any) => `${h.codigo} (${h.consumoKg}kg / ~${h.conosEstimados} conos)`).join(' | '),
-            }));
-            exportInformeCambiosToExcel(dataToExport, `cambios_maquinas_${activePlanilla?.fechas?.[0] || 'dia'}.xlsx`);
+    const abrirAccionDesdeRefCambio = (ref: CambioArticuloRef, maquina: number, area: string) => {
+        const found = pendientes.find(
+            (p) =>
+                p.codigoSusana.toUpperCase() === ref.codigoSusana.toUpperCase() ||
+                (ref.codigoCatalogo && p.articuloMatcheado?.codigo.toUpperCase() === ref.codigoCatalogo.toUpperCase()),
+        );
+        if (found) {
+            abrirAccionPendiente(found);
+            return;
+        }
+        abrirAccionPendiente({
+            key: ref.codigoSusana,
+            codigoSusana: ref.codigoSusana,
+            talle: ref.talle,
+            color: ref.color,
+            descripcionPdf: ref.descripcion,
+            maquinas: [maquina],
+            areas: [area],
+            estado: ref.estadoMatch === 'OK' ? 'SIN_MATCH' : ref.estadoMatch,
+            mensajeEstado: 'Seleccioná el artículo correspondiente en la base de datos.',
+            articuloMatcheado: ref.articuloId
+                ? {
+                      id: ref.articuloId,
+                      codigo: ref.codigoCatalogo || ref.codigoSusana,
+                      descripcion: ref.descripcion,
+                      etapa: 'TEJIDO',
+                  }
+                : null,
+            componentesSinItem: [],
+            candidatosSugeridos: [],
+        });
+    };
+
+    const handleConfirmarMatcheo = async () => {
+        if (!modalPendiente || !selectedCatalogoArtId) return;
+        try {
+            const updated = await vincularSusi({
+                codigoSusana: modalPendiente.codigoSusana,
+                articuloId: selectedCatalogoArtId,
+                planillaId: activePlanilla?.planillaId,
+                plantaId: plantaSeleccionada,
+                sector: sectorSeleccionado,
+            }).unwrap();
+            setLocalPlanilla(updated);
+            setModalPendiente(null);
+        } catch (err: any) {
+            alert(err?.data?.message || err?.message || 'No se pudo vincular el artículo.');
         }
     };
 
-    const handlePrint = () => {
-        window.print();
+    const handleGuardarHoraCambio = async (cambio: CambioPlanillaItem, nuevaHora: string) => {
+        setEditingHoraId(null);
+        if (!nuevaHora || nuevaHora === cambio.hora) return;
+        try {
+            const updated = await actualizarHora({
+                fecha: cambio.fecha,
+                maquina: cambio.maquina,
+                turno: cambio.turno,
+                hora: nuevaHora,
+                planillaId: activePlanilla?.planillaId,
+                plantaId: plantaSeleccionada,
+                sector: sectorSeleccionado,
+            }).unwrap();
+            setLocalPlanilla(updated);
+        } catch (err: any) {
+            alert(err?.data?.message || err?.message || 'No se pudo guardar el horario.');
+        }
     };
 
+    const handleIrACargarEstructura = (codigoArticulo: string, etapa = 'TEJIDO') => {
+        navigate(
+            `/desarrollo/estructuras?codigo=${encodeURIComponent(codigoArticulo)}&etapa=${encodeURIComponent(etapa)}&returnTo=${encodeURIComponent('/produccion/planificacion')}`,
+        );
+    };
+
+    const plantasOpciones = useMemo(() => {
+        const list = activePlanilla?.contextoPlanta?.plantasDisponibles || [];
+        if (list.length === 0) return [{ id: 'Der Will', nombre: 'Der Will' }];
+        return list;
+    }, [activePlanilla]);
+
+    const sectoresOpciones = useMemo(() => {
+        const list = activePlanilla?.contextoPlanta?.sectoresDisponibles || ['TEJEDURIA'];
+        return list.includes('TEJEDURIA') ? list : ['TEJEDURIA', ...list];
+    }, [activePlanilla]);
+
+    const totalKilosHilado = useMemo(
+        () => Math.round(listadoHilado.reduce((acc, h) => acc + h.kilosPedido, 0) * 100) / 100,
+        [listadoHilado],
+    );
+    const totalConos = useMemo(() => listadoHilado.reduce((acc, h) => acc + h.conos, 0), [listadoHilado]);
+
     return (
-        <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: '1600px', margin: '0 auto' }}>
-            {/* CSS para impresión limpia */}
-            <style>{`
-                @media print {
-                    body * { visibility: hidden !important; }
-                    .printable-content, .printable-content * { visibility: visible !important; }
-                    .printable-content {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        width: 100% !important;
-                        background: #ffffff !important;
-                        color: #000000 !important;
+        <div style={{ padding: isMobile ? '12px' : '20px', maxWidth: '1480px', margin: '0 auto' }}>
+            {/* Input oculto para subir carpeta entera */}
+            <input
+                ref={folderInputRef}
+                type="file"
+                multiple
+                // @ts-expect-error webkitdirectory es estándar en navegadores modernos
+                webkitdirectory="true"
+                directory="true"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                        handleSelectFilesList(e.target.files);
+                        e.target.value = '';
                     }
-                    .no-print { display: none !important; }
-                    table { border-collapse: collapse !important; width: 100% !important; font-size: 11px !important; }
-                    th, td { border: 1px solid #ddd !important; padding: 6px !important; color: #000 !important; }
-                    th { background-color: #f3f4f6 !important; font-weight: bold !important; }
-                }
-            `}</style>
+                }}
+            />
+            {/* Input oculto para subir PDFs sueltos */}
+            <input
+                ref={filesInputRef}
+                type="file"
+                multiple
+                accept=".pdf,application/pdf"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                        handleSelectFilesList(e.target.files);
+                        e.target.value = '';
+                    }
+                }}
+            />
 
-            {/* ENCABEZADO PRINCIPAL */}
-            <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
-                <PageHeader
-                    title="📥 Carga de Producción del Día & Informes"
-                    subtitle="Subí los PDFs de Susana para disparar automáticamente el picking de hilados y la matriz de cambios de máquina"
-                />
-
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {/* Botón para mostrar / ocultar el cargador de PDFs */}
-                    <Btn
-                        variant={showUploadBox ? 'secondary' : 'primary'}
-                        onClick={() => setShowUploadBox((prev) => !prev)}
-                        style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                        <span>📤</span> {showUploadBox ? 'Ocultar Carga de Datos' : 'Cargar Nuevas Planillas (PDFs)'}
-                    </Btn>
-
-                    {/* Selector de Planilla Histórica */}
-                    <div style={{ minWidth: '220px' }}>
+            {/* ENCABEZADO Y SELECTS DE PLANTA / SECTOR + CARGA DE CARPETA */}
+            <PageHeader
+                title="Planilla Diaria de Producción — Hilado y Cambios"
+                subtitle="Subí la carpeta de PDFs del día para obtener el listado de hilado (kilos, conos, stock y picking) y el listado de cambios de máquina."
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {/* Select Planta (predeterminado Der Will) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 600 }}>Planta:</span>
                         <select
-                            value={activePlanilla?.planillaId || ''}
-                            onChange={(e) => handleSelectPlanillaHistorica(e.target.value)}
+                            value={plantaSeleccionada}
+                            onChange={(e) => {
+                                setPlantaSeleccionada(e.target.value);
+                                setLocalPlanilla(null);
+                            }}
                             style={{
-                                width: '100%',
-                                padding: '9px 12px',
-                                background: 'var(--bg-secondary, #1a1d2e)',
-                                border: '1px solid var(--border-color, #2a2d3e)',
+                                background: '#1f2937',
+                                color: '#f9fafb',
+                                border: '1px solid rgba(255,255,255,0.15)',
                                 borderRadius: '8px',
-                                color: '#f3f4f6',
+                                padding: '7px 12px',
                                 fontSize: '13px',
-                                outline: 'none',
+                                fontWeight: 600,
                                 cursor: 'pointer',
                             }}
                         >
-                            <option value="">📅 Planilla del día (Última procesada)</option>
-                            {historialPlanillas.map((p: any) => (
-                                <option key={p.id} value={p.id}>
-                                    Planilla: {p.fecha} ({new Date(p.creado_en).toLocaleDateString('es-AR')})
+                            {plantasOpciones.map((p) => (
+                                <option key={p.id || p.nombre} value={p.nombre}>
+                                    {p.nombre}
                                 </option>
                             ))}
                         </select>
                     </div>
 
-                    {activePlanilla && (
-                        <Btn
-                            variant="secondary"
-                            onClick={handleRecalcular}
-                            disabled={isRecalculating}
-                            style={{ fontSize: '13px' }}
+                    {/* Select Sector (predeterminado Tejeduría) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 600 }}>Sector:</span>
+                        <select
+                            value={sectorSeleccionado}
+                            onChange={(e) => {
+                                setSectorSeleccionado(e.target.value);
+                                setLocalPlanilla(null);
+                            }}
+                            style={{
+                                background: '#1f2937',
+                                color: '#f9fafb',
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                borderRadius: '8px',
+                                padding: '7px 12px',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                            }}
                         >
-                            {isRecalculating ? 'Recalculando...' : '🔄 Recalcular con Stock Actual'}
-                        </Btn>
-                    )}
+                            {sectoresOpciones.map((sec) => (
+                                <option key={sec} value={sec}>
+                                    {sec === 'TEJEDURIA' ? 'Tejeduría' : sec}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
                     <Btn
-                        variant="secondary"
-                        onClick={() => navigate('/produccion/dashboard')}
-                        style={{ fontSize: '13px' }}
+                        variant="primary"
+                        onClick={() => folderInputRef.current?.click()}
+                        disabled={isUploading}
                     >
-                        📊 Ir al Dashboard ↗️
+                        {isUploading ? 'Procesando PDFs...' : '📁 Subir Carpeta del Día'}
+                    </Btn>
+                    <Btn
+                        variant="secondary"
+                        onClick={() => filesInputRef.current?.click()}
+                        disabled={isUploading}
+                    >
+                        📄 Elegir PDFs
                     </Btn>
                 </div>
+            </PageHeader>
+
+            {/* ZONA DRAG & DROP / SELECCIÓN DE FECHA SI LA CARPETA TRAE VARIOS DÍAS */}
+            <div
+                onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        handleSelectFilesList(e.dataTransfer.files);
+                    }
+                }}
+                style={{
+                    marginBottom: '18px',
+                    padding: activePlanilla ? '12px 18px' : '28px 20px',
+                    borderRadius: '12px',
+                    border: isDragging
+                        ? '2px dashed #60a5fa'
+                        : '1px dashed rgba(255, 255, 255, 0.18)',
+                    background: isDragging ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.02)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    transition: 'all 0.15s ease',
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '20px' }}>📂</span>
+                    <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#e5e7eb' }}>
+                            {activePlanilla
+                                ? `Planilla cargada: ${fechaDiaFormateada} (${activePlanilla.archivosProcesados?.length || 0} archivos PDF)`
+                                : 'Arrastrá acá los archivos PDF de la carpeta de producción diaria o usá el botón "Subir Carpeta del Día"'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                            Formato esperado: Áreas 1 a 5 · Turnos Mañana (M) y Noche (N) — Planta {plantaSeleccionada} ({sectorSeleccionado === 'TEJEDURIA' ? 'Tejeduría' : sectorSeleccionado})
+                        </div>
+                    </div>
+                </div>
+
+                {/* Si la carpeta subida tiene más de un día (ej: fwd 4 tiene 13-11 y 16-11), permitir elegir cuál día ver */}
+                {datesInStagedFiles.length > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 600 }}>
+                            La carpeta contiene {datesInStagedFiles.length} fechas. Elegí el día:
+                        </span>
+                        {datesInStagedFiles.map((d) => (
+                            <Btn
+                                key={d}
+                                variant={selectedDateFromFiles === d ? 'primary' : 'secondary'}
+                                onClick={() => {
+                                    setSelectedDateFromFiles(d);
+                                    void submitFilesToBackend(stagedFiles, d);
+                                }}
+                                disabled={isUploading}
+                            >
+                                📅 {d.replace('-', '/')}/{new Date().getFullYear()}
+                            </Btn>
+                        ))}
+                    </div>
+                )}
             </div>
 
-            {/* SECCIÓN DESPLEGABLE DE CARGA DE ARCHIVOS PDFS */}
-            {showUploadBox && (
-                <Card
-                    className="no-print"
+            {uploadError && (
+                <div
                     style={{
-                        padding: '24px',
-                        marginBottom: '24px',
-                        background: 'linear-gradient(135deg, rgba(30, 27, 75, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)',
-                        border: '2px dashed #6366f1',
-                        borderRadius: '16px',
+                        marginBottom: '16px',
+                        padding: '12px 16px',
+                        borderRadius: '10px',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        color: '#fca5a5',
+                        fontSize: '13px',
+                        fontWeight: 600,
                     }}
                 >
-                    <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-                        <div style={{ fontSize: '42px', marginBottom: '8px' }}>📂</div>
-                        <h3 style={{ margin: '0 0 6px 0', fontSize: '18px', fontWeight: 800, color: '#f3f4f6' }}>
-                            Carga de Datos de Producción (Archivos de Susana)
-                        </h3>
-                        <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#cbd5e1' }}>
-                            Seleccioná las planillas diarias de tejeduría (PDFs). El motor extraerá las máquinas, explosión de hilados por prenda y los cambios programados.
-                        </p>
-
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            multiple
-                            accept=".pdf,application/pdf"
-                            onChange={handleFilesSelected}
-                            style={{ display: 'none' }}
-                        />
-
-                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <Btn
-                                onClick={() => fileInputRef.current?.click()}
-                                style={{ background: '#4f46e5', color: '#fff', fontSize: '13px' }}
-                            >
-                                📁 Seleccionar Archivos PDFs
-                            </Btn>
-
-                            {selectedFiles.length > 0 && (
-                                <Btn
-                                    onClick={handleUploadSubmit}
-                                    disabled={isUploading}
-                                    style={{ background: '#10b981', color: '#fff', fontSize: '13px', fontWeight: 700 }}
-                                >
-                                    {isUploading ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <Spinner /> <span>Procesando {selectedFiles.length} planillas...</span>
-                                        </div>
-                                    ) : (
-                                        `🚀 Procesar ${selectedFiles.length} archivo(s)`
-                                    )}
-                                </Btn>
-                            )}
-                        </div>
-
-                        {selectedFiles.length > 0 && (
-                            <div style={{ marginTop: '12px', fontSize: '12px', color: '#a5b4fc' }}>
-                                Archivos seleccionados: {selectedFiles.map((f) => f.name).join(', ')}
-                            </div>
-                        )}
-
-                        {uploadError && (
-                            <div style={{ marginTop: '12px', padding: '8px 12px', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #ef4444', borderRadius: '8px', color: '#fca5a5', fontSize: '12px' }}>
-                                ⚠️ {uploadError}
-                            </div>
-                        )}
-                    </div>
-                </Card>
+                    ⚠️ {uploadError}
+                </div>
             )}
 
-            {/* AVISO SI NO HAY PLANILLA ACTIVA */}
-            {!activePlanilla && !loadingPlanilla && (
-                <Card style={{ padding: '40px 20px', textAlign: 'center', marginBottom: '24px' }}>
-                    <div style={{ fontSize: '42px', marginBottom: '12px' }}>📋</div>
-                    <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 8px 0', color: '#f3f4f6' }}>
-                        Aún no se ha cargado la producción del día
-                    </h3>
-                    <p style={{ fontSize: '13px', color: '#9ca3af', maxWidth: '520px', margin: '0 auto 16px auto' }}>
-                        Hacé clic en el botón de arriba <strong>"Cargar Nuevas Planillas (PDFs)"</strong> para subir las órdenes de tejeduría de hoy.
-                    </p>
+            {(loadingPlanilla || isUploading) && !activePlanilla && (
+                <Card style={{ padding: '48px', textAlign: 'center' }}>
+                    <Spinner />
+                    <div style={{ marginTop: '12px', color: '#9ca3af', fontSize: '14px' }}>
+                        Analizando planilla diaria, calculando cambios de máquina y explosión de hilado...
+                    </div>
                 </Card>
             )}
 
             {activePlanilla && (
                 <>
-                    {/* 4 TARJETAS KPI DEL DÍA (INCLUYE EL NUEVO DATO DE MÁQUINAS NO ACTIVAS) */}
+                    {/* TARJETAS DE RESUMEN DEL DÍA */}
                     <div
-                        className="no-print"
                         style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                            gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)',
                             gap: '14px',
-                            marginBottom: '22px',
-                        }}
-                    >
-                        {/* KPI 1: Producción Proyectada */}
-                        <Card style={{ padding: '16px 18px', background: 'var(--bg-secondary, #1a1d2e)', border: '1px solid var(--border-color, #2a2d3e)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, textTransform: 'uppercase' }}>
-                                    🧦 Producción Neta Día
-                                </span>
-                                <Badge color="#10b981">Planilla Activa</Badge>
-                            </div>
-                            <div style={{ fontSize: '26px', fontWeight: 800, color: '#f3f4f6', marginTop: '6px' }}>
-                                {(activePlanilla.resumenAlertas?.totalDocenasEstimadas || 0).toLocaleString('es-AR')} doc.
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                                {(activePlanilla.resumenAlertas?.totalParesEstimados || 0).toLocaleString('es-AR')} pares proyectados en 24h
-                            </div>
-                        </Card>
-
-                        {/* KPI 2: Máquinas No Activas (NUEVO DATO SOLICITADO) */}
-                        <Card
-                            onClick={() => setShowNoActivasModal(true)}
-                            style={{
-                                padding: '16px 18px',
-                                background: machinesStatusSummary.noActivasCount > 0 ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-secondary, #1a1d2e)',
-                                border: machinesStatusSummary.noActivasCount > 0 ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid var(--border-color, #2a2d3e)',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease',
-                            }}
-                        >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', color: machinesStatusSummary.noActivasCount > 0 ? '#ef4444' : '#10b981', fontWeight: 700, textTransform: 'uppercase' }}>
-                                    ⚠️ Máquinas No Activas
-                                </span>
-                                <span style={{ fontSize: '11px', color: '#60a5fa' }}>Ver Detalle ↗️</span>
-                            </div>
-                            <div style={{ fontSize: '26px', fontWeight: 800, color: machinesStatusSummary.noActivasCount > 0 ? '#ef4444' : '#10b981', marginTop: '6px' }}>
-                                {machinesStatusSummary.noActivasCount} máquinas
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                                {loadingMachines
-                                    ? 'Verificando estados...'
-                                    : `${machinesStatusSummary.activas} activas de ${machinesStatusSummary.total} en parque`}
-                            </div>
-                        </Card>
-
-                        {/* KPI 3: Picking de Hilados */}
-                        <Card
-                            onClick={() => setActiveTab('PICKING')}
-                            style={{
-                                padding: '16px 18px',
-                                background: activeTab === 'PICKING' ? 'rgba(56, 189, 248, 0.08)' : 'var(--bg-secondary, #1a1d2e)',
-                                border: activeTab === 'PICKING' ? '1px solid #38bdf8' : '1px solid var(--border-color, #2a2d3e)',
-                                cursor: 'pointer',
-                            }}
-                        >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>
-                                    🧶 Zona de Picking Hilado
-                                </span>
-                                <span style={{ fontSize: '11px', color: '#38bdf8' }}>↗️ Ver</span>
-                            </div>
-                            <div style={{ fontSize: '26px', fontWeight: 800, color: statsPicking.requierenBajar > 0 ? '#f59e0b' : '#10b981', marginTop: '6px' }}>
-                                {statsPicking.requierenBajar > 0 ? `${statsPicking.requierenBajar} a bajar` : '100% Cubierto'}
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                                {statsPicking.kilosABajarTotal > 0
-                                    ? `${statsPicking.kilosABajarTotal} kg a transferir de reserva a picking`
-                                    : `${statsPicking.cubiertosEnPicking} hilados listos en tejeduría`}
-                            </div>
-                        </Card>
-
-                        {/* KPI 4: Cambios de Máquina Hoy */}
-                        <Card
-                            onClick={() => setActiveTab('CAMBIOS')}
-                            style={{
-                                padding: '16px 18px',
-                                background: activeTab === 'CAMBIOS' ? 'rgba(167, 139, 250, 0.08)' : 'var(--bg-secondary, #1a1d2e)',
-                                border: activeTab === 'CAMBIOS' ? '1px solid #a78bfa' : '1px solid var(--border-color, #2a2d3e)',
-                                cursor: 'pointer',
-                            }}
-                        >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', color: '#a78bfa', fontWeight: 700, textTransform: 'uppercase' }}>
-                                    🔄 Cambios de Máquina Hoy
-                                </span>
-                                <span style={{ fontSize: '11px', color: '#a78bfa' }}>↗️ Ver</span>
-                            </div>
-                            <div style={{ fontSize: '26px', fontWeight: 800, color: '#a78bfa', marginTop: '6px' }}>
-                                {statsCambios.totalCambios} máquinas
-                            </div>
-                            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                                {statsCambios.horasParada}h paradas ({statsCambios.promedioMin} min prom. Marina)
-                            </div>
-                        </Card>
-                    </div>
-
-                    {/* SELECTOR DE LOS 2 INFORMES PRINCIPALES */}
-                    <div
-                        className="no-print"
-                        style={{
-                            display: 'flex',
-                            gap: '8px',
-                            borderBottom: '1px solid var(--border-color, #2a2d3e)',
                             marginBottom: '20px',
                         }}
                     >
-                        <button
-                            type="button"
-                            onClick={() => { setActiveTab('PICKING'); setSearchQuery(''); }}
-                            style={{
-                                padding: '12px 20px',
-                                background: 'transparent',
-                                border: 'none',
-                                borderBottom: activeTab === 'PICKING' ? '3px solid #38bdf8' : '3px solid transparent',
-                                color: activeTab === 'PICKING' ? '#38bdf8' : '#9ca3af',
-                                fontWeight: activeTab === 'PICKING' ? 700 : 500,
-                                fontSize: '14px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                            }}
-                        >
-                            <span>🧶</span> Informe 1: Hilado para Armar la Zona de Picking
-                            <span style={{
-                                fontSize: '11px',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                background: statsPicking.requierenBajar > 0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                                color: statsPicking.requierenBajar > 0 ? '#f59e0b' : '#10b981',
-                                fontWeight: 700,
-                            }}>
-                                {statsPicking.requierenBajar > 0 ? `${statsPicking.requierenBajar} a bajar` : 'OK'}
-                            </span>
-                        </button>
+                        <Card style={{ padding: '16px 18px', borderLeft: '4px solid #3b82f6' }}>
+                            <div style={{ fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>
+                                Día Cargado · Máquinas Activas
+                            </div>
+                            <div style={{ fontSize: '22px', fontWeight: 800, color: '#f9fafb', marginTop: '4px' }}>
+                                {fechaDiaFormateada}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#93c5fd', marginTop: '4px' }}>
+                                {activePlanilla.resumenAlertas.totalMaquinasAsignadas} máquinas en planilla ({activePlanilla.archivosProcesados?.length || 0} PDFs)
+                            </div>
+                        </Card>
 
-                        <button
-                            type="button"
-                            onClick={() => { setActiveTab('CAMBIOS'); setSearchQuery(''); }}
-                            style={{
-                                padding: '12px 20px',
-                                background: 'transparent',
-                                border: 'none',
-                                borderBottom: activeTab === 'CAMBIOS' ? '3px solid #a78bfa' : '3px solid transparent',
-                                color: activeTab === 'CAMBIOS' ? '#a78bfa' : '#9ca3af',
-                                fontWeight: activeTab === 'CAMBIOS' ? 700 : 500,
-                                fontSize: '14px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                            }}
-                        >
-                            <span>🔄</span> Informe 2: Cambios de Máquina & Hilados Entrantes
-                            <span style={{
-                                fontSize: '11px',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                background: 'rgba(167, 139, 250, 0.2)',
-                                color: '#a78bfa',
-                                fontWeight: 700,
-                            }}>
-                                {statsCambios.totalCambios} máquinas
-                            </span>
-                        </button>
-                    </div>
+                        <Card style={{ padding: '16px 18px', borderLeft: '4px solid #f59e0b' }}>
+                            <div style={{ fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>
+                                Cambios en la Planilla
+                            </div>
+                            <div style={{ fontSize: '22px', fontWeight: 800, color: '#fbbf24', marginTop: '4px' }}>
+                                {listadoCambios.length} cambios
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                                Máquinas con 2 artículos en el día (tiempo de cambio descontado de las 24h)
+                            </div>
+                        </Card>
 
-                    {/* BARRA DE FILTROS & ACCIONES */}
-                    <div
-                        className="no-print"
-                        style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: '12px',
-                            marginBottom: '16px',
-                        }}
-                    >
-                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <input
-                                type="text"
-                                placeholder={activeTab === 'PICKING' ? '🔍 Buscar hilado, código, artículo...' : '🔍 Buscar máquina, artículo, hilado...'}
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+                        <Card style={{ padding: '16px 18px', borderLeft: '4px solid #10b981' }}>
+                            <div
                                 style={{
-                                    padding: '8px 14px',
-                                    background: 'var(--bg-secondary, #1a1d2e)',
-                                    border: '1px solid var(--border-color, #2a2d3e)',
-                                    borderRadius: '8px',
-                                    color: '#f3f4f6',
-                                    fontSize: '13px',
-                                    minWidth: isMobile ? '100%' : '260px',
-                                    outline: 'none',
+                                    fontSize: '11px',
+                                    color: '#9ca3af',
+                                    textTransform: 'uppercase',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
                                 }}
-                            />
-
-                            {activeTab === 'PICKING' && (
-                                <select
-                                    value={filtroEstadoPicking}
-                                    onChange={(e) => setFiltroEstadoPicking(e.target.value as any)}
-                                    style={{
-                                        padding: '8px 12px',
-                                        background: 'var(--bg-secondary, #1a1d2e)',
-                                        border: '1px solid var(--border-color, #2a2d3e)',
-                                        borderRadius: '8px',
-                                        color: '#f3f4f6',
-                                        fontSize: '13px',
-                                        outline: 'none',
-                                    }}
-                                >
-                                    <option value="ALL">Todos los Estados ({itemsPicking.length})</option>
-                                    <option value="BAJAR">⚡ Requiere Bajar a Picking ({statsPicking.requierenBajar})</option>
-                                    <option value="FALTANTE">🚨 Faltante Crítico Compra ({statsPicking.faltantesCriticos})</option>
-                                    <option value="OK">🟢 Cubiertos en Picking ({statsPicking.cubiertosEnPicking})</option>
-                                </select>
-                            )}
-
-                            {activeTab === 'CAMBIOS' && (
-                                <select
-                                    value={filtroArea}
-                                    onChange={(e) => setFiltroArea(e.target.value)}
-                                    style={{
-                                        padding: '8px 12px',
-                                        background: 'var(--bg-secondary, #1a1d2e)',
-                                        border: '1px solid var(--border-color, #2a2d3e)',
-                                        borderRadius: '8px',
-                                        color: '#f3f4f6',
-                                        fontSize: '13px',
-                                        outline: 'none',
-                                    }}
-                                >
-                                    <option value="ALL">Todas las Áreas ({cambiosDetallados.length} cambios)</option>
-                                    <option value="1">Área 1 (M1-M22)</option>
-                                    <option value="2">Área 2 (M23-M67)</option>
-                                    <option value="3">Área 3 (M73-M117)</option>
-                                    <option value="4">Área 4 (M126-M170)</option>
-                                    <option value="5">Área 5 (M171-M190)</option>
-                                </select>
-                            )}
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            <Btn
-                                variant="secondary"
-                                onClick={handlePrint}
-                                style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
                             >
-                                <span>🖨️</span> {activeTab === 'PICKING' ? 'Imprimir Vale para Depósito' : 'Imprimir Plan para Mecánicos'}
-                            </Btn>
-                            <Btn
-                                variant="secondary"
-                                onClick={handleExportExcel}
-                                style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                Hilado Total del Día
+                                <InfoSignal
+                                    color="#10b981"
+                                    text="Calculado sobre las 24 hs del día (restando en cada máquina con cambio lo que tarda su tipo de cambio según la BD) a un ritmo promedio de planta de 0,8 docenas por hora."
+                                />
+                            </div>
+                            <div style={{ fontSize: '22px', fontWeight: 800, color: '#34d399', marginTop: '4px' }}>
+                                {totalKilosHilado.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} kg
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                                Equivalente a <strong>{totalConos.toLocaleString('es-AR')} conos</strong> en {listadoHilado.length} hilados
+                            </div>
+                        </Card>
+
+                        <Card
+                            style={{
+                                padding: '16px 18px',
+                                borderLeft: `4px solid ${pendientes.length > 0 ? '#ef4444' : '#10b981'}`,
+                            }}
+                        >
+                            <div style={{ fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 700 }}>
+                                Cobertura de Artículos y Estructuras
+                            </div>
+                            <div
+                                style={{
+                                    fontSize: '22px',
+                                    fontWeight: 800,
+                                    color: pendientes.length > 0 ? '#f87171' : '#34d399',
+                                    marginTop: '4px',
+                                }}
                             >
-                                <span>📥</span> Exportar a Excel
-                            </Btn>
-                        </div>
+                                {pendientes.length === 0
+                                    ? '100% Completos'
+                                    : `${pendientes.length} por completar`}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                                {activePlanilla.resumenAlertas.articulosNoEncontrados || 0} sin matchear ·{' '}
+                                {(activePlanilla.resumenAlertas.articulosSinEstructura || 0) +
+                                    (activePlanilla.resumenAlertas.articulosEstructuraIncompleta || 0)}{' '}
+                                sin estructura completa
+                            </div>
+                        </Card>
                     </div>
 
-                    {/* VISTA CONTENIDO */}
-                    <div className="printable-content">
-                        {/* INFORME 1: TABLA PICKING */}
-                        {activeTab === 'PICKING' && (
-                            <Card style={{ padding: '0px', overflow: 'hidden', border: '1px solid var(--border-color, #2a2d3e)' }}>
-                                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color, #2a2d3e)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#f3f4f6' }}>
-                                            🧶 Hilados Requeridos para Zona de Picking ({filteredPicking.length})
-                                        </h3>
-                                        <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>
-                                            Kilos y conos a bajar desde Reserva (Depósito central) al rack de piso de Tejeduría
+                    {/* PANEL DINÁMICO DE ARTÍCULOS SIN MATCHEAR O SIN ESTRUCTURA */}
+                    {pendientes.length > 0 && (
+                        <Card
+                            style={{
+                                marginBottom: '22px',
+                                padding: '16px 18px',
+                                background: 'rgba(245, 158, 11, 0.06)',
+                                border: '1px solid rgba(245, 158, 11, 0.28)',
+                            }}
+                        >
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '10px',
+                                    flexWrap: 'wrap',
+                                    marginBottom: '12px',
+                                }}
+                            >
+                                <div>
+                                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#fbbf24' }}>
+                                        ⚡ Artículos pendientes para completar el cálculo de hilado ({pendientes.length})
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#d1d5db', marginTop: '2px' }}>
+                                        Tocá cualquier artículo para vincular el código de Susana con el catálogo o cargarle su estructura de hilado. Al completarlo se actualiza la lista automáticamente.
+                                    </div>
+                                </div>
+                                <Btn
+                                    variant="secondary"
+                                    onClick={() => refetchPlanilla()}
+                                    disabled={fetchingPlanilla}
+                                >
+                                    {fetchingPlanilla ? 'Actualizando...' : '🔄 Actualizar datos'}
+                                </Btn>
+                            </div>
+
+                            <div
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(320px, 1fr))',
+                                    gap: '10px',
+                                }}
+                            >
+                                {pendientes.map((p) => {
+                                    const isSinMatch = p.estado === 'SIN_MATCH';
+                                    const isSinEst = p.estado === 'SIN_ESTRUCTURA';
+                                    return (
+                                        <div
+                                            key={p.key}
+                                            onClick={() => abrirAccionPendiente(p)}
+                                            style={{
+                                                padding: '10px 12px',
+                                                borderRadius: '9px',
+                                                background: 'rgba(17, 24, 39, 0.75)',
+                                                border: `1px solid ${
+                                                    isSinMatch ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)'
+                                                }`,
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                justifyContent: 'space-between',
+                                                gap: '6px',
+                                                transition: 'transform 0.12s ease, border-color 0.12s ease',
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                                <div>
+                                                    <div style={{ fontSize: '13px', fontWeight: 800, color: '#f9fafb' }}>
+                                                        {p.codigoSusana}
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                                        {p.descripcionPdf || 'Sin descripción'}{' '}
+                                                        {p.talle ? `· Talle ${p.talle}` : ''}{' '}
+                                                        {p.color ? `· ${p.color}` : ''}
+                                                    </div>
+                                                </div>
+                                                <Badge color={isSinMatch ? '#ef4444' : '#f59e0b'}>
+                                                    {isSinMatch
+                                                        ? 'SIN MATCHEAR'
+                                                        : isSinEst
+                                                          ? 'SIN ESTRUCTURA'
+                                                          : 'FALTA EQUIV.'}
+                                                </Badge>
+                                            </div>
+
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                    marginTop: '4px',
+                                                    fontSize: '11px',
+                                                }}
+                                            >
+                                                <span style={{ color: '#9ca3af' }}>
+                                                    Máq: {p.maquinas.map((m) => `M${m}`).join(', ')}
+                                                </span>
+                                                <span style={{ color: '#60a5fa', fontWeight: 700 }}>
+                                                    {isSinMatch
+                                                        ? '🔗 Elegir código →'
+                                                        : `🧩 Completar (${p.articuloMatcheado?.codigo}) →`}
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div style={{ fontSize: '12px', color: '#9ca3af' }}>
-                                        Consumo total día: <strong style={{ color: '#f3f4f6' }}>{statsPicking.totalKilosConsumo} kg</strong>
-                                    </div>
+                                    );
+                                })}
+                            </div>
+                        </Card>
+                    )}
+
+                    {/* =====================================================================
+                        LISTADO 1: HILADO (Hilado, Kilos del pedido, Conos, Stock, Picking)
+                       ===================================================================== */}
+                    <Card style={{ marginBottom: '26px', padding: '18px' }}>
+                        <div
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '12px',
+                                marginBottom: '14px',
+                            }}
+                        >
+                            <div>
+                                <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#f9fafb' }}>
+                                    1. Listado de Hilado del Día ({filteredHilado.length})
+                                </h2>
+                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>
+                                    Conos calculados según material (Algodón 1 kg · Nylon 700 g · Lycra 3,5 kg · Goma 500 g). Stock del depósito de Hilado (excluye Pilar).
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <select
+                                    value={filterTipoHilado}
+                                    onChange={(e) => setFilterTipoHilado(e.target.value)}
+                                    style={{
+                                        background: '#111827',
+                                        color: '#e5e7eb',
+                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        borderRadius: '8px',
+                                        padding: '7px 10px',
+                                        fontSize: '12px',
+                                    }}
+                                >
+                                    <option value="TODOS">Todos los materiales</option>
+                                    <option value="ALGODON">Algodón (1 kg/cono)</option>
+                                    <option value="NYLON">Nylon / Poliéster (700 g/cono)</option>
+                                    <option value="LYCRA">Lycra (3,5 kg/cono)</option>
+                                    <option value="GOMA">Goma (500 g/cono)</option>
+                                </select>
+
+                                <div style={{ width: isMobile ? '100%' : '230px' }}>
+                                    <Input
+                                        placeholder="Buscar hilado o artículo..."
+                                        value={searchHilado}
+                                        onChange={(val) => setSearchHilado(val)}
+                                    />
                                 </div>
 
-                                <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                                        <thead>
-                                            <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border-color, #2a2d3e)', color: '#9ca3af' }}>
-                                                <th style={{ padding: '12px 16px' }}>Estado Cobertura</th>
-                                                <th style={{ padding: '12px 16px' }}>Código Hilado</th>
-                                                <th style={{ padding: '12px 16px' }}>Descripción / Tono</th>
-                                                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Consumo Día</th>
-                                                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Stock en Picking</th>
-                                                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Stock Reserva</th>
-                                                <th style={{ padding: '12px 16px', textAlign: 'right', color: '#f59e0b' }}>A Bajar a Picking</th>
-                                                <th style={{ padding: '12px 16px' }}>Posición Rack</th>
-                                                <th style={{ padding: '12px 16px', textAlign: 'center' }}>Máquinas</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filteredPicking.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={9} style={{ padding: '36px', textAlign: 'center', color: '#9ca3af' }}>
-                                                        No se encontraron hilados con los filtros seleccionados.
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                filteredPicking.map((item: any, idx: number) => {
-                                                    const esCritico = item.estadoAbastecimiento === 'CRITICO_COMPRAR' || (item.aComprarKg || 0) > 0;
-                                                    const esBajar = item.estadoAbastecimiento === 'BAJAR_A_PICKING' || (item.aPasarAPickingKg || 0) > 0;
+                                <Btn
+                                    variant="secondary"
+                                    onClick={() =>
+                                        exportListadoHiladoDiaToExcel(
+                                            filteredHilado,
+                                            `hilado_dia_${activePlanilla.fechas?.[0] || 'planilla'}.xlsx`,
+                                        )
+                                    }
+                                >
+                                    📥 Exportar Excel
+                                </Btn>
+                            </div>
+                        </div>
 
-                                                    return (
-                                                        <tr
-                                                            key={item.codigoMaterial + idx}
-                                                            style={{
-                                                                borderBottom: '1px solid rgba(255,255,255,0.05)',
-                                                                background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
-                                                            }}
-                                                        >
-                                                            <td style={{ padding: '12px 16px' }}>
-                                                                {esCritico ? (
-                                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#ef4444', fontWeight: 700, fontSize: '11px', background: 'rgba(239, 68, 68, 0.15)', padding: '3px 8px', borderRadius: '6px' }}>
-                                                                        🚨 Faltante ({item.aComprarKg || 0} kg)
-                                                                    </span>
-                                                                ) : esBajar ? (
-                                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#f59e0b', fontWeight: 700, fontSize: '11px', background: 'rgba(245, 158, 11, 0.15)', padding: '3px 8px', borderRadius: '6px' }}>
-                                                                        ⚡ Bajar a Picking
-                                                                    </span>
-                                                                ) : (
-                                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#10b981', fontWeight: 700, fontSize: '11px', background: 'rgba(16, 185, 129, 0.15)', padding: '3px 8px', borderRadius: '6px' }}>
-                                                                        🟢 En Picking OK
-                                                                    </span>
-                                                                )}
-                                                            </td>
-                                                            <td style={{ padding: '12px 16px', fontWeight: 700, color: '#f3f4f6' }}>
-                                                                <div>{item.codigoMaterial}</div>
-                                                                {item.proveedor && (
-                                                                    <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>
-                                                                        {item.proveedor}
-                                                                    </div>
-                                                                )}
-                                                                {item.esSustituto && (
-                                                                    <span style={{
-                                                                        background: 'rgba(168, 85, 247, 0.15)',
-                                                                        color: '#c084fc',
-                                                                        padding: '2px 6px',
-                                                                        borderRadius: '4px',
-                                                                        fontSize: '10px',
-                                                                        fontWeight: 700,
-                                                                        display: 'inline-block',
-                                                                        marginTop: '3px'
-                                                                    }}>
-                                                                        🔄 Sustituto (Opción {item.prioridad})
-                                                                    </span>
-                                                                )}
-                                                            </td>
-                                                            <td style={{ padding: '12px 16px' }}>
-                                                                <div style={{ color: '#d1d5db', fontWeight: 500 }}>
-                                                                    {item.descripcionMaterial}
-                                                                </div>
-                                                                {(item.tono || item.colorNombre) && (
-                                                                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
-                                                                        Tono: {item.tono || item.colorNombre}
-                                                                    </div>
-                                                                )}
-                                                            </td>
-                                                            <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#f3f4f6' }}>
-                                                                {item.consumoDiaKg} kg
-                                                                <div style={{ fontSize: '11px', color: '#9ca3af' }}>~{item.conosNecesarios} conos</div>
-                                                            </td>
-                                                            <td style={{ padding: '12px 16px', textAlign: 'right', color: item.stockEnPickingKg >= item.consumoDiaKg ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
-                                                                {item.stockEnPickingKg} kg
-                                                            </td>
-                                                            <td style={{ padding: '12px 16px', textAlign: 'right', color: '#9ca3af' }}>
-                                                                {item.stockEnReservaKg} kg
-                                                            </td>
-                                                            <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                                                                {esBajar ? (
-                                                                    <span style={{ color: '#f59e0b', fontWeight: 800, fontSize: '14px' }}>
-                                                                        +{item.aPasarAPickingKg} kg
-                                                                    </span>
-                                                                ) : (
-                                                                    <span style={{ color: '#6b7280' }}>-</span>
-                                                                )}
-                                                            </td>
-                                                            <td style={{ padding: '12px 16px' }}>
-                                                                {item.partidaSugerida ? (
-                                                                    <div>
-                                                                        <div style={{ color: '#10b981', fontWeight: 700, fontSize: '12px' }}>
-                                                                            Partida #{item.partidaSugerida}
-                                                                        </div>
-                                                                        <div style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 600 }}>
-                                                                            Pos: {item.posicionOrigenSugerida || 'RESERVA'}
-                                                                        </div>
-                                                                    </div>
-                                                                ) : item.posicionesPickingSugeridas && item.posicionesPickingSugeridas.length > 0 ? (
-                                                                    <span style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>
-                                                                        {item.posicionesPickingSugeridas.join(', ')}
-                                                                    </span>
-                                                                ) : (
-                                                                    <span style={{ color: '#6b7280', fontSize: '11px' }}>Zona Picking</span>
-                                                                )}
-                                                            </td>
-                                                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                                                                <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-                                                                    {item.maquinasCount || (item.maquinas ? item.maquinas.length : 0)} máq.
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
-                        )}
+                        <div style={{ overflowX: 'auto' }}>
+                            <table
+                                style={{
+                                    width: '100%',
+                                    borderCollapse: 'collapse',
+                                    fontSize: '13px',
+                                }}
+                            >
+                                <thead>
+                                    <tr
+                                        style={{
+                                            borderBottom: '1px solid rgba(255,255,255,0.12)',
+                                            textAlign: 'left',
+                                            color: '#9ca3af',
+                                            fontSize: '11px',
+                                            textTransform: 'uppercase',
+                                        }}
+                                    >
+                                        <th style={{ padding: '10px 12px' }}>Hilado</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Kilos del Pedido</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                            Cuántos Conos Corresponde
+                                        </th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>En Stock (Depósito)</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                            En Pasillo de Picking
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredHilado.length === 0 ? (
+                                        <tr>
+                                            <td
+                                                colSpan={5}
+                                                style={{ padding: '24px', textAlign: 'center', color: '#9ca3af' }}
+                                            >
+                                                No hay hilados para mostrar con ese filtro.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredHilado.map((h) => {
+                                            const isExpanded = expandedHiladoId === h.id;
+                                            const faltaEnPicking = h.stockPickingKg < h.kilosPedido;
+                                            const faltaEnStockTotal = h.stockTotalKg < h.kilosPedido;
 
-                        {/* INFORME 2: TABLA CAMBIOS */}
-                        {activeTab === 'CAMBIOS' && (
-                            <Card style={{ padding: '0px', overflow: 'hidden', border: '1px solid var(--border-color, #2a2d3e)' }}>
-                                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color, #2a2d3e)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#f3f4f6' }}>
-                                            🔄 Cambios Programados ({filteredCambios.length})
-                                        </h3>
-                                        <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>
-                                            Qué artículo sale, qué entra, qué hilados llevar a pie de máquina y tiempos históricos reales de Marina
-                                        </div>
-                                    </div>
-                                    <div style={{ fontSize: '12px', color: '#a78bfa' }}>
-                                        ⏱️ Tiempo total de parada: <strong>{statsCambios.horasParada} horas</strong> ({statsCambios.minutosParada} min)
-                                    </div>
-                                </div>
-
-                                <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                                        <thead>
-                                            <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border-color, #2a2d3e)', color: '#9ca3af' }}>
-                                                <th style={{ padding: '12px 16px' }}>Máquina #</th>
-                                                <th style={{ padding: '12px 16px' }}>Área</th>
-                                                <th style={{ padding: '12px 16px' }}>Tipo de Cambio</th>
-                                                <th style={{ padding: '12px 16px' }}>Artículo Saliente</th>
-                                                <th style={{ padding: '12px 16px' }}>➔ Artículo Entrante</th>
-                                                <th style={{ padding: '12px 16px' }}>Hilados a Llevar a Pie de Máquina</th>
-                                                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Tiempo Estimado</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filteredCambios.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#9ca3af' }}>
-                                                        No se registran cambios programados con los filtros seleccionados.
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                filteredCambios.map((c: any, idx: number) => (
+                                            return (
+                                                <React.Fragment key={h.id}>
                                                     <tr
-                                                        key={`m-${c.maquina}-${idx}`}
+                                                        onClick={() =>
+                                                            setExpandedHiladoId(isExpanded ? null : h.id)
+                                                        }
                                                         style={{
-                                                            borderBottom: '1px solid rgba(255,255,255,0.05)',
-                                                            background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                                                            borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                                            cursor: 'pointer',
+                                                            background: isExpanded
+                                                                ? 'rgba(59, 130, 246, 0.08)'
+                                                                : 'transparent',
                                                         }}
                                                     >
-                                                        <td style={{ padding: '12px 16px' }}>
-                                                            <span style={{
-                                                                background: '#6366f1',
-                                                                color: '#ffffff',
+                                                        {/* Columna 1: Hilado */}
+                                                        <td style={{ padding: '11px 12px' }}>
+                                                            <div
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '8px',
+                                                                    flexWrap: 'wrap',
+                                                                }}
+                                                            >
+                                                                <span
+                                                                    style={{
+                                                                        fontWeight: 700,
+                                                                        color: '#f9fafb',
+                                                                    }}
+                                                                >
+                                                                    {isExpanded ? '▾' : '▸'} {h.codigoHilado}
+                                                                </span>
+                                                                <Badge
+                                                                    color={
+                                                                        h.tipoMaterialCono === 'ALGODON'
+                                                                            ? '#3b82f6'
+                                                                            : h.tipoMaterialCono === 'NYLON'
+                                                                              ? '#8b5cf6'
+                                                                              : h.tipoMaterialCono === 'LYCRA'
+                                                                                ? '#ec4899'
+                                                                                : h.tipoMaterialCono === 'GOMA'
+                                                                                  ? '#10b981'
+                                                                                  : '#6b7280'
+                                                                    }
+                                                                >
+                                                                    {h.categoria}
+                                                                </Badge>
+                                                                {h.sinEquivalenciaItem && (
+                                                                    <Badge color="#f59e0b">Sin ítem vinculado</Badge>
+                                                                )}
+                                                            </div>
+                                                            <div
+                                                                style={{
+                                                                    fontSize: '11px',
+                                                                    color: '#9ca3af',
+                                                                    marginTop: '2px',
+                                                                }}
+                                                            >
+                                                                {h.descripcionHilado} · {h.maquinasCount} máq.
+                                                            </div>
+                                                        </td>
+
+                                                        {/* Columna 2: Kilos del Pedido */}
+                                                        <td
+                                                            style={{
+                                                                padding: '11px 12px',
+                                                                textAlign: 'right',
                                                                 fontWeight: 800,
-                                                                padding: '4px 10px',
-                                                                borderRadius: '6px',
-                                                                fontSize: '13px',
-                                                                display: 'inline-block',
-                                                            }}>
-                                                                M{c.maquina}
-                                                            </span>
+                                                                color: '#f9fafb',
+                                                            }}
+                                                        >
+                                                            {h.kilosPedido.toLocaleString('es-AR', {
+                                                                minimumFractionDigits: 2,
+                                                                maximumFractionDigits: 2,
+                                                            })}{' '}
+                                                            kg
                                                         </td>
-                                                        <td style={{ padding: '12px 16px', color: '#9ca3af', fontSize: '12px' }}>
-                                                            {c.area}
+
+                                                        {/* Columna 3: Cuántos Conos Corresponde + Señal sutil si es estimado */}
+                                                        <td
+                                                            style={{
+                                                                padding: '11px 12px',
+                                                                textAlign: 'right',
+                                                            }}
+                                                        >
+                                                            <div
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'flex-end',
+                                                                    fontWeight: 800,
+                                                                    color: '#fbbf24',
+                                                                }}
+                                                            >
+                                                                {h.conos} conos
+                                                                {h.pesoConoEsEstimado && (
+                                                                    <InfoSignal
+                                                                        color="#f59e0b"
+                                                                        text={h.motivoPesoCono}
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                            <div style={{ fontSize: '10px', color: '#9ca3af' }}>
+                                                                ({h.pesoConoKg} kg/cono)
+                                                            </div>
                                                         </td>
-                                                        <td style={{ padding: '12px 16px' }}>
-                                                            <span style={{
-                                                                background: 'rgba(167, 139, 250, 0.15)',
-                                                                color: '#a78bfa',
+
+                                                        {/* Columna 4: Cuánto tengo en Stock */}
+                                                        <td
+                                                            style={{
+                                                                padding: '11px 12px',
+                                                                textAlign: 'right',
                                                                 fontWeight: 700,
-                                                                fontSize: '11px',
-                                                                padding: '3px 8px',
-                                                                borderRadius: '6px',
-                                                                textTransform: 'uppercase',
-                                                            }}>
-                                                                {c.tipoCambio}
-                                                            </span>
+                                                                color: faltaEnStockTotal ? '#f87171' : '#34d399',
+                                                            }}
+                                                        >
+                                                            {h.stockTotalKg.toLocaleString('es-AR', {
+                                                                minimumFractionDigits: 1,
+                                                                maximumFractionDigits: 2,
+                                                            })}{' '}
+                                                            kg
                                                         </td>
-                                                        <td style={{ padding: '12px 16px' }}>
-                                                            <div style={{ color: '#9ca3af', fontSize: '12px', textDecoration: 'line-through' }}>
-                                                                {c.saliente.codigo}
+
+                                                        {/* Columna 5: Cuánto tengo en el Pasillo de Picking */}
+                                                        <td
+                                                            style={{
+                                                                padding: '11px 12px',
+                                                                textAlign: 'right',
+                                                            }}
+                                                        >
+                                                            <div
+                                                                style={{
+                                                                    fontWeight: 700,
+                                                                    color: faltaEnPicking ? '#fbbf24' : '#60a5fa',
+                                                                }}
+                                                            >
+                                                                {h.stockPickingKg.toLocaleString('es-AR', {
+                                                                    minimumFractionDigits: 1,
+                                                                    maximumFractionDigits: 2,
+                                                                })}{' '}
+                                                                kg
                                                             </div>
-                                                            <div style={{ color: '#6b7280', fontSize: '11px' }}>
-                                                                {c.saliente.descripcion} ({c.saliente.talle})
-                                                            </div>
+                                                            {h.posicionesPicking.length > 0 && (
+                                                                <div style={{ fontSize: '10px', color: '#9ca3af' }}>
+                                                                    Pos: {h.posicionesPicking.slice(0, 3).join(', ')}
+                                                                </div>
+                                                            )}
                                                         </td>
-                                                        <td style={{ padding: '12px 16px' }}>
-                                                            <div style={{ color: '#10b981', fontWeight: 800, fontSize: '13px' }}>
-                                                                ➔ {c.entrante.codigo}
-                                                            </div>
-                                                            <div style={{ color: '#d1d5db', fontSize: '11px', marginTop: '2px' }}>
-                                                                {c.entrante.descripcion} • Talle: <strong>{c.entrante.talle}</strong>
-                                                            </div>
-                                                        </td>
-                                                        <td style={{ padding: '12px 16px' }}>
-                                                            {c.hiladosEntrantes && c.hiladosEntrantes.length > 0 ? (
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                                                    {c.hiladosEntrantes.map((h: any, hIdx: number) => (
-                                                                        <div key={hIdx} style={{ fontSize: '11px', color: '#d1d5db', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                            <span style={{ color: '#38bdf8' }}>🧶</span>
-                                                                            <span style={{ fontWeight: 600 }}>{h.codigo}</span>
-                                                                            <span style={{ color: '#9ca3af' }}>({h.descripcion})</span>
-                                                                            <span style={{ color: '#f59e0b', fontWeight: 700 }}>~{h.conosEstimados} conos</span>
+                                                    </tr>
+
+                                                    {/* Desglose expandible por artículos que consumen este hilado */}
+                                                    {isExpanded && (
+                                                        <tr style={{ background: 'rgba(17, 24, 39, 0.65)' }}>
+                                                            <td colSpan={5} style={{ padding: '10px 16px' }}>
+                                                                <div
+                                                                    style={{
+                                                                        fontSize: '11px',
+                                                                        color: '#9ca3af',
+                                                                        marginBottom: '6px',
+                                                                        fontWeight: 700,
+                                                                    }}
+                                                                >
+                                                                    Artículos en máquina que usan {h.codigoHilado} (Máquinas: {h.maquinas.map((m) => `M${m}`).join(', ')}):
+                                                                </div>
+                                                                <div
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        flexWrap: 'wrap',
+                                                                        gap: '8px',
+                                                                    }}
+                                                                >
+                                                                    {h.articulosDetalle.map((ad) => (
+                                                                        <div
+                                                                            key={ad.codigoArticulo}
+                                                                            style={{
+                                                                                padding: '6px 10px',
+                                                                                borderRadius: '6px',
+                                                                                background: 'rgba(255,255,255,0.04)',
+                                                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                                                fontSize: '11px',
+                                                                            }}
+                                                                        >
+                                                                            <strong style={{ color: '#e5e7eb' }}>
+                                                                                {ad.codigoArticulo}
+                                                                            </strong>{' '}
+                                                                            · {ad.kilos} kg ({ad.docenas} doc en {ad.horasTejido}h) · Máq:{' '}
+                                                                            {ad.maquinas.map((m) => `M${m}`).join(', ')}
                                                                         </div>
                                                                     ))}
                                                                 </div>
-                                                            ) : (
-                                                                <span style={{ color: '#6b7280', fontSize: '11px' }}>
-                                                                    Hilados estándar sin cambio especial
-                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+
+                    {/* =====================================================================
+                        LISTADO 2: CAMBIOS DE MÁQUINA (Máquina, Sale, Entra, Hora, Tipo, Duración)
+                       ===================================================================== */}
+                    <Card style={{ padding: '18px' }}>
+                        <div
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '12px',
+                                marginBottom: '14px',
+                            }}
+                        >
+                            <div>
+                                <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#f9fafb' }}>
+                                    2. Listado de Cambios de Máquina ({filteredCambios.length})
+                                </h2>
+                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>
+                                    Solo máquinas con cambio en la planilla. Hacé clic en la hora para editarla o en cualquier artículo con alerta para vincularlo.
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <select
+                                    value={filterAreaCambio}
+                                    onChange={(e) => setFilterAreaCambio(e.target.value)}
+                                    style={{
+                                        background: '#111827',
+                                        color: '#e5e7eb',
+                                        border: '1px solid rgba(255,255,255,0.12)',
+                                        borderRadius: '8px',
+                                        padding: '7px 10px',
+                                        fontSize: '12px',
+                                    }}
+                                >
+                                    <option value="TODAS">Todas las áreas</option>
+                                    {(activePlanilla.areas || []).map((a) => (
+                                        <option key={a} value={a}>
+                                            Área {a}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <div style={{ width: isMobile ? '100%' : '230px' }}>
+                                    <Input
+                                        placeholder="Buscar máquina o artículo..."
+                                        value={searchCambios}
+                                        onChange={(val) => setSearchCambios(val)}
+                                    />
+                                </div>
+
+                                <Btn
+                                    variant="secondary"
+                                    onClick={() =>
+                                        exportListadoCambiosDiaToExcel(
+                                            filteredCambios,
+                                            `cambios_dia_${activePlanilla.fechas?.[0] || 'planilla'}.xlsx`,
+                                        )
+                                    }
+                                >
+                                    📥 Exportar Excel
+                                </Btn>
+                            </div>
+                        </div>
+
+                        <div style={{ overflowX: 'auto' }}>
+                            <table
+                                style={{
+                                    width: '100%',
+                                    borderCollapse: 'collapse',
+                                    fontSize: '13px',
+                                }}
+                            >
+                                <thead>
+                                    <tr
+                                        style={{
+                                            borderBottom: '1px solid rgba(255,255,255,0.12)',
+                                            textAlign: 'left',
+                                            color: '#9ca3af',
+                                            fontSize: '11px',
+                                            textTransform: 'uppercase',
+                                        }}
+                                    >
+                                        <th style={{ padding: '10px 12px' }}>Máquina</th>
+                                        <th style={{ padding: '10px 12px' }}>Sale (Artículo Saliente)</th>
+                                        <th style={{ padding: '10px 12px' }}>Entra (Artículo Entrante)</th>
+                                        <th style={{ padding: '10px 12px' }}>Hora del Cambio</th>
+                                        <th style={{ padding: '10px 12px' }}>Tipo de Cambio</th>
+                                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>
+                                            Tiempo Esperado
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredCambios.length === 0 ? (
+                                        <tr>
+                                            <td
+                                                colSpan={6}
+                                                style={{ padding: '24px', textAlign: 'center', color: '#9ca3af' }}
+                                            >
+                                                No se detectaron cambios de artículo para ese filtro.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredCambios.map((c) => {
+                                            const isEditingHora = editingHoraId === c.id;
+
+                                            const renderArticuloCell = (ref: CambioArticuloRef) => {
+                                                const needsAction = ref.estadoMatch !== 'OK';
+                                                return (
+                                                    <div>
+                                                        <div
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                flexWrap: 'wrap',
+                                                            }}
+                                                        >
+                                                            <span
+                                                                style={{
+                                                                    fontWeight: 700,
+                                                                    color: needsAction ? '#fbbf24' : '#f9fafb',
+                                                                }}
+                                                            >
+                                                                {ref.codigoCatalogo || ref.codigoSusana}
+                                                            </span>
+                                                            {ref.talle && (
+                                                                <Badge color="#6366f1">Talle {ref.talle}</Badge>
                                                             )}
-                                                        </td>
-                                                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                                                            <div style={{ fontWeight: 800, color: '#f3f4f6', fontSize: '14px' }}>
-                                                                ⏱️ {c.tiempoFormateado}
+                                                            {needsAction && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        abrirAccionDesdeRefCambio(
+                                                                            ref,
+                                                                            c.maquina,
+                                                                            c.area,
+                                                                        )
+                                                                    }
+                                                                    style={{
+                                                                        background:
+                                                                            ref.estadoMatch === 'SIN_MATCH'
+                                                                                ? 'rgba(239, 68, 68, 0.18)'
+                                                                                : 'rgba(245, 158, 11, 0.18)',
+                                                                        color:
+                                                                            ref.estadoMatch === 'SIN_MATCH'
+                                                                                ? '#fca5a5'
+                                                                                : '#fde68a',
+                                                                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                                                                        borderRadius: '6px',
+                                                                        padding: '2px 7px',
+                                                                        fontSize: '10px',
+                                                                        fontWeight: 700,
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                >
+                                                                    {ref.estadoMatch === 'SIN_MATCH'
+                                                                        ? '🔗 Matchear'
+                                                                        : '🧩 Cargar estructura'}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div
+                                                            style={{
+                                                                fontSize: '11px',
+                                                                color: '#9ca3af',
+                                                                marginTop: '2px',
+                                                            }}
+                                                        >
+                                                            {ref.color || ref.descripcion}
+                                                            {ref.codigoCatalogo &&
+                                                            ref.codigoCatalogo !== ref.codigoSusana
+                                                                ? ` (PDF: ${ref.codigoSusana})`
+                                                                : ''}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            };
+
+                                            return (
+                                                <tr
+                                                    key={c.id}
+                                                    style={{
+                                                        borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                                    }}
+                                                >
+                                                    {/* Máquina */}
+                                                    <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ fontWeight: 800, color: '#60a5fa', fontSize: '14px' }}>
+                                                            Máq #{c.maquina}
+                                                        </div>
+                                                        <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                                            Área {c.area || '-'} · Turno {c.turno === 'N' ? 'Noche' : 'Mañana'}
+                                                        </div>
+                                                    </td>
+
+                                                    {/* De qué artículo sale */}
+                                                    <td style={{ padding: '11px 12px' }}>
+                                                        {renderArticuloCell(c.articuloSaliente)}
+                                                    </td>
+
+                                                    {/* A qué artículo entra */}
+                                                    <td style={{ padding: '11px 12px' }}>
+                                                        {renderArticuloCell(c.articuloEntrante)}
+                                                    </td>
+
+                                                    {/* Hora en que se va a hacer (default 07:00 AM en M / 06:00 AM en N, editable + señal discreta) */}
+                                                    <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
+                                                        {isEditingHora ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <input
+                                                                    type="time"
+                                                                    value={editingHoraValue}
+                                                                    onChange={(e) => setEditingHoraValue(e.target.value)}
+                                                                    style={{
+                                                                        background: '#111827',
+                                                                        color: '#f9fafb',
+                                                                        border: '1px solid #60a5fa',
+                                                                        borderRadius: '6px',
+                                                                        padding: '4px 6px',
+                                                                        fontSize: '12px',
+                                                                    }}
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isSavingHora}
+                                                                    onClick={() =>
+                                                                        void handleGuardarHoraCambio(c, editingHoraValue)
+                                                                    }
+                                                                    style={{
+                                                                        background: '#2563eb',
+                                                                        color: '#fff',
+                                                                        border: 'none',
+                                                                        borderRadius: '6px',
+                                                                        padding: '4px 8px',
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                >
+                                                                    OK
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setEditingHoraId(null)}
+                                                                    style={{
+                                                                        background: 'transparent',
+                                                                        color: '#9ca3af',
+                                                                        border: 'none',
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                >
+                                                                    ✕
+                                                                </button>
                                                             </div>
-                                                            <div style={{ fontSize: '10px', marginTop: '2px' }}>
-                                                                {c.fuenteTiempo === 'MARINA' ? (
-                                                                    <span style={{ color: '#a78bfa', background: 'rgba(167, 139, 250, 0.1)', padding: '1px 5px', borderRadius: '4px' }}>
-                                                                        Histórico Marina ({c.muestrasMarina} reg.)
-                                                                    </span>
-                                                                ) : (
-                                                                    <span style={{ color: '#9ca3af' }}>Estimado base</span>
+                                                        ) : (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                                                <span
+                                                                    onClick={() => {
+                                                                        setEditingHoraId(c.id);
+                                                                        setEditingHoraValue(c.hora);
+                                                                    }}
+                                                                    title="Hacé clic para cambiar la hora"
+                                                                    style={{
+                                                                        fontWeight: 700,
+                                                                        color: '#f9fafb',
+                                                                        padding: '4px 8px',
+                                                                        borderRadius: '6px',
+                                                                        background: 'rgba(255,255,255,0.05)',
+                                                                        border: '1px dashed rgba(255,255,255,0.18)',
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                >
+                                                                    🕒 {c.hora} hs
+                                                                </span>
+                                                                {c.horaEsDefault && (
+                                                                    <InfoSignal
+                                                                        color="#60a5fa"
+                                                                        text={c.motivoHora}
+                                                                    />
                                                                 )}
                                                             </div>
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
-                        )}
-                    </div>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Tipo de cambio según los artículos */}
+                                                    <td style={{ padding: '11px 12px' }}>
+                                                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                                            <Badge
+                                                                color={
+                                                                    c.tipoCambio.includes('ARTÍCULO')
+                                                                        ? '#ef4444'
+                                                                        : c.tipoCambio.includes('COLOR') &&
+                                                                            c.tipoCambio.includes('TALLE')
+                                                                          ? '#f59e0b'
+                                                                          : c.tipoCambio.includes('TALLE')
+                                                                            ? '#3b82f6'
+                                                                            : '#10b981'
+                                                                }
+                                                            >
+                                                                {c.tipoCambio}
+                                                            </Badge>
+                                                            {c.tipoEsInferidoSinMatch && (
+                                                                <InfoSignal
+                                                                    color="#f59e0b"
+                                                                    text="Tipo de cambio deducido de los códigos/talles/colores del PDF porque uno de los dos artículos aún no está matcheado en el catálogo."
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Cuánto se espera que tarde un cambio así */}
+                                                    <td
+                                                        style={{
+                                                            padding: '11px 12px',
+                                                            textAlign: 'right',
+                                                            whiteSpace: 'nowrap',
+                                                        }}
+                                                    >
+                                                        <div
+                                                            style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'flex-end',
+                                                                fontWeight: 800,
+                                                                color: '#fbbf24',
+                                                            }}
+                                                        >
+                                                            {c.duracionTexto}
+                                                            <InfoSignal
+                                                                color="#f59e0b"
+                                                                text={`${c.motivoDuracion}. Se descuentan ${c.duracionEsperadaMin} min de las 24 hs del día (Saliente: ${c.horasTejidoSaliente}h · Entrante: ${c.horasTejidoEntranteDia}h).`}
+                                                            />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
                 </>
             )}
 
-            {/* MODAL DETALLE MÁQUINAS NO ACTIVAS */}
-            {showNoActivasModal && (
-                <div
-                    style={{
-                        position: 'fixed',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        background: 'rgba(0,0,0,0.75)',
-                        backdropFilter: 'blur(4px)',
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        zIndex: 9999,
-                        padding: '16px',
-                    }}
-                    onClick={() => setShowNoActivasModal(false)}
+            {/* MODAL DINÁMICO PARA MATCHEAR CÓDIGO DE SUSANA O IR A CARGAR ESTRUCTURA */}
+            {modalPendiente && (
+                <Modal
+                    onClose={() => setModalPendiente(null)}
+                    title={
+                        modalPendiente.estado === 'SIN_MATCH'
+                            ? `🔗 Matchear código de Susana: ${modalPendiente.codigoSusana}`
+                            : `🧩 Completar estructura de: ${modalPendiente.articuloMatcheado?.codigo || modalPendiente.codigoSusana}`
+                    }
+                    wide
                 >
-                    <div
-                        style={{
-                            background: 'var(--bg-secondary, #1a1d2e)',
-                            border: '1px solid var(--border-color, #2a2d3e)',
-                            borderRadius: '16px',
-                            maxWidth: '700px',
-                            width: '100%',
-                            maxHeight: '80vh',
-                            overflowY: 'auto',
-                            padding: '24px',
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {/* Resumen del artículo leído en el PDF */}
+                        <div
+                            style={{
+                                padding: '12px 14px',
+                                borderRadius: '10px',
+                                background: 'rgba(245, 158, 11, 0.1)',
+                                border: '1px solid rgba(245, 158, 11, 0.35)',
+                            }}
+                        >
+                            <div style={{ fontSize: '15px', fontWeight: 800, color: '#f9fafb' }}>
+                                Código en PDF: <span style={{ color: '#fbbf24' }}>{modalPendiente.codigoSusana}</span>
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#d1d5db', marginTop: '4px' }}>
+                                Descripción: {modalPendiente.descripcionPdf || 'Sin descripción'} · Talle:{' '}
+                                <strong>{modalPendiente.talle || '-'}</strong> · Color:{' '}
+                                <strong>{modalPendiente.color || '-'}</strong> · Máquinas:{' '}
+                                {modalPendiente.maquinas.map((m) => `M${m}`).join(', ')}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#fde68a', marginTop: '6px' }}>
+                                {modalPendiente.mensajeEstado}
+                            </div>
+                        </div>
+
+                        {/* Si ya tiene artículo matcheado pero le falta estructura, botón directo para ir a cargarla */}
+                        {modalPendiente.articuloMatcheado && (
+                            <div
+                                style={{
+                                    padding: '12px 14px',
+                                    borderRadius: '10px',
+                                    background: 'rgba(59, 130, 246, 0.12)',
+                                    border: '1px solid rgba(59, 130, 246, 0.35)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '12px',
+                                    flexWrap: 'wrap',
+                                }}
+                            >
+                                <div>
+                                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#93c5fd' }}>
+                                        Artículo vinculado actualmente: {modalPendiente.articuloMatcheado.codigo}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: '#d1d5db' }}>
+                                        Podés ir directo a cargarle los hilados de su estructura o elegir otro código del catálogo abajo.
+                                    </div>
+                                </div>
+                                <Btn
+                                    variant="primary"
+                                    onClick={() =>
+                                        handleIrACargarEstructura(
+                                            modalPendiente.articuloMatcheado!.codigo,
+                                            modalPendiente.articuloMatcheado!.etapa || 'TEJIDO',
+                                        )
+                                    }
+                                >
+                                    🧩 Ir a Cargar Estructura de {modalPendiente.articuloMatcheado.codigo} →
+                                </Btn>
+                            </div>
+                        )}
+
+                        {/* Sugerencias rápidas del mismo modelo si las hay */}
+                        {modalPendiente.candidatosSugeridos && modalPendiente.candidatosSugeridos.length > 0 && (
                             <div>
-                                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#ef4444' }}>
-                                    ⚠️ Máquinas No Activas ({machinesStatusSummary.noActivasCount})
-                                </h3>
-                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '3px' }}>
-                                    Máquinas en parada, reparación o estado especial fuera de la línea de producción activa
+                                <div
+                                    style={{
+                                        fontSize: '12px',
+                                        fontWeight: 700,
+                                        color: '#9ca3af',
+                                        marginBottom: '6px',
+                                    }}
+                                >
+                                    Sugerencias del catálogo para este modelo:
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                    {modalPendiente.candidatosSugeridos.map((cand) => {
+                                        const isSel = selectedCatalogoArtId === cand.id;
+                                        return (
+                                            <button
+                                                key={cand.id}
+                                                type="button"
+                                                onClick={() => setSelectedCatalogoArtId(cand.id)}
+                                                style={{
+                                                    padding: '7px 11px',
+                                                    borderRadius: '8px',
+                                                    border: isSel
+                                                        ? '2px solid #60a5fa'
+                                                        : '1px solid rgba(255,255,255,0.15)',
+                                                    background: isSel
+                                                        ? 'rgba(59, 130, 246, 0.22)'
+                                                        : 'rgba(255,255,255,0.04)',
+                                                    color: '#f9fafb',
+                                                    fontSize: '12px',
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                }}
+                                            >
+                                                <div style={{ fontWeight: 700 }}>{cand.codigo}</div>
+                                                <div style={{ fontSize: '10px', color: cand.tieneEstructura ? '#34d399' : '#fbbf24' }}>
+                                                    {cand.tieneEstructura ? '✓ Con estructura' : '⚠ Sin estructura'}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setShowNoActivasModal(false)}
-                                style={{ background: 'transparent', border: 'none', color: '#9ca3af', fontSize: '20px', cursor: 'pointer' }}
+                        )}
+
+                        {/* Buscador de todos los códigos existentes en la BD */}
+                        <div>
+                            <label
+                                style={{
+                                    display: 'block',
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    color: '#d1d5db',
+                                    marginBottom: '6px',
+                                }}
                             >
-                                ✕
-                            </button>
+                                🔍 Buscar entre todos los códigos de artículos existentes en la Base de Datos:
+                            </label>
+                            <Input
+                                placeholder="Escribí código, modelo, talle o descripción..."
+                                value={searchCatalogo}
+                                onChange={(val) => setSearchCatalogo(val)}
+                            />
                         </div>
 
-                        {/* Desglose rápido por estado */}
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-                            {Object.entries(machinesStatusSummary.breakdown).map(([status, count]) => (
-                                <span
-                                    key={status}
-                                    style={{
-                                        fontSize: '11px',
-                                        fontWeight: 700,
-                                        padding: '4px 10px',
-                                        borderRadius: '8px',
-                                        background: 'rgba(239, 68, 68, 0.15)',
-                                        color: '#ef4444',
-                                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                                    }}
-                                >
-                                    {status}: {count}
-                                </span>
-                            ))}
-                        </div>
-
-                        {/* Listado de Máquinas */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
-                            {machinesStatusSummary.noActivasList.map((m: any) => (
-                                <div
-                                    key={m.id}
-                                    style={{
-                                        background: 'rgba(0,0,0,0.25)',
-                                        border: '1px solid rgba(255,255,255,0.08)',
-                                        borderRadius: '8px',
-                                        padding: '10px 12px',
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontWeight: 800, color: '#f3f4f6' }}>M{m.number}</span>
-                                        <Badge color="#ef4444">{m.status}</Badge>
-                                    </div>
-                                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
-                                        {m.plant?.name || 'Planta'} • {m.codigoInterno || 'S/C'}
-                                    </div>
-                                    {m.lastChangeBy && (
-                                        <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>
-                                            Por: {m.lastChangeBy}
-                                        </div>
-                                    )}
+                        <div
+                            style={{
+                                maxHeight: '250px',
+                                overflowY: 'auto',
+                                borderRadius: '8px',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                background: 'rgba(0,0,0,0.25)',
+                            }}
+                        >
+                            {loadingCatalogo ? (
+                                <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af' }}>
+                                    <Spinner /> Buscando códigos en la base de datos...
                                 </div>
-                            ))}
+                            ) : catalogoOpciones.length === 0 ? (
+                                <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: '12px' }}>
+                                    No se encontraron artículos con ese filtro.
+                                </div>
+                            ) : (
+                                catalogoOpciones.map((art) => {
+                                    const isSelected = selectedCatalogoArtId === art.id;
+                                    return (
+                                        <div
+                                            key={art.id}
+                                            onClick={() => setSelectedCatalogoArtId(art.id)}
+                                            style={{
+                                                padding: '10px 14px',
+                                                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                                cursor: 'pointer',
+                                                background: isSelected ? 'rgba(59, 130, 246, 0.22)' : 'transparent',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: '10px',
+                                            }}
+                                        >
+                                            <div>
+                                                <div style={{ fontWeight: 700, color: '#f9fafb', fontSize: '13px' }}>
+                                                    {art.codigo}{' '}
+                                                    <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 400 }}>
+                                                        ({art.etapa || 'TEJIDO'})
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+                                                    {art.descripcion} · Talle: {art.talle || '-'} · Var: {art.variante || '-'}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <Badge color={art.tieneEstructura ? '#10b981' : '#f59e0b'}>
+                                                    {art.tieneEstructura
+                                                        ? `✓ Estructura (${art.componentesCount})`
+                                                        : '⚠ Sin estructura'}
+                                                </Badge>
+                                                {!art.tieneEstructura && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleIrACargarEstructura(art.codigo, art.etapa || 'TEJIDO');
+                                                        }}
+                                                        style={{
+                                                            background: 'rgba(59, 130, 246, 0.2)',
+                                                            color: '#93c5fd',
+                                                            border: '1px solid rgba(59, 130, 246, 0.4)',
+                                                            borderRadius: '6px',
+                                                            padding: '3px 8px',
+                                                            fontSize: '11px',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        Cargar estructura →
+                                                    </button>
+                                                )}
+                                                <input
+                                                    type="radio"
+                                                    checked={isSelected}
+                                                    onChange={() => setSelectedCatalogoArtId(art.id)}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
                         </div>
 
-                        <div style={{ marginTop: '20px', textAlign: 'right' }}>
-                            <Btn variant="secondary" onClick={() => setShowNoActivasModal(false)}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                            <Btn variant="secondary" onClick={() => setModalPendiente(null)}>
                                 Cerrar
+                            </Btn>
+                            <Btn
+                                variant="primary"
+                                disabled={!selectedCatalogoArtId || isLinking}
+                                onClick={() => void handleConfirmarMatcheo()}
+                            >
+                                {isLinking ? 'Guardando vínculo...' : '✓ Vincular Código y Actualizar Lista'}
                             </Btn>
                         </div>
                     </div>
-                </div>
+                </Modal>
             )}
         </div>
     );

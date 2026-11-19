@@ -5,7 +5,56 @@ import type {
     HojaRepartidorItem,
     HojaPickingItem,
     ParsedMachineEntry,
+    HiladoPlanillaItem,
+    CambioPlanillaItem,
 } from '../types/ordenesProduccion.types';
+
+export function exportListadoHiladoDiaToExcel(items: HiladoPlanillaItem[], filename = 'listado_hilado_dia.xlsx') {
+    const data = items.map((h, idx) => ({
+        'N°': idx + 1,
+        'Hilado': h.codigoHilado,
+        'Descripción': h.descripcionHilado,
+        'Categoría / Material': h.categoria,
+        'Kilos del Pedido': h.kilosPedido,
+        'Conos Correspondientes': h.conos,
+        'Peso por Cono (KG)': h.pesoConoKg,
+        'Origen Peso Cono': h.pesoConoEsEstimado ? 'Estimado por categoría' : 'Cargado en BD',
+        'En Stock (KG)': h.stockTotalKg,
+        'En Pasillo de Picking (KG)': h.stockPickingKg,
+        'Posiciones Picking': h.posicionesPicking?.join(', ') || '-',
+        'N° Máquinas': h.maquinasCount,
+        'Máquinas': h.maquinas.map((m) => `M${m}`).join(', '),
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Hilado del Día');
+    XLSX.writeFile(wb, filename);
+}
+
+export function exportListadoCambiosDiaToExcel(items: CambioPlanillaItem[], filename = 'listado_cambios_dia.xlsx') {
+    const data = items.map((c, idx) => ({
+        'N°': idx + 1,
+        'Máquina': `M${c.maquina}`,
+        'Área': c.area ? `Área ${c.area}` : '-',
+        'Turno': c.turno,
+        'Sale (Artículo)': c.articuloSaliente.codigoCatalogo || c.articuloSaliente.codigoSusana,
+        'Sale (Talle / Color)': [c.articuloSaliente.talle, c.articuloSaliente.color].filter(Boolean).join(' - '),
+        'Entra (Artículo)': c.articuloEntrante.codigoCatalogo || c.articuloEntrante.codigoSusana,
+        'Entra (Talle / Color)': [c.articuloEntrante.talle, c.articuloEntrante.color].filter(Boolean).join(' - '),
+        'Hora del Cambio': c.hora,
+        'Origen Hora': c.horaEsDefault ? 'Default' : 'Personalizado',
+        'Tipo de Cambio': c.tipoCambio,
+        'Tiempo Esperado': c.duracionTexto,
+        'Minutos Esperados': c.duracionEsperadaMin,
+        'Fuente Duración': c.motivoDuracion,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Cambios del Día');
+    XLSX.writeFile(wb, filename);
+}
 
 export function exportArticulosToExcel(articulos: ArticuloProduccionSummary[], filename = 'articulos_a_tejer.xlsx') {
     const data = articulos.map((a) => ({

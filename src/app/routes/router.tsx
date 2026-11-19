@@ -160,9 +160,9 @@ export const router = createBrowserRouter([
               { path: "produccion/informe-cambios", element: <LazyRoute element={InformeCambiosPage} /> },
             ]
           },
-          // SECTOR: DESARROLLO
+          // SECTOR: DESARROLLO (y acceso desde Producción para completar estructuras/equivalencias)
           {
-            element: <SectorGuard allowedSectors={['DESARROLLO']} />,
+            element: <SectorGuard allowedSectors={['DESARROLLO', 'PRODUCCION']} />,
             children: [
               { path: "desarrollo/equivalencias", element: <LazyRoute element={DesarrolloEquivalenciasPage} /> },
               { path: "desarrollo/articulos", element: <LazyRoute element={DesarrolloArticulosPage} /> },

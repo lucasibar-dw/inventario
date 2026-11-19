@@ -42,10 +42,15 @@ export function EstructurasPage() {
     );
 
     // Estado Visualizador
-    const [parentCodeSearch, setParentCodeSearch] = useState('');
-    const [parentEtapaFilter, setParentEtapaFilter] = useState('TERMINADO');
+    const returnToParam = searchParams.get('returnTo');
+    const [parentCodeSearch, setParentCodeSearch] = useState(searchParams.get('codigo') || '');
+    const [parentEtapaFilter, setParentEtapaFilter] = useState(
+        searchParams.get('etapa') || (searchParams.get('codigo') ? 'TODOS' : 'TERMINADO')
+    );
     const [selectedParentCode, setSelectedParentCode] = useState(searchParams.get('codigo') || '');
-    const [breadcrumb, setBreadcrumb] = useState<string[]>([]);
+    const [breadcrumb, setBreadcrumb] = useState<string[]>(
+        searchParams.get('codigo') ? [searchParams.get('codigo')!] : []
+    );
 
     // Edición / Alta de línea de componente en el Visualizador
     const [addCompOpen, setAddCompOpen] = useState(false);
@@ -292,6 +297,29 @@ export function EstructurasPage() {
 
     return (
         <div style={{ padding: isMobile ? '12px' : '20px', maxWidth: '1500px', margin: '0 auto' }}>
+            {returnToParam && (
+                <div
+                    style={{
+                        marginBottom: '14px',
+                        padding: '10px 16px',
+                        borderRadius: '10px',
+                        background: 'rgba(59, 130, 246, 0.12)',
+                        border: '1px solid rgba(59, 130, 246, 0.35)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        flexWrap: 'wrap',
+                    }}
+                >
+                    <div style={{ fontSize: '13px', color: '#dbeafe' }}>
+                        Completando estructura de <strong>{selectedParentCode}</strong> desde la Planilla del Día. Al volver se actualizarán los listados automáticamente.
+                    </div>
+                    <Btn variant="primary" onClick={() => navigate(returnToParam)}>
+                        ← Volver a Planilla del Día
+                    </Btn>
+                </div>
+            )}
             <PageHeader
                 title="🌳 Ficha Técnica, Estructuras (BOM) & Simulador"
                 subtitle="Explosión multinivel (TERMINADO → COSTURA → TEJIDO → HILADO / INSUMO) y cálculo de producción/compras"

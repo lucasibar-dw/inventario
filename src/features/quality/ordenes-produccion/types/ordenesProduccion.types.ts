@@ -199,6 +199,121 @@ export interface HojaPickingItem {
     hasUnreviewedArticles: boolean;
 }
 
+export type EstadoMatchArticuloPlanilla =
+    | 'OK'
+    | 'SIN_MATCH'
+    | 'SIN_ESTRUCTURA'
+    | 'ESTRUCTURA_INCOMPLETA';
+
+export interface HiladoPlanillaItem {
+    id: string;
+    itemId: string | null;
+    codigoHilado: string;
+    codigoComponenteBom: string;
+    descripcionHilado: string;
+    categoria: string;
+    tipoMaterialCono: 'ALGODON' | 'NYLON' | 'LYCRA' | 'GOMA' | 'OTRO';
+    kilosPedido: number;
+    kilosManana: number;
+    kilosNoche: number;
+    pesoConoKg: number;
+    pesoConoEsEstimado: boolean;
+    motivoPesoCono: string;
+    conos: number;
+    stockTotalKg: number;
+    stockPickingKg: number;
+    stockReservaKg: number;
+    posicionesPicking: string[];
+    sinEquivalenciaItem: boolean;
+    esSustituto: boolean;
+    sustitutoMotivo: string | null;
+    maquinasCount: number;
+    maquinas: number[];
+    articulosDetalle: {
+        codigoArticulo: string;
+        codigoSusana: string;
+        descripcion: string;
+        maquinas: number[];
+        horasTejido: number;
+        docenas: number;
+        kilos: number;
+        ritmoEsEstimado: boolean;
+    }[];
+}
+
+export interface CambioArticuloRef {
+    codigoSusana: string;
+    codigoCatalogo: string | null;
+    articuloId: string | null;
+    descripcion: string;
+    talle: string;
+    color: string;
+    estadoMatch: EstadoMatchArticuloPlanilla;
+}
+
+export interface CambioPlanillaItem {
+    id: string;
+    fecha: string;
+    maquina: number;
+    area: string;
+    turno: 'M' | 'N' | string;
+    tipoMaquina: string;
+    articuloSaliente: CambioArticuloRef;
+    articuloEntrante: CambioArticuloRef;
+    hora: string;
+    horaEsDefault: boolean;
+    motivoHora: string;
+    tipoCambio: string;
+    tiposCambioArray: string[];
+    tipoEsInferidoSinMatch: boolean;
+    duracionEsperadaMin: number;
+    duracionTexto: string;
+    duracionEsEstimada: boolean;
+    motivoDuracion: string;
+    muestrasHistorialBd: number;
+    horasTejidoSaliente: number;
+    horasTejidoEntranteDia: number;
+}
+
+export interface PendientePlanillaItem {
+    key: string;
+    codigoSusana: string;
+    talle: string;
+    color: string;
+    descripcionPdf: string;
+    maquinas: number[];
+    areas: string[];
+    estado: 'SIN_MATCH' | 'SIN_ESTRUCTURA' | 'ESTRUCTURA_INCOMPLETA';
+    mensajeEstado: string;
+    articuloMatcheado: {
+        id: string;
+        codigo: string;
+        descripcion: string;
+        etapa: string;
+    } | null;
+    componentesSinItem: string[];
+    candidatosSugeridos: {
+        id: string;
+        codigo: string;
+        descripcion: string;
+        modelo: string | null;
+        talle: string | null;
+        variante: string | null;
+        etapa: string | null;
+        tieneEstructura: boolean;
+    }[];
+}
+
+export interface ContextoPlantaProduccion {
+    plantaId: string | null;
+    plantaNombre: string;
+    sector: string;
+    plantasDisponibles: { id: string; nombre: string; ubicacion?: string | null }[];
+    sectoresDisponibles: string[];
+    ritmoDocenasPorHoraDefault: number;
+    ritmoEsEstimadoGlobal: boolean;
+}
+
 export interface ProduccionParseResult {
     planillaId?: string;
     creadoEn?: string;
@@ -210,18 +325,25 @@ export interface ProduccionParseResult {
         entriesCount: number;
         machinesFound: number[];
     }[];
+    contextoPlanta?: ContextoPlantaProduccion;
+    listadoHilado?: HiladoPlanillaItem[];
+    listadoCambios?: CambioPlanillaItem[];
+    pendientesCompletar?: PendientePlanillaItem[];
     resumenAlertas: {
         totalArticulosDistintos: number;
         totalMaquinasAsignadas: number;
         articulosChequeados: number;
         articulosNoRevisados: number;
         articulosNoEncontrados: number;
+        articulosSinEstructura?: number;
+        articulosEstructuraIncompleta?: number;
         alertaGlobal: boolean;
         mensajeAlerta: string;
         totalMediasEstimadas?: number;
         totalParesEstimados?: number;
         totalDocenasEstimadas?: number;
         totalKilosHiladoDia?: number;
+        totalConosDia?: number;
         totalCambiosProgramados08AM?: number;
         totalItemsReponerPicking?: number;
         totalItemsCriticosComprar?: number;

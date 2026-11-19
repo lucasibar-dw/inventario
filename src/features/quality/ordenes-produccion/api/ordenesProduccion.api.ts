@@ -11,16 +11,95 @@ export const ordenesProduccionApi = api.injectEndpoints({
             }),
             invalidatesTags: ['PlanillaProduccion'],
         }),
-        recalcularPlanilla: builder.mutation<ProduccionParseResult, string | void>({
-            query: (id) => ({
-                url: id ? `articulos/ordenes-produccion/planillas/${id}/recalcular` : 'articulos/ordenes-produccion/recalcular',
+        recalcularPlanilla: builder.mutation<
+            ProduccionParseResult,
+            string | { id?: string; plantaId?: string; sector?: string } | void
+        >({
+            query: (arg) => {
+                const isObj = typeof arg === 'object' && arg !== null;
+                const id = typeof arg === 'string' ? arg : isObj ? arg.id : undefined;
+                const body = isObj ? { plantaId: arg.plantaId, sector: arg.sector } : undefined;
+                return {
+                    url: id ? `articulos/ordenes-produccion/planillas/${id}/recalcular` : 'articulos/ordenes-produccion/recalcular',
+                    method: 'POST',
+                    body,
+                };
+            },
+            invalidatesTags: ['PlanillaProduccion'],
+        }),
+        getUltimaPlanillaProduccion: builder.query<
+            ProduccionParseResult | null,
+            { plantaId?: string; sector?: string } | void
+        >({
+            query: (params) => {
+                if (params && (params.plantaId || params.sector)) {
+                    const p = new URLSearchParams();
+                    if (params.plantaId) p.set('plantaId', params.plantaId);
+                    if (params.sector) p.set('sector', params.sector);
+                    return `articulos/ordenes-produccion/ultima?${p.toString()}`;
+                }
+                return 'articulos/ordenes-produccion/ultima';
+            },
+            providesTags: ['PlanillaProduccion'],
+        }),
+        vincularCodigoSusana: builder.mutation<
+            ProduccionParseResult,
+            {
+                codigoSusana: string;
+                articuloId: string;
+                planillaId?: string;
+                plantaId?: string;
+                sector?: string;
+            }
+        >({
+            query: (body) => ({
+                url: 'articulos/ordenes-produccion/vincular-susi',
                 method: 'POST',
+                body,
             }),
             invalidatesTags: ['PlanillaProduccion'],
         }),
-        getUltimaPlanillaProduccion: builder.query<ProduccionParseResult | null, void>({
-            query: () => 'articulos/ordenes-produccion/ultima',
-            providesTags: ['PlanillaProduccion'],
+        actualizarHoraCambio: builder.mutation<
+            ProduccionParseResult,
+            {
+                fecha: string;
+                maquina: number;
+                turno: string;
+                hora: string;
+                planillaId?: string;
+                plantaId?: string;
+                sector?: string;
+            }
+        >({
+            query: (body) => ({
+                url: 'articulos/ordenes-produccion/cambio-hora',
+                method: 'PATCH',
+                body,
+            }),
+            invalidatesTags: ['PlanillaProduccion'],
+        }),
+        getCatalogoParaMatcheo: builder.query<
+            {
+                id: string;
+                codigo: string;
+                descripcion: string;
+                marca?: string | null;
+                modelo?: string | null;
+                talle?: string | null;
+                variante?: string | null;
+                etapa?: string | null;
+                codigoSusi?: string | null;
+                componentesCount: number;
+                tieneEstructura: boolean;
+            }[],
+            { search?: string; etapa?: string }
+        >({
+            query: (params = {}) => {
+                const p = new URLSearchParams();
+                if (params.search) p.set('search', params.search);
+                if (params.etapa) p.set('etapa', params.etapa);
+                return `articulos/ordenes-produccion/catalogo-matcheo?${p.toString()}`;
+            },
         }),
         listarPlanillasProduccion: builder.query<any[], void>({
             query: () => 'articulos/ordenes-produccion/planillas',
@@ -96,6 +175,9 @@ export const {
     useParseOrdenesProduccionMutation,
     useRecalcularPlanillaMutation,
     useGetUltimaPlanillaProduccionQuery,
+    useVincularCodigoSusanaMutation,
+    useActualizarHoraCambioMutation,
+    useGetCatalogoParaMatcheoQuery,
     useListarPlanillasProduccionQuery,
     useLazyGetPlanillaProduccionByIdQuery,
     useGetDepositosArticulosQuery,
