@@ -539,10 +539,27 @@ export default function AdminMovementsPage() {
         return { all: processedData.length, realAdjust, inCount, outCount, transferCount };
     }, [processedData]);
 
-    // Filtrado final de la tabla (por categoría seleccionada y buscador de texto)
+    // Mapa de lotes conocidos por material (para que en el selector de material también puedas escribir un lote, proveedor o categoría)
+    const lotsByItemId = useMemo(() => {
+        const map = new Map<string, Set<string>>();
+        movements.forEach((m: any) => {
+            if (m.itemId && m.batch?.lotNumber) {
+                if (!map.has(m.itemId)) map.set(m.itemId, new Set());
+                map.get(m.itemId)!.add(m.batch.lotNumber);
+            }
+        });
+        return map;
+    }, [movements]);
+
+    const normalizeText = (str: string) =>
+        (str || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+
+    // Filtrado final de la tabla (por categoría seleccionada y buscador flexible multi-palabra)
     const filteredRows = useMemo(() => {
-        const tokens = quickSearch
-            .toLowerCase()
+        const tokens = normalizeText(quickSearch)
             .trim()
             .split(/\s+/)
             .filter(Boolean);
@@ -554,27 +571,35 @@ export default function AdminMovementsPage() {
             if (flowFilter === 'TRANSFER' && m._category !== 'TRANSFER') return false;
 
             if (tokens.length > 0) {
-                const hay = [
-                    m.item?.descripcion,
-                    m.item?.codigoInterno,
-                    m.batch?.lotNumber,
-                    m._originLot,
-                    m._destLot,
-                    m.posicion?.codigo,
-                    m._originPos,
-                    m._destPos,
-                    m.deposito?.nombre,
-                    m.posicion?.depot?.nombre,
-                    m.documentoNumero,
-                    m.documento?.numero,
-                    m.documento?.partner?.name,
-                    m.user?.username,
-                    m.observaciones,
-                    m._badgeLabel,
-                ]
-                    .filter(Boolean)
-                    .join(' ')
-                    .toLowerCase();
+                const hay = normalizeText(
+                    [
+                        m.item?.descripcion,
+                        m.item?.codigoInterno,
+                        m.item?.category?.nombre,
+                        m.item?.categoria,
+                        m.categoria,
+                        m.item?.supplier?.name,
+                        m.batch?.supplier?.name,
+                        m.supplier?.name,
+                        m.documento?.partner?.name,
+                        m.batch?.lotNumber,
+                        m._originLot,
+                        m._destLot,
+                        m.posicion?.codigo,
+                        m._originPos,
+                        m._destPos,
+                        m.deposito?.nombre,
+                        m.posicion?.depot?.nombre,
+                        m.documentoNumero,
+                        m.documento?.numero,
+                        m.user?.username,
+                        m.user?.nombre,
+                        m.observaciones,
+                        m._badgeLabel,
+                    ]
+                        .filter(Boolean)
+                        .join(' ')
+                );
 
                 if (!tokens.every((t) => hay.includes(t))) return false;
             }
@@ -982,17 +1007,25 @@ export default function AdminMovementsPage() {
                     }}
                 >
                     <SearchSelect
-                        label="🏷️ Material (Seleccioná uno para ver todo su historial y saldo)"
+                        label="🏷️ Material (Buscá por categoría, descripción, proveedor, código o lote)"
                         value={itemId}
                         onChange={handleSelectItem}
                         options={[
                             { value: '', label: 'Todos los materiales (Vista general)' },
-                            ...rawItems.map((i: any) => ({
-                                value: i.id,
-                                label: `${i.codigoInterno} - ${i.descripcion}`,
-                            })),
+                            ...rawItems.map((i: any) => {
+                                const cat = i.category?.nombre || i.categoria || '';
+                                const sup = i.supplier?.name || '';
+                                const knownLots = lotsByItemId.get(i.id)
+                                    ? Array.from(lotsByItemId.get(i.id)!).join(' ')
+                                    : '';
+                                return {
+                                    value: i.id,
+                                    label: `${cat ? `[${cat}] ` : ''}${i.codigoInterno} - ${i.descripcion}${sup ? ` (${sup})` : ''}`,
+                                    searchText: `${cat} ${sup} ${i.codigoInterno} ${i.descripcion} ${knownLots}`,
+                                };
+                            }),
                         ]}
-                        placeholder="Escribir código o nombre del material..."
+                        placeholder="Ej: nylon negro eurotex..."
                     />
 
                     <Select
@@ -1008,8 +1041,8 @@ export default function AdminMovementsPage() {
                     />
 
                     <Input
-                        label="🔍 Buscar lote, posición, remito o usuario"
-                        placeholder="Ej: Lote 120, A-01, usuario..."
+                        label="🔍 Filtro libre (Categoría, material, proveedor, lote, posición...)"
+                        placeholder="Ej: nylon negro eurotex 120..."
                         value={quickSearch}
                         onChange={setQuickSearch}
                     />

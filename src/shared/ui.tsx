@@ -188,7 +188,7 @@ export function Select({ label, value, onChange, options, style, disabled }: {
 
 export function SearchSelect({ label, value, onChange, options, style, disabled, placeholder, onSelectNext, inputRef: externalInputRef }: {
     label?: string; value: string; onChange: (v: string) => void;
-    options: { value: string; label: string }[]; style?: React.CSSProperties;
+    options: { value: string; label: string; searchText?: string }[]; style?: React.CSSProperties;
     disabled?: boolean; placeholder?: string;
     onSelectNext?: () => void;
     inputRef?: React.Ref<HTMLInputElement>;
@@ -249,9 +249,19 @@ export function SearchSelect({ label, value, onChange, options, style, disabled,
         };
     }, [open]);
 
+    const normalizeSearch = (str: string) =>
+        (str || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+
+    const searchTokens = normalizeSearch(search).trim().split(/\s+/).filter(Boolean);
+
     const filtered = options.filter(o => {
-        if (!search) return true;
-        return o.label.toLowerCase().includes(search.toLowerCase());
+        if (searchTokens.length === 0) return true;
+        if (o.value === '__CREATE__') return true;
+        const target = normalizeSearch(`${o.label} ${o.searchText || ''}`);
+        return searchTokens.every(token => target.includes(token));
     });
 
     useEffect(() => {
