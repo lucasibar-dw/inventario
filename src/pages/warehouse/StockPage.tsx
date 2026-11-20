@@ -549,7 +549,27 @@ export default function StockPage() {
                                                 </div>
                                             </div>
                                             
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'right' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'right' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigate(`/admin/movements?itemId=${group.item.id}`);
+                                                    }}
+                                                    style={{
+                                                        background: 'rgba(99, 102, 241, 0.12)',
+                                                        border: '1px solid rgba(99, 102, 241, 0.3)',
+                                                        color: '#a5b4fc',
+                                                        borderRadius: '6px',
+                                                        padding: '4px 8px',
+                                                        fontSize: '11px',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    title="Ver todos los movimientos históricos (Kardex) de este material"
+                                                >
+                                                    📜 Historial
+                                                </button>
                                                 <div style={{ fontWeight: 800, color: '#6366f1', fontSize: '18px' }}>
                                                     {group.metrics.kilos.toLocaleString('es-AR', { minimumFractionDigits: 1 })}
                                                     <small style={{ fontSize: '10px', fontWeight: 400, marginLeft: '2px' }}>kg</small>
@@ -706,9 +726,14 @@ export default function StockPage() {
                                     `${group.metrics.kilos.toLocaleString('es-AR', { minimumFractionDigits: 1 })} ${group.item.unidadPrincipal || 'kg'}`,
                                     group.metrics.units > 0 ? `${group.metrics.units.toLocaleString('es-AR')} ${group.item.unidadSecundaria || 'un'}` : '-',
                                     <span key="loc" style={{ color: 'var(--text-subtle, #94a3b8)', fontSize: '12px' }}>{locationCodes}</span>,
-                                    <Btn key="b" small variant="secondary" onClick={() => setDetailGroupId(group.item.id)}>
-                                        🔍 Ver Lotes
-                                    </Btn>
+                                    <div key="b" style={{ display: 'flex', gap: '6px' }}>
+                                        <Btn small variant="secondary" onClick={() => setDetailGroupId(group.item.id)}>
+                                            🔍 Ver Lotes
+                                        </Btn>
+                                        <Btn small variant="secondary" onClick={() => navigate(`/admin/movements?itemId=${group.item.id}`)} title="Ver movimientos históricos (Kardex)">
+                                            📜 Historial
+                                        </Btn>
+                                    </div>
                                 ];
                             })}
                         />
