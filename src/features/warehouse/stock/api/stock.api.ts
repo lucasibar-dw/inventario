@@ -107,34 +107,15 @@ export const stockApi = api.injectEndpoints({
             query: ({ itemId, ...body }) => ({ url: `stock/item/${itemId}`, method: 'DELETE', body }),
             invalidatesTags: ['Stock'],
         }),
-        getRecentMovements: builder.query<any[], {
-            desde?: string;
-            hasta?: string;
-            depositoId?: string;
-            posicionId?: string;
-            itemId?: string;
-            lotNumber?: string;
-            tipo?: string;
-            status?: string;
-            userId?: string;
-            documentoNumero?: string;
-            q?: string;
-            limit?: number;
-        }>({
-            query: (params = {}) => {
+        getRecentMovements: builder.query<any[], { desde?: string; hasta?: string; depositoId?: string; itemId?: string; lotNumber?: string; tipo?: string }>({
+            query: (params) => {
                 const p = new URLSearchParams();
                 if (params.desde) p.set('desde', params.desde);
                 if (params.hasta) p.set('hasta', params.hasta);
                 if (params.depositoId) p.set('depositoId', params.depositoId);
-                if (params.posicionId) p.set('posicionId', params.posicionId);
                 if (params.itemId) p.set('itemId', params.itemId);
                 if (params.lotNumber) p.set('lotNumber', params.lotNumber);
                 if (params.tipo) p.set('tipo', params.tipo);
-                if (params.status) p.set('status', params.status);
-                if (params.userId) p.set('userId', params.userId);
-                if (params.documentoNumero) p.set('documentoNumero', params.documentoNumero);
-                if (params.q) p.set('q', params.q);
-                if (params.limit) p.set('limit', String(params.limit));
                 return `movimientos?${p.toString()}`;
             },
             providesTags: ['Stock'],

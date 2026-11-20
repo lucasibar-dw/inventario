@@ -39,184 +39,8 @@ import {
 import { selectCurrentUser, selectUserSector } from '../../entities/auth/model/authSlice';
 import { PaginationControls, useClientPagination } from '../../shared/pagination';
 
-type DatePreset = '2d' | '7d' | '30d' | '90d' | 'year' | 'all' | 'custom';
-type FlowFilter = 'ALL' | 'IN' | 'OUT' | 'ADJUST' | 'TRANSFER' | 'CANCELLED';
-type ViewMode = 'TABLE' | 'KARDEX';
-
-interface TypeMeta {
-    color: string;
-    label: string;
-    shortLabel: string;
-    icon: string;
-    multiplier: 1 | -1 | 0;
-    category: 'IN' | 'OUT' | 'ADJUST' | 'TRANSFER' | 'ANULACION';
-    canReverse: boolean;
-}
-
-const TYPE_META: Record<string, TypeMeta> = {
-    REMITO_ENTRADA: {
-        color: '#10b981',
-        label: 'ENTRADA (Remito)',
-        shortLabel: 'ENTRADA',
-        icon: '📥',
-        multiplier: 1,
-        category: 'IN',
-        canReverse: true,
-    },
-    REMITO_SALIDA: {
-        color: '#ef4444',
-        label: 'SALIDA (Remito)',
-        shortLabel: 'SALIDA',
-        icon: '📤',
-        multiplier: -1,
-        category: 'OUT',
-        canReverse: true,
-    },
-    AJUSTE_SUMA: {
-        color: '#3b82f6',
-        label: 'AJUSTE (+)',
-        shortLabel: 'AJUSTE (+)',
-        icon: '➕',
-        multiplier: 1,
-        category: 'ADJUST',
-        canReverse: true,
-    },
-    AJUSTE_RESTA: {
-        color: '#f59e0b',
-        label: 'AJUSTE (-)',
-        shortLabel: 'AJUSTE (-)',
-        icon: '➖',
-        multiplier: -1,
-        category: 'ADJUST',
-        canReverse: true,
-    },
-    MOVE_INTERNO: {
-        color: '#6366f1',
-        label: 'TRASLADO INTERNO',
-        shortLabel: 'TRASLADO',
-        icon: '🔄',
-        multiplier: 1,
-        category: 'TRANSFER',
-        canReverse: false,
-    },
-    ENTREGA_PRODUCCION: {
-        color: '#f97316',
-        label: 'ENTREGA PRODUCCIÓN',
-        shortLabel: 'ENT. PROD.',
-        icon: '🏭',
-        multiplier: -1,
-        category: 'OUT',
-        canReverse: false,
-    },
-    DEVOLUCION_LINEA: {
-        color: '#14b8a6',
-        label: 'DEVOLUCIÓN LÍNEA',
-        shortLabel: 'DEV. LÍNEA',
-        icon: '↩️',
-        multiplier: 1,
-        category: 'IN',
-        canReverse: false,
-    },
-    INGRESO_PRODUCCION: {
-        color: '#22c55e',
-        label: 'INGRESO PRODUCCIÓN',
-        shortLabel: 'ING. PROD.',
-        icon: '⚙️',
-        multiplier: 1,
-        category: 'IN',
-        canReverse: false,
-    },
-    ANULACION_ENTRADA: {
-        color: '#ec4899',
-        label: 'ANUL. ENTRADA',
-        shortLabel: 'ANUL. ENT.',
-        icon: '🚫',
-        multiplier: -1,
-        category: 'ANULACION',
-        canReverse: false,
-    },
-    ANULACION_SALIDA: {
-        color: '#ec4899',
-        label: 'ANUL. SALIDA',
-        shortLabel: 'ANUL. SAL.',
-        icon: '🚫',
-        multiplier: 1,
-        category: 'ANULACION',
-        canReverse: false,
-    },
-    ANULACION_AJUSTE_SUMA: {
-        color: '#ec4899',
-        label: 'ANUL. AJUSTE (+)',
-        shortLabel: 'ANUL. AJ (+)',
-        icon: '🚫',
-        multiplier: -1,
-        category: 'ANULACION',
-        canReverse: false,
-    },
-    ANULACION_AJUSTE_RESTA: {
-        color: '#ec4899',
-        label: 'ANUL. AJUSTE (-)',
-        shortLabel: 'ANUL. AJ (-)',
-        icon: '🚫',
-        multiplier: 1,
-        category: 'ANULACION',
-        canReverse: false,
-    },
-    ANULACION_ENTREGA_PRODUCCION: {
-        color: '#ec4899',
-        label: 'ANUL. ENT. PROD.',
-        shortLabel: 'ANUL. PROD.',
-        icon: '🚫',
-        multiplier: 1,
-        category: 'ANULACION',
-        canReverse: false,
-    },
-    ANULACION_DEVOLUCION_LINEA: {
-        color: '#ec4899',
-        label: 'ANUL. DEV. LÍNEA',
-        shortLabel: 'ANUL. DEV.',
-        icon: '🚫',
-        multiplier: -1,
-        category: 'ANULACION',
-        canReverse: false,
-    },
-    ANULACION_INGRESO_PRODUCCION: {
-        color: '#ec4899',
-        label: 'ANUL. ING. PROD.',
-        shortLabel: 'ANUL. ING.',
-        icon: '🚫',
-        multiplier: -1,
-        category: 'ANULACION',
-        canReverse: false,
-    },
-};
-
-function getTypeMeta(tipo: string, observaciones?: string | null): TypeMeta {
-    const base = TYPE_META[tipo] || {
-        color: '#9ca3af',
-        label: tipo,
-        shortLabel: tipo,
-        icon: '📋',
-        multiplier: 0 as const,
-        category: 'ADJUST' as const,
-        canReverse: false,
-    };
-    // Detect internal movement recorded as AJUSTE_SUMA / AJUSTE_RESTA with "Movimiento Interno" observation
-    if (
-        (tipo === 'AJUSTE_SUMA' || tipo === 'AJUSTE_RESTA') &&
-        observaciones &&
-        observaciones.toLowerCase().includes('movimiento interno')
-    ) {
-        return {
-            ...base,
-            color: '#818cf8',
-            shortLabel: tipo === 'AJUSTE_SUMA' ? 'TRASLADO (+)' : 'TRASLADO (-)',
-            icon: '🔄',
-            category: 'TRANSFER',
-        };
-    }
-    return base;
-}
+type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
+type FlowFilter = 'ALL' | 'REAL_ADJUST' | 'IN' | 'OUT' | 'TRANSFER';
 
 function getIsoDateDaysAgo(days: number): string {
     const d = new Date();
@@ -241,6 +65,29 @@ function formatTimeAR(dateStr?: string): string {
     }
 }
 
+function getMovementImpactSign(tipo: string): 1 | -1 | 0 {
+    switch (tipo) {
+        case 'REMITO_ENTRADA':
+        case 'AJUSTE_SUMA':
+        case 'ANULACION_SALIDA':
+        case 'ANULACION_AJUSTE_RESTA':
+        case 'ANULACION_ENTREGA_PRODUCCION':
+        case 'DEVOLUCION_LINEA':
+        case 'INGRESO_PRODUCCION':
+            return 1;
+        case 'REMITO_SALIDA':
+        case 'AJUSTE_RESTA':
+        case 'ANULACION_ENTRADA':
+        case 'ANULACION_AJUSTE_SUMA':
+        case 'ENTREGA_PRODUCCION':
+        case 'ANULACION_DEVOLUCION_LINEA':
+        case 'ANULACION_INGRESO_PRODUCCION':
+            return -1;
+        default:
+            return 0;
+    }
+}
+
 export default function AdminMovementsPage() {
     const isMobile = useIsMobile();
     const navigate = useNavigate();
@@ -255,26 +102,20 @@ export default function AdminMovementsPage() {
     const canAccess = isAdmin || sector.includes('DEPOSITO') || isSupervisor;
     const canReverse = isAdmin || (isSupervisor && sector.includes('DEPOSITO'));
 
-    // URL initial params
+    // URL params
     const initialItemId = searchParams.get('itemId') || '';
-    const initialLot = searchParams.get('lotNumber') || '';
-    const initialDeposito = searchParams.get('depositoId') || '';
-    const initialPreset: DatePreset = initialItemId || initialLot ? 'all' : '7d';
+    const initialPreset: DatePreset = initialItemId ? 'all' : '30d';
 
     const [datePreset, setDatePreset] = useState<DatePreset>(initialPreset);
-    const [desde, setDesde] = useState<string>(() => (initialPreset === 'all' ? '' : getIsoDateDaysAgo(7)));
+    const [desde, setDesde] = useState<string>(() => (initialPreset === 'all' ? '' : getIsoDateDaysAgo(30)));
     const [hasta, setHasta] = useState<string>(() => (initialPreset === 'all' ? '' : new Date().toISOString().split('T')[0]));
-    const [depositoId, setDepositoId] = useState<string>(initialDeposito);
-    const [posicionId, setPosicionId] = useState<string>('');
+    const [showCustomDates, setShowCustomDates] = useState(false);
+    const [depositoId, setDepositoId] = useState<string>('');
     const [itemId, setItemId] = useState<string>(initialItemId);
-    const [lotNumber, setLotNumber] = useState<string>(initialLot);
-    const [tipo, setTipo] = useState<string>('');
-    const [statusFilter, setStatusFilter] = useState<string>('');
-    const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
     const [quickSearch, setQuickSearch] = useState<string>('');
-    const [viewMode, setViewMode] = useState<ViewMode>(initialItemId ? 'KARDEX' : 'TABLE');
+    const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
 
-    // Detail Modals
+    // Modals
     const [selectedMovement, setSelectedMovement] = useState<any | null>(null);
     const [selectedRemito, setSelectedRemito] = useState<any | null>(null);
     const [showRemitoModal, setShowRemitoModal] = useState(false);
@@ -285,36 +126,25 @@ export default function AdminMovementsPage() {
     const { data: rawDepots = [] } = useGetDepotsQuery();
     const { data: rawItems = [] } = useGetItemsQuery({});
 
-    // Sync URL params if navigated from StockPage or elsewhere
     useEffect(() => {
         const urlItem = searchParams.get('itemId');
-        const urlLot = searchParams.get('lotNumber');
-        const urlDepot = searchParams.get('depositoId');
         if (urlItem && urlItem !== itemId) {
             setItemId(urlItem);
             setDatePreset('all');
             setDesde('');
             setHasta('');
-            setViewMode('KARDEX');
-        }
-        if (urlLot && urlLot !== lotNumber) {
-            setLotNumber(urlLot);
-            setDatePreset('all');
-            setDesde('');
-            setHasta('');
-        }
-        if (urlDepot && urlDepot !== depositoId) {
-            setDepositoId(urlDepot);
         }
     }, [searchParams]);
 
     const applyPreset = (preset: DatePreset) => {
         setDatePreset(preset);
+        if (preset === 'custom') {
+            setShowCustomDates(true);
+            return;
+        }
+        setShowCustomDates(false);
         const today = new Date().toISOString().split('T')[0];
-        if (preset === '2d') {
-            setDesde(getIsoDateDaysAgo(2));
-            setHasta(today);
-        } else if (preset === '7d') {
+        if (preset === '7d') {
             setDesde(getIsoDateDaysAgo(7));
             setHasta(today);
         } else if (preset === '30d') {
@@ -322,9 +152,6 @@ export default function AdminMovementsPage() {
             setHasta(today);
         } else if (preset === '90d') {
             setDesde(getIsoDateDaysAgo(90));
-            setHasta(today);
-        } else if (preset === 'year') {
-            setDesde(`${new Date().getFullYear()}-01-01`);
             setHasta(today);
         } else if (preset === 'all') {
             setDesde('');
@@ -337,341 +164,440 @@ export default function AdminMovementsPage() {
         const nextParams = new URLSearchParams(searchParams);
         if (newItemId) {
             nextParams.set('itemId', newItemId);
-            // Automatically switch to full history when investigating a material if currently on a narrow 2d/7d window
-            if (datePreset === '2d' || datePreset === '7d') {
-                applyPreset('all');
-            }
+            applyPreset('all');
         } else {
             nextParams.delete('itemId');
-            if (viewMode === 'KARDEX') setViewMode('TABLE');
+            if (datePreset === 'all') applyPreset('30d');
         }
         setSearchParams(nextParams, { replace: true });
     };
 
-    const handleClearAllFilters = () => {
-        setItemId('');
-        setLotNumber('');
-        setDepositoId('');
-        setPosicionId('');
-        setTipo('');
-        setStatusFilter('');
-        setFlowFilter('ALL');
-        setQuickSearch('');
-        applyPreset('7d');
-        setViewMode('TABLE');
-        setSearchParams({}, { replace: true });
-    };
-
-    // Fetch movements from backend
     const { data: movements = [], isFetching, refetch } = useGetRecentMovementsQuery({
         desde: desde || undefined,
         hasta: hasta || undefined,
         depositoId: depositoId || undefined,
-        posicionId: posicionId || undefined,
         itemId: itemId || undefined,
-        lotNumber: lotNumber || undefined,
-        tipo: tipo || undefined,
-        status: statusFilter || undefined,
     });
 
-    // Fetch current stock for selected material (or depot) to compute accurate Kardex running balance & show current distribution
     const { data: currentItemStock = [] } = useGetStockQuery(
-        {
-            itemId: itemId || undefined,
-            depotId: depositoId || undefined,
-        },
+        { itemId: itemId || undefined, depotId: depositoId || undefined },
         { skip: !itemId }
     );
 
     const [reverseMovement] = useReverseMovementMutation();
 
-    // Selected item metadata
     const selectedItemObj = useMemo(() => {
         if (!itemId) return null;
         return rawItems.find((i: any) => i.id === itemId) || movements[0]?.item || null;
     }, [itemId, rawItems, movements]);
 
-    // Current stock summary for selected material
-    const itemStockSummary = useMemo(() => {
-        if (!itemId) return { totalPrincipal: 0, totalSecundaria: 0, positions: [] as any[], lots: new Set<string>() };
-        let totalPrincipal = 0;
-        let totalSecundaria = 0;
-        const lots = new Set<string>();
-        const posList: { id: string; codigo: string; deposito: string; lotNumber: string; qtyPrincipal: number; qtySecundaria: number }[] = [];
+    const currentStockTotal = useMemo(() => {
+        if (!itemId) return 0;
+        return currentItemStock.reduce((acc: number, s: any) => acc + Number(s.qtyPrincipal || 0), 0);
+    }, [itemId, currentItemStock]);
 
-        currentItemStock.forEach((s: any) => {
-            if (posicionId && s.posicionId !== posicionId) return;
-            if (lotNumber && !(s.batch?.lotNumber || '').toLowerCase().includes(lotNumber.toLowerCase())) return;
-            const qp = Number(s.qtyPrincipal || 0);
-            const qs = Number(s.qtySecundaria || 0);
-            totalPrincipal += qp;
-            totalSecundaria += qs;
-            if (s.batch?.lotNumber) lots.add(s.batch.lotNumber);
-            posList.push({
-                id: s.id,
-                codigo: s.posicion?.codigo || 'S/P',
-                deposito: s.posicion?.depot?.nombre || 'Depósito',
-                lotNumber: s.batch?.lotNumber || 'S/L',
-                qtyPrincipal: qp,
-                qtySecundaria: qs,
-            });
-        });
-
-        return { totalPrincipal, totalSecundaria, positions: posList, lots };
-    }, [itemId, currentItemStock, posicionId, lotNumber]);
-
-    // Compute chronological running balance (Kardex) when a material is selected, or per-item+position+lot
-    const movementsWithRunningBalance = useMemo(() => {
-        // Sort newest first
+    /**
+     * MOTOR DE CLASIFICACIÓN INTELIGENTE Y EMPAREJAMIENTO DE CONTRAPARTIDAS (-250 / +250):
+     * Detecta cuando un AJUSTE_RESTA y un AJUSTE_SUMA son en realidad las dos mitades de un
+     * movimiento interno entre posiciones o una fusión/cambio de lote, los une en un solo registro
+     * de TRASLADO y deja limpios los AJUSTES REALES (sin contrapartida: adición rápida, corrección manual o eliminación).
+     */
+    const processedData = useMemo(() => {
         const sortedDesc = [...movements].sort((a: any, b: any) => {
-            const dateDiff = new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
-            if (dateDiff !== 0) return dateDiff;
+            const dDiff = new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
+            if (dDiff !== 0) return dDiff;
             return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         });
 
-        if (!itemId) {
-            return sortedDesc.map((m: any) => {
-                const meta = getTypeMeta(m.tipo, m.observaciones);
-                const signedQty = Number(m.qtyPrincipal || 0) * meta.multiplier;
-                const signedSec = m.qtySecundaria != null ? Number(m.qtySecundaria) * meta.multiplier : null;
-                return {
-                    ...m,
-                    _meta: meta,
-                    _signedQty: signedQty,
-                    _signedSec: signedSec,
-                    _saldoAfter: null as number | null,
-                    _saldoBefore: null as number | null,
-                };
-            });
+        const adjustCandidates = sortedDesc.filter(
+            (m: any) => m.tipo === 'AJUSTE_SUMA' || m.tipo === 'AJUSTE_RESTA'
+        );
+
+        const pairedIds = new Set<string>();
+        const pairPartnerMap = new Map<string, any>(); // id -> counterpart movement
+
+        for (let i = 0; i < adjustCandidates.length; i++) {
+            const a = adjustCandidates[i];
+            if (pairedIds.has(a.id)) continue;
+
+            const aTime = new Date(a.createdAt || a.fecha).getTime();
+            const aQty = Number(a.qtyPrincipal || 0);
+
+            for (let j = i + 1; j < adjustCandidates.length; j++) {
+                const b = adjustCandidates[j];
+                if (pairedIds.has(b.id)) continue;
+                if (a.tipo === b.tipo) continue; // Debe ser uno SUMA y otro RESTA
+                if (a.itemId !== b.itemId) continue; // Mismo material
+
+                const bQty = Number(b.qtyPrincipal || 0);
+                if (Math.abs(aQty - bQty) > 0.005) continue; // Misma cantidad exacta (ej. -250 y +250)
+
+                const bTime = new Date(b.createdAt || b.fecha).getTime();
+                const timeDiffSec = Math.abs(aTime - bTime) / 1000;
+                const sameDoc = a.documentoId && b.documentoId && a.documentoId === b.documentoId;
+
+                // Si comparten documento BK-* o fueron ejecutados con menos de 15 segundos de diferencia
+                if (sameDoc || timeDiffSec <= 15) {
+                    pairedIds.add(a.id);
+                    pairedIds.add(b.id);
+                    pairPartnerMap.set(a.id, b);
+                    pairPartnerMap.set(b.id, a);
+                    break;
+                }
+            }
         }
 
-        // When a material is selected, we can reconstruct the exact balance after each movement!
-        // If we are looking from the present backwards (no `hasta` or `hasta` >= today), we anchor at `itemStockSummary.totalPrincipal`.
-        // Wait: what if `original` movement was ANULADO? Remember in this system:
-        // When a movement is created, subscriber adds `qty * multiplier`.
-        // When it is cancelled, original is marked `status = ANULADO` (stock was ALREADY changed by original!) AND a new `ANULACION_*` movement is inserted with the opposite multiplier!
-        // So BOTH the original (even if status === 'ANULADO') AND the `ANULACION_*` movement affected the balance at their respective timestamps!
-        // Wait: if someone views Kardex, we can also calculate cumulative forward from oldest movement, or backward from current stock.
-        // Let's check: forward accumulation from all movements in the list (or anchored to current stock if today is included).
-        // Even better: let's compute forward cumulative sum from the oldest movement in the dataset, AND if `desde` is empty (todo el historial), forward sum is the exact historical balance! If `desde` is set, anchoring backwards from currentStock (when `hasta` is today/empty) gives the exact real stock balance at each point in time!
+        // Calcular saldo resultante (Kardex) cuando hay un material seleccionado
+        // Si miramos un material sin filtro de posición, un traslado interno (-250 y +250) tiene efecto neto 0 en el stock total del material.
         const todayStr = new Date().toISOString().split('T')[0];
         const isAnchoredToToday = !hasta || hasta >= todayStr;
+        const saldoMap = new Map<string, { before: number; after: number }>();
 
-        if (isAnchoredToToday && !flowFilter.includes('IN') && !tipo && !statusFilter) {
-            let running = itemStockSummary.totalPrincipal;
-            return sortedDesc.map((m: any) => {
-                const meta = getTypeMeta(m.tipo, m.observaciones);
-                const signedQty = Number(m.qtyPrincipal || 0) * meta.multiplier;
-                const signedSec = m.qtySecundaria != null ? Number(m.qtySecundaria) * meta.multiplier : null;
-                const saldoAfter = running;
-                const saldoBefore = running - signedQty;
-                running = saldoBefore;
-                return {
-                    ...m,
-                    _meta: meta,
-                    _signedQty: signedQty,
-                    _signedSec: signedSec,
-                    _saldoAfter: saldoAfter,
-                    _saldoBefore: saldoBefore,
-                };
-            });
-        } else {
-            // Forward accumulation from oldest in the query
-            const asc = [...sortedDesc].reverse();
-            let running = 0;
-            const mapById = new Map<string, { saldoBefore: number; saldoAfter: number }>();
-            asc.forEach((m: any) => {
-                const meta = getTypeMeta(m.tipo, m.observaciones);
-                const signedQty = Number(m.qtyPrincipal || 0) * meta.multiplier;
-                const saldoBefore = running;
-                const saldoAfter = running + signedQty;
-                running = saldoAfter;
-                mapById.set(m.id, { saldoBefore, saldoAfter });
-            });
+        if (itemId) {
+            if (isAnchoredToToday) {
+                let running = currentStockTotal;
+                sortedDesc.forEach((m: any) => {
+                    const sign = getMovementImpactSign(m.tipo);
+                    const delta = Number(m.qtyPrincipal || 0) * sign;
+                    const after = running;
+                    const before = running - delta;
+                    running = before;
+                    saldoMap.set(m.id, { before, after });
+                });
+            } else {
+                const asc = [...sortedDesc].reverse();
+                let running = 0;
+                asc.forEach((m: any) => {
+                    const sign = getMovementImpactSign(m.tipo);
+                    const delta = Number(m.qtyPrincipal || 0) * sign;
+                    const before = running;
+                    const after = running + delta;
+                    running = after;
+                    saldoMap.set(m.id, { before, after });
+                });
+            }
+        }
 
-            return sortedDesc.map((m: any) => {
-                const meta = getTypeMeta(m.tipo, m.observaciones);
-                const signedQty = Number(m.qtyPrincipal || 0) * meta.multiplier;
-                const signedSec = m.qtySecundaria != null ? Number(m.qtySecundaria) * meta.multiplier : null;
-                const saldos = mapById.get(m.id);
-                return {
+        // Construir lista final consolidando los pares (-250 / +250) en una sola fila de TRASLADO
+        const consumedInUnifiedRow = new Set<string>();
+        const rows: any[] = [];
+
+        for (const m of sortedDesc) {
+            if (consumedInUnifiedRow.has(m.id)) continue;
+
+            const obsLower = (m.observaciones || '').toLowerCase();
+            const isExplicitInternalObs =
+                obsLower.includes('movimiento interno') || obsLower.includes('reasignación de partida');
+
+            // Caso 1: Par detectado (-250 y +250) -> Lo unificamos en 1 sola fila limpia de TRASLADO
+            if (pairedIds.has(m.id)) {
+                const partner = pairPartnerMap.get(m.id);
+                consumedInUnifiedRow.add(m.id);
+                if (partner) consumedInUnifiedRow.add(partner.id);
+
+                const outMov = m.tipo === 'AJUSTE_RESTA' ? m : partner;
+                const inMov = m.tipo === 'AJUSTE_SUMA' ? m : partner;
+
+                const originPos = outMov?.posicion?.codigo || 'Origen';
+                const destPos = inMov?.posicion?.codigo || 'Destino';
+                const originLot = outMov?.batch?.lotNumber;
+                const destLot = inMov?.batch?.lotNumber;
+                const isLotReassign = originPos === destPos && originLot !== destLot;
+
+                // Tomamos el saldo posterior al par completo
+                const saldosIn = inMov ? saldoMap.get(inMov.id) : null;
+                const saldosOut = outMov ? saldoMap.get(outMov.id) : null;
+                const unifiedSaldoAfter = saldosIn && saldosOut ? Math.max(saldosIn.after, saldosOut.after) : saldosIn?.after ?? null;
+
+                rows.push({
                     ...m,
-                    _meta: meta,
-                    _signedQty: signedQty,
-                    _signedSec: signedSec,
-                    _saldoAfter: saldos ? saldos.saldoAfter : null,
-                    _saldoBefore: saldos ? saldos.saldoBefore : null,
-                };
+                    _category: 'TRANSFER' as const,
+                    _isRealAdjust: false,
+                    _isPairedTransfer: true,
+                    _originPos: originPos,
+                    _destPos: destPos,
+                    _originDepot: outMov?.deposito?.nombre || outMov?.posicion?.depot?.nombre,
+                    _destDepot: inMov?.deposito?.nombre || inMov?.posicion?.depot?.nombre,
+                    _originLot: originLot,
+                    _destLot: destLot,
+                    _isLotReassign: isLotReassign,
+                    _badgeLabel: isLotReassign ? 'CAMBIO LOTE' : 'TRASLADO',
+                    _badgeIcon: '🔄',
+                    _badgeColor: '#6366f1',
+                    _signedQty: Number(m.qtyPrincipal || 0),
+                    _saldoAfter: unifiedSaldoAfter,
+                });
+                continue;
+            }
+
+            // Caso 2: Tiene observación de movimiento interno pero su contrapartida quedó fuera del filtro (ej. otro depósito)
+            if ((m.tipo === 'AJUSTE_SUMA' || m.tipo === 'AJUSTE_RESTA') && isExplicitInternalObs) {
+                const sign = m.tipo === 'AJUSTE_SUMA' ? 1 : -1;
+                rows.push({
+                    ...m,
+                    _category: 'TRANSFER' as const,
+                    _isRealAdjust: false,
+                    _isPairedTransfer: false,
+                    _badgeLabel: m.tipo === 'AJUSTE_SUMA' ? 'TRASLADO (+)' : 'TRASLADO (-)',
+                    _badgeIcon: '🔄',
+                    _badgeColor: '#6366f1',
+                    _signedQty: Number(m.qtyPrincipal || 0) * sign,
+                    _saldoAfter: saldoMap.get(m.id)?.after ?? null,
+                });
+                continue;
+            }
+
+            // Caso 3: AJUSTE REAL SIN CONTRAPARTIDA (Lo que queremos auditar y achicar)
+            if (m.tipo === 'AJUSTE_SUMA' || m.tipo === 'AJUSTE_RESTA') {
+                const sign = m.tipo === 'AJUSTE_SUMA' ? 1 : -1;
+                let subTypeLabel = m.tipo === 'AJUSTE_SUMA' ? 'AJUSTE (+)' : 'AJUSTE (-)';
+                let subTypeIcon = '⚠️';
+                let adjustKind: 'QUICK_ADD' | 'MANUAL_EDIT' | 'MANUAL_DELETE' | 'OTHER' = 'OTHER';
+
+                if (obsLower.includes('adición rápida')) {
+                    subTypeLabel = 'ADICIÓN RÁPIDA';
+                    subTypeIcon = '⚡';
+                    adjustKind = 'QUICK_ADD';
+                } else if (obsLower.includes('eliminación')) {
+                    subTypeLabel = 'BAJA MANUAL';
+                    subTypeIcon = '🗑️';
+                    adjustKind = 'MANUAL_DELETE';
+                } else if (obsLower.includes('ajuste manual')) {
+                    subTypeLabel = m.tipo === 'AJUSTE_SUMA' ? 'CORRECCIÓN (+)' : 'CORRECCIÓN (-)';
+                    subTypeIcon = '✏️';
+                    adjustKind = 'MANUAL_EDIT';
+                }
+
+                rows.push({
+                    ...m,
+                    _category: 'REAL_ADJUST' as const,
+                    _isRealAdjust: true,
+                    _adjustKind: adjustKind,
+                    _badgeLabel: subTypeLabel,
+                    _badgeIcon: subTypeIcon,
+                    _badgeColor: sign > 0 ? '#f59e0b' : '#ef4444',
+                    _signedQty: Number(m.qtyPrincipal || 0) * sign,
+                    _saldoAfter: saldoMap.get(m.id)?.after ?? null,
+                });
+                continue;
+            }
+
+            // Caso 4: Entradas, Salidas y Anulaciones normales
+            const sign = getMovementImpactSign(m.tipo);
+            const isEntrada = ['REMITO_ENTRADA', 'DEVOLUCION_LINEA', 'INGRESO_PRODUCCION'].includes(m.tipo);
+            const isSalida = ['REMITO_SALIDA', 'ENTREGA_PRODUCCION'].includes(m.tipo);
+
+            let badgeLabel = m.tipo;
+            let badgeIcon = '📋';
+            let badgeColor = '#9ca3af';
+
+            if (m.tipo === 'REMITO_ENTRADA') {
+                badgeLabel = 'ENTRADA';
+                badgeIcon = '📥';
+                badgeColor = '#10b981';
+            } else if (m.tipo === 'REMITO_SALIDA') {
+                badgeLabel = 'SALIDA';
+                badgeIcon = '📤';
+                badgeColor = '#38bdf8';
+            } else if (m.tipo === 'ENTREGA_PRODUCCION') {
+                badgeLabel = 'ENT. PROD.';
+                badgeIcon = '🏭';
+                badgeColor = '#38bdf8';
+            } else if (m.tipo === 'DEVOLUCION_LINEA') {
+                badgeLabel = 'DEV. LÍNEA';
+                badgeIcon = '↩️';
+                badgeColor = '#10b981';
+            } else if (m.tipo === 'INGRESO_PRODUCCION') {
+                badgeLabel = 'ING. PROD.';
+                badgeIcon = '⚙️';
+                badgeColor = '#10b981';
+            } else if (m.tipo.startsWith('ANULACION_')) {
+                badgeLabel = m.tipo.replace('ANULACION_', 'ANUL. ');
+                badgeIcon = '🚫';
+                badgeColor = '#ec4899';
+            }
+
+            rows.push({
+                ...m,
+                _category: isEntrada ? ('IN' as const) : isSalida ? ('OUT' as const) : ('OTHER' as const),
+                _isRealAdjust: false,
+                _badgeLabel: badgeLabel,
+                _badgeIcon: badgeIcon,
+                _badgeColor: badgeColor,
+                _signedQty: Number(m.qtyPrincipal || 0) * sign,
+                _saldoAfter: saldoMap.get(m.id)?.after ?? null,
             });
         }
-    }, [movements, itemId, itemStockSummary.totalPrincipal, hasta, flowFilter, tipo, statusFilter]);
 
-    // Client-side quick search & flow category filter
-    const filteredMovements = useMemo(() => {
-        const qTokens = quickSearch
+        return rows;
+    }, [movements, itemId, currentStockTotal, hasta]);
+
+    // Métricas exclusivas de AJUSTES REALES (sin contrapartida) para el Panel de Control
+    const realAdjustAnalytics = useMemo(() => {
+        const realAdjusts = processedData.filter((r) => r._isRealAdjust && r.status !== 'ANULADO');
+
+        let sumaCount = 0;
+        let sumaKilos = 0;
+        let restaCount = 0;
+        let restaKilos = 0;
+
+        // Evolución por semana o fecha para ver si los ajustes van bajando
+        const trendMap = new Map<string, { label: string; cantidad: number; sumaKg: number; restaKg: number }>();
+        // Top materiales con más ajustes forzados
+        const byMaterial = new Map<
+            string,
+            { id: string; codigo: string; descripcion: string; count: number; sumaKg: number; restaKg: number; unidad: string }
+        >();
+
+        const ascAdjusts = [...realAdjusts].reverse();
+        ascAdjusts.forEach((m) => {
+            const qty = Math.abs(Number(m.qtyPrincipal || 0));
+            const isPos = m._signedQty > 0;
+
+            if (isPos) {
+                sumaCount++;
+                sumaKilos += qty;
+            } else {
+                restaCount++;
+                restaKilos += qty;
+            }
+
+            // Agrupar para el gráfico de tendencia (por fecha o mes según la extensión)
+            const fStr = String(m.fecha).slice(0, 10);
+            const key = datePreset === 'all' || datePreset === '90d' ? fStr.slice(0, 7) : fStr;
+            const label =
+                datePreset === 'all' || datePreset === '90d'
+                    ? `${fStr.slice(5, 7)}/${fStr.slice(2, 4)}`
+                    : formatDateAR(fStr).slice(0, 5);
+
+            const curTrend = trendMap.get(key) || { label, cantidad: 0, sumaKg: 0, restaKg: 0 };
+            curTrend.cantidad += 1;
+            if (isPos) curTrend.sumaKg = Number((curTrend.sumaKg + qty).toFixed(1));
+            else curTrend.restaKg = Number((curTrend.restaKg + qty).toFixed(1));
+            trendMap.set(key, curTrend);
+
+            // Agrupar por material
+            if (m.item?.id) {
+                const curMat = byMaterial.get(m.item.id) || {
+                    id: m.item.id,
+                    codigo: m.item.codigoInterno || 'S/C',
+                    descripcion: m.item.descripcion || 'Material',
+                    count: 0,
+                    sumaKg: 0,
+                    restaKg: 0,
+                    unidad: m.item.unidadPrincipal || 'kg',
+                };
+                curMat.count += 1;
+                if (isPos) curMat.sumaKg += qty;
+                else curMat.restaKg += qty;
+                byMaterial.set(m.item.id, curMat);
+            }
+        });
+
+        const topMaterials = Array.from(byMaterial.values())
+            .sort((a, b) => b.count - a.count || b.sumaKg + b.restaKg - (a.sumaKg + a.restaKg))
+            .slice(0, 5);
+
+        return {
+            totalCount: realAdjusts.length,
+            sumaCount,
+            sumaKilos,
+            restaCount,
+            restaKilos,
+            trendData: Array.from(trendMap.values()),
+            topMaterials,
+        };
+    }, [processedData, datePreset]);
+
+    // Curva de evolución del saldo cuando se investiga un material puntual
+    const materialHistoryChart = useMemo(() => {
+        if (!itemId || processedData.length === 0) return [];
+        const asc = [...processedData].reverse();
+        const byDate = new Map<string, { label: string; saldo: number }>();
+        asc.forEach((m) => {
+            if (m._saldoAfter == null) return;
+            const fStr = String(m.fecha).slice(0, 10);
+            byDate.set(fStr, {
+                label: formatDateAR(fStr).slice(0, 5),
+                saldo: Number(m._saldoAfter.toFixed(2)),
+            });
+        });
+        return Array.from(byDate.values());
+    }, [processedData, itemId]);
+
+    // Contadores para los filtros de la tabla
+    const categoryCounts = useMemo(() => {
+        let realAdjust = 0;
+        let inCount = 0;
+        let outCount = 0;
+        let transferCount = 0;
+        processedData.forEach((m) => {
+            if (m._category === 'REAL_ADJUST') realAdjust++;
+            else if (m._category === 'IN') inCount++;
+            else if (m._category === 'OUT') outCount++;
+            else if (m._category === 'TRANSFER') transferCount++;
+        });
+        return { all: processedData.length, realAdjust, inCount, outCount, transferCount };
+    }, [processedData]);
+
+    // Filtrado final de la tabla (por categoría seleccionada y buscador de texto)
+    const filteredRows = useMemo(() => {
+        const tokens = quickSearch
             .toLowerCase()
             .trim()
             .split(/\s+/)
             .filter(Boolean);
 
-        return movementsWithRunningBalance.filter((m: any) => {
-            const meta: TypeMeta = m._meta;
+        return processedData.filter((m) => {
+            if (flowFilter === 'REAL_ADJUST' && m._category !== 'REAL_ADJUST') return false;
+            if (flowFilter === 'IN' && m._category !== 'IN') return false;
+            if (flowFilter === 'OUT' && m._category !== 'OUT') return false;
+            if (flowFilter === 'TRANSFER' && m._category !== 'TRANSFER') return false;
 
-            // Flow filter
-            if (flowFilter === 'IN' && meta.category !== 'IN') return false;
-            if (flowFilter === 'OUT' && meta.category !== 'OUT') return false;
-            if (flowFilter === 'ADJUST' && meta.category !== 'ADJUST') return false;
-            if (flowFilter === 'TRANSFER' && meta.category !== 'TRANSFER') return false;
-            if (flowFilter === 'CANCELLED' && m.status !== 'ANULADO' && meta.category !== 'ANULACION') return false;
+            if (tokens.length > 0) {
+                const hay = [
+                    m.item?.descripcion,
+                    m.item?.codigoInterno,
+                    m.batch?.lotNumber,
+                    m._originLot,
+                    m._destLot,
+                    m.posicion?.codigo,
+                    m._originPos,
+                    m._destPos,
+                    m.deposito?.nombre,
+                    m.posicion?.depot?.nombre,
+                    m.documentoNumero,
+                    m.documento?.numero,
+                    m.documento?.partner?.name,
+                    m.user?.username,
+                    m.observaciones,
+                    m._badgeLabel,
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
 
-            // Quick text search
-            if (qTokens.length > 0) {
-                const itemDesc = (m.item?.descripcion || '').toLowerCase();
-                const itemCode = (m.item?.codigoInterno || '').toLowerCase();
-                const catName = (m.item?.category?.nombre || m.item?.categoria || m.categoria || '').toLowerCase();
-                const lot = (m.batch?.lotNumber || '').toLowerCase();
-                const pos = (m.posicion?.codigo || '').toLowerCase();
-                const depot = (m.deposito?.nombre || m.posicion?.depot?.nombre || '').toLowerCase();
-                const docNum = (m.documentoNumero || m.documento?.numero || '').toLowerCase();
-                const partnerName = (m.documento?.partner?.name || m.item?.supplier?.name || m.batch?.supplier?.name || '').toLowerCase();
-                const userName = (m.user?.username || m.user?.nombre || '').toLowerCase();
-                const obs = (m.observaciones || '').toLowerCase();
-                const tipoLabel = meta.label.toLowerCase();
-
-                const hay = `${itemDesc} ${itemCode} ${catName} ${lot} ${pos} ${depot} ${docNum} ${partnerName} ${userName} ${obs} ${tipoLabel}`;
-                if (!qTokens.every((t) => hay.includes(t))) return false;
+                if (!tokens.every((t) => hay.includes(t))) return false;
             }
 
             return true;
         });
-    }, [movementsWithRunningBalance, flowFilter, quickSearch]);
+    }, [processedData, flowFilter, quickSearch]);
 
-    const pagination = useClientPagination(filteredMovements, 25);
-
-    // Summary KPIs for the current filtered view
-    const kpiMetrics = useMemo(() => {
-        let entradasKg = 0;
-        let entradasCount = 0;
-        let salidasKg = 0;
-        let salidasCount = 0;
-        let ajustesNetoKg = 0;
-        let ajustesCount = 0;
-        let trasladosCount = 0;
-        let anuladosCount = 0;
-        const distinctMaterials = new Set<string>();
-        const distinctLots = new Set<string>();
-
-        filteredMovements.forEach((m: any) => {
-            if (m.itemId) distinctMaterials.add(m.itemId);
-            if (m.batch?.lotNumber) distinctLots.add(m.batch.lotNumber);
-
-            if (m.status === 'ANULADO' || m._meta.category === 'ANULACION') {
-                anuladosCount++;
-            }
-
-            // For real volume metrics, only count active non-cancelled movements (or count net active effect)
-            if (m.status === 'ANULADO') return;
-
-            const qty = Number(m.qtyPrincipal || 0);
-            const cat = m._meta.category;
-
-            if (cat === 'IN') {
-                entradasKg += qty;
-                entradasCount++;
-            } else if (cat === 'OUT') {
-                salidasKg += qty;
-                salidasCount++;
-            } else if (cat === 'ADJUST') {
-                ajustesNetoKg += m._signedQty;
-                ajustesCount++;
-            } else if (cat === 'TRANSFER') {
-                trasladosCount++;
-            }
-        });
-
-        const balanceNetoPeriodo = entradasKg - salidasKg + ajustesNetoKg;
-
-        return {
-            totalMovimientos: filteredMovements.length,
-            entradasKg,
-            entradasCount,
-            salidasKg,
-            salidasCount,
-            ajustesNetoKg,
-            ajustesCount,
-            trasladosCount,
-            anuladosCount,
-            balanceNetoPeriodo,
-            distinctMaterialsCount: distinctMaterials.size,
-            distinctLotsCount: distinctLots.size,
-        };
-    }, [filteredMovements]);
-
-    // Chart Data: Evolution over time for selected material or global volume by date
-    const chartData = useMemo(() => {
-        if (filteredMovements.length === 0) return [];
-        const asc = [...filteredMovements].reverse();
-
-        if (itemId) {
-            // Group by date showing closing balance and daily entradas/salidas
-            const byDate = new Map<string, { fecha: string; label: string; saldo: number; entradas: number; salidas: number }>();
-            asc.forEach((m: any) => {
-                const dKey = String(m.fecha).slice(0, 10);
-                const existing = byDate.get(dKey) || {
-                    fecha: dKey,
-                    label: formatDateAR(dKey).slice(0, 5),
-                    saldo: 0,
-                    entradas: 0,
-                    salidas: 0,
-                };
-                if (m._saldoAfter != null) {
-                    existing.saldo = Number(m._saldoAfter.toFixed(2));
-                }
-                if (m.status !== 'ANULADO') {
-                    if (m._meta.category === 'IN' || (m._meta.category === 'ADJUST' && m._signedQty > 0)) {
-                        existing.entradas = Number((existing.entradas + Number(m.qtyPrincipal || 0)).toFixed(2));
-                    } else if (m._meta.category === 'OUT' || (m._meta.category === 'ADJUST' && m._signedQty < 0)) {
-                        existing.salidas = Number((existing.salidas + Number(m.qtyPrincipal || 0)).toFixed(2));
-                    }
-                }
-                byDate.set(dKey, existing);
-            });
-            return Array.from(byDate.values());
-        } else {
-            // Global daily Entradas vs Salidas
-            const byDate = new Map<string, { fecha: string; label: string; entradas: number; salidas: number }>();
-            asc.forEach((m: any) => {
-                if (m.status === 'ANULADO') return;
-                const dKey = String(m.fecha).slice(0, 10);
-                const existing = byDate.get(dKey) || {
-                    fecha: dKey,
-                    label: formatDateAR(dKey).slice(0, 5),
-                    entradas: 0,
-                    salidas: 0,
-                };
-                if (m._meta.category === 'IN') {
-                    existing.entradas = Number((existing.entradas + Number(m.qtyPrincipal || 0)).toFixed(1));
-                } else if (m._meta.category === 'OUT') {
-                    existing.salidas = Number((existing.salidas + Number(m.qtyPrincipal || 0)).toFixed(1));
-                }
-                byDate.set(dKey, existing);
-            });
-            return Array.from(byDate.values()).slice(-30);
-        }
-    }, [filteredMovements, itemId]);
+    const pagination = useClientPagination(filteredRows, 25);
 
     const handleReverse = async (m: any) => {
         const desc = m.item?.descripcion || 'Material';
         const qty = `${Number(m.qtyPrincipal).toFixed(2)} ${m.item?.unidadPrincipal || 'kg'}`;
         if (
             !window.confirm(
-                `¿Estás seguro de que querés revertir este movimiento de ${desc} (${qty})?\n\nSe generará una contrapartida automática y el movimiento original quedará marcado como ANULADO.`
+                `¿Estás seguro de revertir este movimiento de ${desc} (${qty})?\nSe generará una contrapartida y el movimiento original quedará anulado.`
             )
         )
             return;
         try {
             await reverseMovement(m.id).unwrap();
-            alert('✅ Movimiento revertido con éxito. El stock ha sido ajustado.');
+            alert('✅ Movimiento revertido con éxito.');
             refetch();
         } catch (e: any) {
             alert(e?.data?.message || 'Error al revertir movimiento');
@@ -703,65 +629,30 @@ export default function AdminMovementsPage() {
     };
 
     const handleExportExcel = () => {
-        if (!filteredMovements.length) {
-            alert('No hay movimientos para exportar con los filtros actuales.');
-            return;
-        }
-
-        const rows = filteredMovements.map((m: any) => {
-            const meta: TypeMeta = m._meta;
-            const partnerName =
-                m.documento?.partner?.name ||
-                m.batch?.supplier?.name ||
-                m.item?.supplier?.name ||
-                '—';
-
-            const baseRow: Record<string, any> = {
-                'Fecha Doc.': formatDateAR(m.fecha),
-                'Fecha/Hora Registro': m.createdAt ? new Date(m.createdAt).toLocaleString('es-AR') : '—',
-                'Tipo': meta.label,
-                'Estado': m.status,
-                'Código Material': m.item?.codigoInterno || '—',
-                'Material': m.item?.descripcion || '—',
-                'Categoría': m.item?.category?.nombre || m.item?.categoria || m.categoria || '—',
-                'Lote / Partida': m.batch?.lotNumber || '—',
-                'Depósito': m.deposito?.nombre || m.posicion?.depot?.nombre || '—',
-                'Posición': m.posicion?.codigo || 'S/P',
-                'Impacto (Signo)': meta.multiplier === 1 ? '+' : meta.multiplier === -1 ? '-' : '',
-                'Cantidad Principal': Number(m._signedQty.toFixed(3)),
-                'Unidad Principal': m.item?.unidadPrincipal || 'kg',
-                'Cantidad Secundaria': m._signedSec != null ? Number(m._signedSec.toFixed(2)) : '',
-                'Unidad Secundaria': m.item?.unidadSecundaria || '',
-            };
-
-            if (itemId) {
-                baseRow['Saldo Anterior'] = m._saldoBefore != null ? Number(m._saldoBefore.toFixed(3)) : '';
-                baseRow['Saldo Posterior'] = m._saldoAfter != null ? Number(m._saldoAfter.toFixed(3)) : '';
-            }
-
-            baseRow['Documento / Remito'] = m.documentoNumero || m.documento?.numero || '—';
-            baseRow['Proveedor / Cliente'] = partnerName;
-            baseRow['Usuario'] = m.user?.username || m.user?.nombre || 'Sistema';
-            baseRow['Observaciones'] = m.observaciones || '';
-
-            return baseRow;
-        });
+        if (!filteredRows.length) return;
+        const rows = filteredRows.map((m) => ({
+            'Fecha': formatDateAR(m.fecha),
+            'Hora': formatTimeAR(m.createdAt),
+            'Clasificación': m._badgeLabel,
+            'Es Ajuste Forzado': m._isRealAdjust ? 'SÍ' : 'NO',
+            'Código': m.item?.codigoInterno || '—',
+            'Material': m.item?.descripcion || '—',
+            'Lote': m._isPairedTransfer && m._isLotReassign ? `${m._originLot} → ${m._destLot}` : m.batch?.lotNumber || '—',
+            'Ubicación': m._isPairedTransfer ? `${m._originPos} → ${m._destPos}` : m.posicion?.codigo || 'S/P',
+            'Depósito': m.deposito?.nombre || m.posicion?.depot?.nombre || '—',
+            'Cantidad': Number(m._signedQty.toFixed(2)),
+            'Unidad': m.item?.unidadPrincipal || 'kg',
+            ...(itemId ? { 'Saldo Posterior': m._saldoAfter != null ? Number(m._saldoAfter.toFixed(2)) : '' } : {}),
+            'Documento / Remito': m.documentoNumero || m.documento?.numero || '—',
+            'Usuario': m.user?.username || 'Sistema',
+            'Observaciones': m.observaciones || '',
+        }));
 
         const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        const sheetName = selectedItemObj ? `Kardex_${selectedItemObj.codigoInterno}`.slice(0, 31) : 'Auditoria_Movimientos';
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
-        const fileName = selectedItemObj
-            ? `Kardex_${selectedItemObj.codigoInterno}_${new Date().toISOString().slice(0, 10)}.xlsx`
-            : `Auditoria_Stock_${new Date().toISOString().slice(0, 10)}.xlsx`;
-        XLSX.writeFile(wb, fileName);
+        XLSX.utils.book_append_sheet(wb, ws, 'Auditoria');
+        XLSX.writeFile(wb, `Auditoria_Stock_${new Date().toISOString().slice(0, 10)}.xlsx`);
     };
-
-    const availablePositions = useMemo(() => {
-        if (!depositoId) return [];
-        const depot = rawDepots.find((d: any) => d.id === depositoId);
-        return (depot?.positions || []).filter((p: any) => p.activo !== false);
-    }, [rawDepots, depositoId]);
 
     if (!canAccess) {
         return (
@@ -775,167 +666,97 @@ export default function AdminMovementsPage() {
     const unitLabel = selectedItemObj?.unidadPrincipal || 'kg';
 
     const desktopCols = itemId
-        ? ['Fecha / Hora', 'Movimiento', 'Ubicación', 'Lote / Partida', 'Documento / Socio', 'Variación', 'Saldo Resultante', 'Usuario / Obs', '']
-        : ['Fecha / Hora', 'Movimiento', 'Material', 'Lote / Partida', 'Ubicación', 'Documento / Socio', 'Cantidad', 'Usuario / Obs', ''];
+        ? ['Fecha', 'Movimiento', 'Ubicación', 'Lote', 'Variación', 'Saldo', 'Detalle / Usuario', '']
+        : ['Fecha', 'Movimiento', 'Material', 'Ubicación', 'Lote', 'Cantidad', 'Detalle / Usuario', ''];
 
     const renderDesktopRow = (m: any) => {
         const isAnulado = m.status === 'ANULADO';
-        const meta: TypeMeta = m._meta;
-        const signedQty = m._signedQty;
-        const isPositive = signedQty > 0;
-        const qtyColor = isAnulado ? 'var(--text-subtle, #6b7280)' : isPositive ? '#10b981' : '#ef4444';
+        const isTransfer = m._category === 'TRANSFER';
+        const isPositive = m._signedQty > 0;
+        const qtyColor = isAnulado
+            ? 'var(--text-subtle, #6b7280)'
+            : isTransfer
+            ? '#818cf8'
+            : isPositive
+            ? '#10b981'
+            : '#ef4444';
         const docNum = m.documentoNumero || m.documento?.numero;
-        const partnerName =
-            m.documento?.partner?.name ||
-            m.batch?.supplier?.name ||
-            m.item?.supplier?.name;
 
         const dateCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary, #f3f4f6)' }}>
+            <div style={{ whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary, #f3f4f6)' }}>
                     {formatDateAR(m.fecha)}
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>
-                    {formatTimeAR(m.createdAt)}
-                </span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>{formatTimeAR(m.createdAt)}</div>
             </div>
         );
 
         const typeCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-                <Badge color={meta.color}>
-                    {meta.icon} {meta.shortLabel}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Badge color={m._badgeColor}>
+                    {m._badgeIcon} {m._badgeLabel}
                 </Badge>
-                {isAnulado && (
-                    <span style={{ fontSize: '10px', color: '#ef4444', fontWeight: 800, letterSpacing: '0.5px' }}>
-                        ⚠️ ANULADO
-                    </span>
-                )}
+                {isAnulado && <Badge color="#6b7280">ANULADO</Badge>}
             </div>
         );
 
         const materialCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxWidth: '240px' }}>
-                <div
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (m.item?.id) handleSelectItem(m.item.id);
-                    }}
-                    style={{
-                        fontWeight: 700,
-                        color: '#818cf8',
-                        cursor: 'pointer',
-                        whiteSpace: 'normal',
-                        lineHeight: '1.25',
-                        fontSize: '13px',
-                    }}
-                    title="Clic para ver todo el historial (Kardex) de este material"
-                >
+            <div
+                onClick={() => m.item?.id && handleSelectItem(m.item.id)}
+                style={{ cursor: 'pointer', maxWidth: '250px' }}
+                title="Clic para ver todo el historial de este material"
+            >
+                <div style={{ fontWeight: 700, color: '#a5b4fc', fontSize: '13px', lineHeight: 1.25, whiteSpace: 'normal' }}>
                     {m.item?.descripcion || '—'}
                 </div>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {m.item?.codigoInterno && (
-                        <code style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
-                            {m.item.codigoInterno}
-                        </code>
-                    )}
-                    {(m.item?.category?.nombre || m.item?.categoria || m.categoria) && (
-                        <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: '4px', color: 'var(--text-muted, #9ca3af)' }}>
-                            {m.item?.category?.nombre || m.item?.categoria || m.categoria}
-                        </span>
-                    )}
+                <code style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
+                    {m.item?.codigoInterno}
+                </code>
+            </div>
+        );
+
+        const locationCell = m._isPairedTransfer ? (
+            <div>
+                <div style={{ fontWeight: 700, color: 'var(--text-primary, #f3f4f6)', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                    📍 {m._originPos} <span style={{ color: '#818cf8' }}>→</span> 📍 {m._destPos}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
+                    {m._originDepot || m.deposito?.nombre || 'Traslado interno'}
+                </div>
+            </div>
+        ) : (
+            <div>
+                <div style={{ fontWeight: 700, color: 'var(--text-primary, #f3f4f6)', fontSize: '13px' }}>
+                    📍 {m.posicion?.codigo || 'S/P'}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
+                    {m.deposito?.nombre || m.posicion?.depot?.nombre || '—'}
                 </div>
             </div>
         );
 
-        const lotCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {m.batch?.lotNumber ? (
-                    <code
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setLotNumber(m.batch.lotNumber === lotNumber ? '' : m.batch.lotNumber);
-                        }}
-                        style={{
-                            fontSize: '12px',
-                            color: lotNumber === m.batch.lotNumber ? '#fbbf24' : '#a5b4fc',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            background: 'rgba(165, 180, 252, 0.1)',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            display: 'inline-block',
-                            width: 'fit-content',
-                        }}
-                        title="Clic para filtrar por este lote"
-                    >
-                        Lote: {m.batch.lotNumber}
-                    </code>
-                ) : (
-                    <span style={{ color: 'var(--text-subtle, #6b7280)', fontSize: '12px' }}>Sin lote</span>
-                )}
-            </div>
-        );
-
-        const locationCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                <span
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (m.posicion?.id) {
-                            if (m.posicion?.depositoId) setDepositoId(m.posicion.depositoId);
-                            setPosicionId(posicionId === m.posicion.id ? '' : m.posicion.id);
-                        }
-                    }}
+        const lotCell =
+            m._isPairedTransfer && m._isLotReassign ? (
+                <code style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 700 }}>
+                    {m._originLot} → {m._destLot}
+                </code>
+            ) : (
+                <code
+                    onClick={() => m.batch?.lotNumber && setQuickSearch(quickSearch === m.batch.lotNumber ? '' : m.batch.lotNumber)}
                     style={{
-                        fontWeight: 700,
-                        color: posicionId === m.posicion?.id ? '#fbbf24' : 'var(--text-primary, #f3f4f6)',
-                        cursor: m.posicion?.id ? 'pointer' : 'default',
-                        fontSize: '13px',
+                        fontSize: '12px',
+                        color: '#a5b4fc',
+                        cursor: m.batch?.lotNumber ? 'pointer' : 'default',
                     }}
-                    title="Clic para filtrar por esta posición"
+                    title="Clic para filtrar este lote"
                 >
-                    📍 {m.posicion?.codigo || 'S/P'}
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
-                    {m.deposito?.nombre || m.posicion?.depot?.nombre || '—'}
-                </span>
-            </div>
-        );
-
-        const docPartnerCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {docNum ? (
-                    <span
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleViewDocument(m);
-                        }}
-                        style={{
-                            color: '#38bdf8',
-                            fontWeight: 700,
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                            textDecoration: 'underline',
-                        }}
-                        title="Ver documento / remito"
-                    >
-                        📄 {docNum}
-                    </span>
-                ) : (
-                    <span style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>Sin doc.</span>
-                )}
-                {partnerName && (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={partnerName}>
-                        🤝 {partnerName}
-                    </span>
-                )}
-            </div>
-        );
+                    {m.batch?.lotNumber || '—'}
+                </code>
+            );
 
         const qtyCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                <span
+            <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <div
                     style={{
                         color: qtyColor,
                         fontWeight: 800,
@@ -943,138 +764,126 @@ export default function AdminMovementsPage() {
                         textDecoration: isAnulado ? 'line-through' : 'none',
                     }}
                 >
-                    {isPositive ? '+' : ''}
-                    {signedQty.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                    <small style={{ fontWeight: 600, fontSize: '11px' }}>{m.item?.unidadPrincipal || 'kg'}</small>
-                </span>
-                {m.qtySecundaria != null && Number(m.qtySecundaria) !== 0 && (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
-                        {isPositive ? '+' : '-'}
+                    {!isTransfer && isPositive ? '+' : ''}
+                    {m._signedQty.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}{' '}
+                    <small style={{ fontSize: '11px', fontWeight: 600 }}>{m.item?.unidadPrincipal || 'kg'}</small>
+                </div>
+                {m.qtySecundaria != null && Number(m.qtySecundaria) > 0 && (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
                         {Number(m.qtySecundaria).toLocaleString('es-AR')} {m.item?.unidadSecundaria || 'un'}
-                    </span>
+                    </div>
                 )}
             </div>
         );
 
         const saldoCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+            <div style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 800, color: 'var(--text-primary, #f3f4f6)' }}>
                 {m._saldoAfter != null ? (
                     <>
-                        <span style={{ fontWeight: 800, color: 'var(--text-primary, #f3f4f6)', fontSize: '13px' }}>
-                            {m._saldoAfter.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                            <small style={{ fontSize: '10px', color: 'var(--text-muted, #9ca3af)' }}>
-                                {m.item?.unidadPrincipal || 'kg'}
-                            </small>
-                        </span>
-                        <span style={{ fontSize: '10px', color: 'var(--text-subtle, #6b7280)' }}>
-                            Ant: {m._saldoBefore?.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                        </span>
+                        {m._saldoAfter.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}{' '}
+                        <small style={{ fontSize: '10px', color: 'var(--text-muted, #9ca3af)', fontWeight: 500 }}>
+                            {m.item?.unidadPrincipal || 'kg'}
+                        </small>
                     </>
                 ) : (
-                    <span style={{ color: 'var(--text-subtle, #6b7280)' }}>—</span>
+                    '—'
                 )}
             </div>
         );
 
-        const userObsCell = (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxWidth: '180px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary, #d1d5db)' }}>
-                    👤 {m.user?.username || m.user?.nombre || 'Sistema'}
-                </span>
-                {m.observaciones ? (
-                    <span
+        const detailCell = (
+            <div style={{ maxWidth: '210px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary, #d1d5db)' }}>
+                        👤 {m.user?.username || 'Sistema'}
+                    </span>
+                    {docNum && !docNum.startsWith('BK-') && (
+                        <span
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewDocument(m);
+                            }}
+                            style={{
+                                fontSize: '11px',
+                                color: '#38bdf8',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                            }}
+                        >
+                            📄 {docNum}
+                        </span>
+                    )}
+                </div>
+                {m.observaciones && !m._isPairedTransfer && (
+                    <div
                         style={{
                             fontSize: '11px',
                             color: 'var(--text-subtle, #6b7280)',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
+                            marginTop: '2px',
                         }}
                         title={m.observaciones}
                     >
-                        "{m.observaciones}"
-                    </span>
-                ) : (
-                    <span style={{ fontSize: '11px', color: 'var(--text-dimmed, #4b5563)' }}>—</span>
+                        {m.observaciones}
+                    </div>
                 )}
             </div>
         );
 
-        const actions: { label: string; icon: string; color?: string; onClick: () => void }[] = [
-            {
-                label: 'Ver Detalle Completo',
-                icon: '👁️',
-                onClick: () => setSelectedMovement(m),
-            },
+        const canReverseRow =
+            !isAnulado &&
+            !m._isPairedTransfer &&
+            canReverse &&
+            ['REMITO_ENTRADA', 'REMITO_SALIDA', 'AJUSTE_SUMA', 'AJUSTE_RESTA'].includes(m.tipo);
+
+        const actions = [
+            { label: 'Ver Detalle', icon: '👁️', onClick: () => setSelectedMovement(m) },
+            ...(!itemId && m.item?.id
+                ? [
+                      {
+                          label: 'Ver Historial del Material',
+                          icon: '📊',
+                          color: '#a5b4fc',
+                          onClick: () => handleSelectItem(m.item.id),
+                      },
+                  ]
+                : []),
+            ...(canReverseRow
+                ? [
+                      {
+                          label: 'Revertir Movimiento',
+                          icon: '🔄',
+                          color: '#ef4444',
+                          onClick: () => handleReverse(m),
+                      },
+                  ]
+                : []),
         ];
 
-        if (!itemId && m.item?.id) {
-            actions.push({
-                label: 'Ver Kardex del Material',
-                icon: '📊',
-                color: '#818cf8',
-                onClick: () => handleSelectItem(m.item.id),
-            });
-        }
-
-        if (m.batch?.lotNumber && lotNumber !== m.batch.lotNumber) {
-            actions.push({
-                label: `Seguir Lote "${m.batch.lotNumber}"`,
-                icon: '🔢',
-                color: '#a5b4fc',
-                onClick: () => {
-                    setLotNumber(m.batch.lotNumber);
-                    if (datePreset === '2d' || datePreset === '7d') applyPreset('all');
-                },
-            });
-        }
-
-        if (docNum) {
-            actions.push({
-                label: `Abrir Documento (${docNum})`,
-                icon: '📄',
-                color: '#38bdf8',
-                onClick: () => handleViewDocument(m),
-            });
-        }
-
-        if (!isAnulado && meta.canReverse && canReverse) {
-            actions.push({
-                label: 'Revertir Movimiento',
-                icon: '🔄',
-                color: '#ef4444',
-                onClick: () => handleReverse(m),
-            });
-        }
-
-        const actionCell = <ActionMenu options={actions} />;
-
         if (itemId) {
-            return [dateCell, typeCell, locationCell, lotCell, docPartnerCell, qtyCell, saldoCell, userObsCell, actionCell];
+            return [dateCell, typeCell, locationCell, lotCell, qtyCell, saldoCell, detailCell, <ActionMenu options={actions} />];
         }
-        return [dateCell, typeCell, materialCell, lotCell, locationCell, docPartnerCell, qtyCell, userObsCell, actionCell];
+        return [dateCell, typeCell, materialCell, locationCell, lotCell, qtyCell, detailCell, <ActionMenu options={actions} />];
     };
 
     const renderMobileCard = (m: any) => {
         const isAnulado = m.status === 'ANULADO';
-        const meta: TypeMeta = m._meta;
-        const signedQty = m._signedQty;
-        const isPositive = signedQty > 0;
-        const qtyColor = isAnulado ? 'var(--text-subtle, #6b7280)' : isPositive ? '#10b981' : '#ef4444';
-        const docNum = m.documentoNumero || m.documento?.numero;
+        const isTransfer = m._category === 'TRANSFER';
+        const isPositive = m._signedQty > 0;
+        const qtyColor = isAnulado ? '#6b7280' : isTransfer ? '#818cf8' : isPositive ? '#10b981' : '#ef4444';
 
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} onClick={() => setSelectedMovement(m)}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} onClick={() => setSelectedMovement(m)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <Badge color={meta.color}>
-                            {meta.icon} {meta.shortLabel}
-                        </Badge>
-                        <span style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '12px', fontWeight: 600 }}>
-                            {formatDateAR(m.fecha)} {formatTimeAR(m.createdAt)}
-                        </span>
-                    </div>
-                    {isAnulado && <Badge color="#ef4444">ANULADO</Badge>}
+                    <Badge color={m._badgeColor}>
+                        {m._badgeIcon} {m._badgeLabel}
+                    </Badge>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)' }}>
+                        {formatDateAR(m.fecha)} {formatTimeAR(m.createdAt)}
+                    </span>
                 </div>
 
                 {!itemId && (
@@ -1083,106 +892,53 @@ export default function AdminMovementsPage() {
                             e.stopPropagation();
                             if (m.item?.id) handleSelectItem(m.item.id);
                         }}
-                        style={{ fontWeight: 700, color: '#818cf8', fontSize: '14px' }}
+                        style={{ fontWeight: 700, color: '#a5b4fc', fontSize: '14px' }}
                     >
-                        {m.item?.descripcion || '—'}{' '}
-                        {m.item?.codigoInterno && (
-                            <code style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
-                                ({m.item.codigoInterno})
-                            </code>
-                        )}
+                        {m.item?.descripcion}
                     </div>
                 )}
 
-                <div
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: itemId ? '1fr 1fr 1fr' : '1fr 1fr',
-                        gap: '8px',
-                        background: 'var(--bg-alt-row, rgba(0,0,0,0.25))',
-                        padding: '10px',
-                        borderRadius: '8px',
-                    }}
-                >
-                    <div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                            Variación
-                        </div>
-                        <div style={{ fontWeight: 800, color: qtyColor, fontSize: '14px' }}>
-                            {isPositive ? '+' : ''}
-                            {signedQty.toFixed(2)} {m.item?.unidadPrincipal || 'kg'}
-                        </div>
-                    </div>
-                    {itemId && m._saldoAfter != null && (
-                        <div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                Saldo
-                            </div>
-                            <div style={{ fontWeight: 800, color: 'var(--text-primary, #f3f4f6)', fontSize: '14px' }}>
-                                {m._saldoAfter.toFixed(2)} {m.item?.unidadPrincipal || 'kg'}
-                            </div>
-                        </div>
-                    )}
-                    <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                            Lote
-                        </div>
-                        <code style={{ color: '#a5b4fc', fontWeight: 700 }}>{m.batch?.lotNumber || '—'}</code>
-                    </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-muted, #9ca3af)', flexWrap: 'wrap', gap: '6px' }}>
-                    <span>
-                        📍 {m.deposito?.nombre || m.posicion?.depot?.nombre} - <strong>{m.posicion?.codigo || 'S/P'}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary, #d1d5db)' }}>
+                        {m._isPairedTransfer ? `📍 ${m._originPos} → 📍 ${m._destPos}` : `📍 ${m.posicion?.codigo || 'S/P'}`}
+                        {' · '}
+                        <code>{m.batch?.lotNumber || 'S/L'}</code>
                     </span>
-                    {docNum && <span style={{ color: '#38bdf8', fontWeight: 700 }}>📄 {docNum}</span>}
-                    <span>👤 {m.user?.username || 'Sistema'}</span>
+                    <span style={{ fontWeight: 800, color: qtyColor, fontSize: '15px' }}>
+                        {!isTransfer && isPositive ? '+' : ''}
+                        {m._signedQty.toFixed(1)} {m.item?.unidadPrincipal || 'kg'}
+                    </span>
                 </div>
-
-                {m.observaciones && (
-                    <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', fontStyle: 'italic' }}>
-                        "{m.observaciones}"
-                    </div>
-                )}
             </div>
         );
     };
 
     return (
-        <div style={{ padding: isMobile ? '14px' : '24px', maxWidth: '1460px', margin: '0 auto' }}>
+        <div style={{ padding: isMobile ? '14px' : '24px', maxWidth: '1440px', margin: '0 auto' }}>
             <style>{`
-                .audit-kpi-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 14px;
-                    margin-bottom: 20px;
-                }
-                .preset-chip {
-                    background: var(--bg-primary, #0f1117);
+                .period-pill {
+                    background: transparent;
                     border: 1px solid var(--border-strong, #374151);
                     color: var(--text-muted, #9ca3af);
-                    padding: 6px 12px;
+                    padding: 7px 12px;
                     border-radius: 8px;
                     font-size: 12px;
                     font-weight: 700;
                     cursor: pointer;
                     transition: all 0.15s;
+                    white-space: nowrap;
                 }
-                .preset-chip:hover {
-                    border-color: #6366f1;
-                    color: var(--text-primary, #f3f4f6);
-                }
-                .preset-chip.active {
+                .period-pill.active {
                     background: rgba(99, 102, 241, 0.18);
                     border-color: #6366f1;
                     color: #a5b4fc;
                 }
-                .flow-tab {
-                    background: transparent;
+                .filter-tab-btn {
+                    background: var(--bg-secondary, #1a1d2e);
                     border: 1px solid var(--border-color, #2a2d3e);
                     color: var(--text-muted, #9ca3af);
-                    padding: 7px 14px;
-                    border-radius: 99px;
+                    padding: 8px 14px;
+                    border-radius: 8px;
                     font-size: 12px;
                     font-weight: 700;
                     cursor: pointer;
@@ -1191,314 +947,322 @@ export default function AdminMovementsPage() {
                     align-items: center;
                     gap: 6px;
                 }
-                .flow-tab.active {
+                .filter-tab-btn:hover {
+                    border-color: #6366f1;
+                    color: var(--text-primary, #f3f4f6);
+                }
+                .filter-tab-btn.active {
                     background: #6366f1;
                     border-color: #6366f1;
                     color: #ffffff;
                 }
-                .date-input-audit {
-                    background: var(--bg-primary, #0f1117);
-                    border: 1px solid var(--border-strong, #374151);
-                    border-radius: 8px;
-                    color: var(--text-primary, #f3f4f6);
-                    padding: 7px 10px;
-                    font-size: 13px;
-                    outline: none;
-                    box-sizing: border-box;
-                }
-                .date-input-audit:focus {
-                    border-color: #6366f1;
+                .filter-tab-btn.warning.active {
+                    background: #f59e0b;
+                    border-color: #f59e0b;
+                    color: #111827;
                 }
             `}</style>
 
             <PageHeader
-                title="🛡️ Auditoría e Historial de Stock (Kardex)"
-                subtitle="Trazabilidad completa de movimientos por material, partida, posición y documento"
+                title="Auditoría de Stock"
+                subtitle="Seguimiento de ajustes forzados (sin contrapartida) e historial completo por material"
             >
-                <Btn variant="secondary" onClick={() => refetch()}>
-                    🔄 Actualizar
-                </Btn>
-                <Btn onClick={handleExportExcel} style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
-                    📥 Exportar Excel ({filteredMovements.length})
+                <Btn variant="secondary" small onClick={handleExportExcel}>
+                    📥 Exportar Excel
                 </Btn>
             </PageHeader>
 
-            {/* ── SECCIÓN DESTACADA: BUSCADOR RÁPIDO DE MATERIAL (KARDEX) ── */}
-            <Card
-                style={{
-                    marginBottom: '20px',
-                    padding: isMobile ? '14px' : '18px 20px',
-                    background: itemId
-                        ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(26, 29, 46, 0.95) 100%)'
-                        : 'var(--bg-secondary, #1a1d2e)',
-                    border: itemId ? '1px solid rgba(99, 102, 241, 0.45)' : '1px solid var(--border-color, #2a2d3e)',
-                }}
-            >
+            {/* ── 1. BARRA ÚNICA DE FILTROS (1 SOLA FILA LIMPIA) ── */}
+            <Card style={{ padding: '14px 16px', marginBottom: '18px' }}>
                 <div
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: isMobile ? '1fr' : '1.4fr 1fr auto',
-                        gap: '14px',
+                        gridTemplateColumns: isMobile ? '1fr' : '1.5fr 0.9fr 1.1fr auto',
+                        gap: '12px',
                         alignItems: 'flex-end',
                     }}
                 >
-                    <div>
-                        <div style={{ fontSize: '11px', fontWeight: 800, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
-                            🔎 Investigar Historial Completo de un Material (Kardex)
-                        </div>
-                        <SearchSelect
-                            value={itemId}
-                            onChange={handleSelectItem}
-                            options={[
-                                { value: '', label: '— Todos los materiales (Vista Global) —' },
-                                ...rawItems.map((i: any) => ({
-                                    value: i.id,
-                                    label: `${i.category?.nombre || i.categoria ? `[${i.category?.nombre || i.categoria}] ` : ''}${i.codigoInterno} - ${i.descripcion}`,
-                                })),
-                            ]}
-                            placeholder="Escribí código o nombre del material para ver todos sus movimientos históricos..."
-                        />
-                    </div>
+                    <SearchSelect
+                        label="🏷️ Material (Seleccioná uno para ver todo su historial y saldo)"
+                        value={itemId}
+                        onChange={handleSelectItem}
+                        options={[
+                            { value: '', label: 'Todos los materiales (Vista general)' },
+                            ...rawItems.map((i: any) => ({
+                                value: i.id,
+                                label: `${i.codigoInterno} - ${i.descripcion}`,
+                            })),
+                        ]}
+                        placeholder="Escribir código o nombre del material..."
+                    />
+
+                    <Select
+                        label="🏢 Depósito"
+                        value={depositoId}
+                        onChange={setDepositoId}
+                        options={[
+                            { value: '', label: 'Todos los depósitos' },
+                            ...rawDepots
+                                .filter((d: any) => d.activo !== false)
+                                .map((d: any) => ({ value: d.id, label: d.nombre })),
+                        ]}
+                    />
 
                     <Input
-                        label="🔍 Búsqueda instantánea (Lote, Remito, Posición, Usuario, Obs...)"
-                        placeholder="Ej: Lote 450, Remito 0001, A-01, Juan..."
+                        label="🔍 Buscar lote, posición, remito o usuario"
+                        placeholder="Ej: Lote 120, A-01, usuario..."
                         value={quickSearch}
                         onChange={setQuickSearch}
                     />
 
-                    {(itemId || lotNumber || depositoId || posicionId || tipo || statusFilter || quickSearch || flowFilter !== 'ALL') && (
-                        <Btn variant="secondary" onClick={handleClearAllFilters} style={{ height: '37px' }}>
-                            ✕ Limpiar Filtros
-                        </Btn>
-                    )}
-                </div>
-
-                {/* RANGO DE FECHAS CON BOTONES RÁPIDOS + FILTROS SECUNDARIOS */}
-                <div
-                    style={{
-                        marginTop: '16px',
-                        paddingTop: '14px',
-                        borderTop: '1px solid var(--border-subtle, #1e2133)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '12px',
-                    }}
-                >
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', fontWeight: 700, marginRight: '4px' }}>
-                                📅 Período:
-                            </span>
+                    <div>
+                        <label style={{ display: 'block', color: 'var(--text-muted, #9ca3af)', fontSize: '12px', marginBottom: '4px' }}>
+                            📅 Período
+                        </label>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             {(
                                 [
-                                    { id: '2d', label: 'Últimos 2 días' },
-                                    { id: '7d', label: '7 días' },
-                                    { id: '30d', label: '30 días' },
-                                    { id: '90d', label: '90 días' },
-                                    { id: 'year', label: `Año ${new Date().getFullYear()}` },
-                                    { id: 'all', label: '♾️ Todo el Historial' },
+                                    { id: '7d', label: '7d' },
+                                    { id: '30d', label: '30d' },
+                                    { id: '90d', label: '90d' },
+                                    { id: 'all', label: 'Todo' },
+                                    { id: 'custom', label: 'Fechas...' },
                                 ] as { id: DatePreset; label: string }[]
                             ).map((p) => (
                                 <button
                                     key={p.id}
                                     type="button"
-                                    className={`preset-chip ${datePreset === p.id ? 'active' : ''}`}
+                                    className={`period-pill ${datePreset === p.id ? 'active' : ''}`}
                                     onClick={() => applyPreset(p.id)}
                                 >
                                     {p.label}
                                 </button>
                             ))}
                         </div>
-
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>Desde:</span>
-                                <input
-                                    type="date"
-                                    className="date-input-audit"
-                                    value={desde}
-                                    onChange={(e) => {
-                                        setDesde(e.target.value);
-                                        setDatePreset('custom');
-                                    }}
-                                />
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>Hasta:</span>
-                                <input
-                                    type="date"
-                                    className="date-input-audit"
-                                    value={hasta}
-                                    onChange={(e) => {
-                                        setHasta(e.target.value);
-                                        setDatePreset('custom');
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Secondary Filters Row */}
-                    <div
-                        style={{
-                            display: 'grid',
-                            gridTemplateColumns: isMobile ? '1fr' : 'repeat(5, 1fr)',
-                            gap: '10px',
-                            alignItems: 'flex-end',
-                        }}
-                    >
-                        <Select
-                            label="🏢 Depósito"
-                            value={depositoId}
-                            onChange={(val) => {
-                                setDepositoId(val);
-                                setPosicionId('');
-                            }}
-                            options={[
-                                { value: '', label: 'Todos los depósitos' },
-                                ...rawDepots
-                                    .filter((d: any) => d.activo !== false)
-                                    .map((d: any) => ({ value: d.id, label: d.nombre })),
-                            ]}
-                        />
-                        <SearchSelect
-                            label="📍 Posición"
-                            value={posicionId}
-                            onChange={setPosicionId}
-                            disabled={!depositoId}
-                            options={[
-                                { value: '', label: 'Todas las posiciones' },
-                                ...availablePositions.map((p: any) => ({ value: p.id, label: p.codigo })),
-                            ]}
-                            placeholder={depositoId ? 'Buscar posición...' : 'Elegí un depósito primero'}
-                        />
-                        <Input
-                            label="🔢 Lote / Partida exacta o parcial"
-                            placeholder="Filtrar lote..."
-                            value={lotNumber}
-                            onChange={setLotNumber}
-                        />
-                        <Select
-                            label="⚙️ Tipo Específico"
-                            value={tipo}
-                            onChange={setTipo}
-                            options={[
-                                { value: '', label: 'Todos los tipos' },
-                                { value: 'REMITO_ENTRADA', label: '📥 ENTRADA (Remito)' },
-                                { value: 'REMITO_SALIDA', label: '📤 SALIDA (Remito)' },
-                                { value: 'AJUSTE_SUMA', label: '➕ AJUSTE (+)' },
-                                { value: 'AJUSTE_RESTA', label: '➖ AJUSTE (-)' },
-                                { value: 'MOVE_INTERNO', label: '🔄 TRASLADO INTERNO' },
-                                { value: 'ENTREGA_PRODUCCION', label: '🏭 ENTREGA PRODUCCIÓN' },
-                                { value: 'DEVOLUCION_LINEA', label: '↩️ DEVOLUCIÓN LÍNEA' },
-                                { value: 'INGRESO_PRODUCCION', label: '⚙️ INGRESO PRODUCCIÓN' },
-                                { value: 'ANULACION_ENTRADA', label: '🚫 ANUL. ENTRADA' },
-                                { value: 'ANULACION_SALIDA', label: '🚫 ANUL. SALIDA' },
-                                { value: 'ANULACION_AJUSTE_SUMA', label: '🚫 ANUL. AJUSTE (+)' },
-                                { value: 'ANULACION_AJUSTE_RESTA', label: '🚫 ANUL. AJUSTE (-)' },
-                            ]}
-                        />
-                        <Select
-                            label="🛡️ Estado del Movimiento"
-                            value={statusFilter}
-                            onChange={setStatusFilter}
-                            options={[
-                                { value: '', label: 'Todos (Activos + Anulados)' },
-                                { value: 'ACTIVO', label: '✅ Solo Activos' },
-                                { value: 'ANULADO', label: '🚫 Solo Anulados' },
-                            ]}
-                        />
                     </div>
                 </div>
+
+                {showCustomDates && (
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle, #1e2133)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                        <Input label="Desde" type="date" value={desde} onChange={setDesde} style={{ width: '160px' }} />
+                        <Input label="Hasta" type="date" value={hasta} onChange={setHasta} style={{ width: '160px' }} />
+                    </div>
+                )}
             </Card>
 
-            {/* ── FICHA DE KARDEX DEL MATERIAL SELECCIONADO ── */}
-            {itemId && selectedItemObj && (
-                <Card
-                    style={{
-                        marginBottom: '20px',
-                        padding: '18px 20px',
-                        background: 'var(--bg-secondary, #1a1d2e)',
-                        border: '1px solid rgba(99, 102, 241, 0.35)',
-                    }}
-                >
-                    <div
-                        style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            justifyContent: 'space-between',
-                            alignItems: 'flex-start',
-                            gap: '12px',
-                            marginBottom: '16px',
-                            paddingBottom: '14px',
-                            borderBottom: '1px solid var(--border-subtle, #1e2133)',
-                        }}
-                    >
-                        <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                                <Badge color="#6366f1">FICHA KARDEX DEL MATERIAL</Badge>
-                                <code style={{ fontSize: '13px', color: '#a5b4fc', fontWeight: 800 }}>
-                                    {selectedItemObj.codigoInterno}
-                                </code>
-                                {(selectedItemObj.category?.nombre || selectedItemObj.categoria) && (
-                                    <Badge color="#38bdf8">
-                                        {selectedItemObj.category?.nombre || selectedItemObj.categoria}
-                                    </Badge>
-                                )}
+            {/* ── 2. BLOQUE DASHBOARD (2 PANELES LADO A LADO, CERO REDUNDANCIA) ── */}
+            <div
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? '1fr' : '1.15fr 1fr',
+                    gap: '16px',
+                    marginBottom: '20px',
+                }}
+            >
+                {/* PANEL IZQUIERDO: CONTROL DE AJUSTES REALES (SIN CONTRAPARTIDA) */}
+                <Card style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+                            <div>
+                                <div style={{ fontSize: '12px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    ⚠️ Ajustes Forzados (Sin Contrapartida)
+                                </div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', marginTop: '2px' }}>
+                                    Excluye traslados entre posiciones (-250 / +250). Muestra solo diferencias de inventario.
+                                </div>
                             </div>
-                            <h2 style={{ margin: '6px 0 4px', fontSize: isMobile ? '17px' : '20px', fontWeight: 800, color: 'var(--text-primary, #f3f4f6)' }}>
-                                {selectedItemObj.descripcion}
-                            </h2>
-                            <div style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)' }}>
-                                Proveedor habitual: <strong>{selectedItemObj.supplier?.name || 'No especificado'}</strong>
-                                {selectedItemObj.stockMinimo != null && (
-                                    <>
-                                        {' '}
-                                        &middot; Stock Mínimo: <strong>{Number(selectedItemObj.stockMinimo).toLocaleString('es-AR')} {unitLabel}</strong>
-                                    </>
-                                )}
-                            </div>
+                            <Btn
+                                small
+                                variant={flowFilter === 'REAL_ADJUST' ? 'primary' : 'secondary'}
+                                onClick={() => setFlowFilter(flowFilter === 'REAL_ADJUST' ? 'ALL' : 'REAL_ADJUST')}
+                            >
+                                {flowFilter === 'REAL_ADJUST' ? 'Ver Todos' : 'Filtrar Tabla'}
+                            </Btn>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            <Btn
-                                small
-                                variant="secondary"
-                                onClick={() => navigate(`/stock?q=${encodeURIComponent(selectedItemObj.descripcion)}`)}
-                            >
-                                📦 Ver en Gestión de Stock
-                            </Btn>
-                            <Btn
-                                small
-                                variant="secondary"
-                                onClick={() => handleSelectItem('')}
-                            >
-                                ✕ Cerrar Ficha Material
-                            </Btn>
+                        {/* 3 Numeros claros */}
+                        <div
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(3, 1fr)',
+                                gap: '10px',
+                                marginBottom: '16px',
+                            }}
+                        >
+                            <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Total Ajustes</div>
+                                <div style={{ fontSize: '22px', fontWeight: 900, color: '#f59e0b', marginTop: '2px' }}>
+                                    {realAdjustAnalytics.totalCount}
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>correcciones a mano</div>
+                            </div>
+
+                            <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Adiciones / Suma (+)</div>
+                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
+                                    +{realAdjustAnalytics.sumaKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>en {realAdjustAnalytics.sumaCount} ajustes</div>
+                            </div>
+
+                            <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Faltantes / Baja (-)</div>
+                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#ef4444', marginTop: '4px' }}>
+                                    -{realAdjustAnalytics.restaKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>en {realAdjustAnalytics.restaCount} ajustes</div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Distribucion actual de stock del material */}
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.2fr 1fr', gap: '16px', alignItems: 'stretch' }}>
-                        {/* Grafico de evolucion del saldo del material */}
-                        <div
-                            style={{
-                                background: 'rgba(0,0,0,0.2)',
-                                border: '1px solid var(--border-subtle, #1e2133)',
-                                borderRadius: '10px',
-                                padding: '14px',
-                            }}
-                        >
-                            <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted, #9ca3af)', marginBottom: '10px', textTransform: 'uppercase' }}>
-                                📈 Evolución del Saldo Histórico ({unitLabel})
+                    {/* Gráfico de tendencia de ajustes forzados */}
+                    <div style={{ height: '140px', width: '100%' }}>
+                        {realAdjustAnalytics.trendData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={realAdjustAnalytics.trendData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                    <XAxis dataKey="label" stroke="#9ca3af" fontSize={11} tickLine={false} />
+                                    <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} allowDecimals={false} />
+                                    <RechartsTooltip
+                                        contentStyle={{
+                                            backgroundColor: '#1a1d2e',
+                                            borderColor: '#374151',
+                                            borderRadius: 8,
+                                            color: '#fff',
+                                            fontSize: '12px',
+                                        }}
+                                        formatter={(val: any) => [`${val} ajustes forzados`, 'Cantidad']}
+                                    />
+                                    <Bar dataKey="cantidad" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981', fontSize: '13px', fontWeight: 600, background: 'rgba(16, 185, 129, 0.05)', borderRadius: '8px' }}>
+                                ✅ Sin ajustes forzados en este período
                             </div>
-                            {chartData.length > 1 ? (
-                                <div style={{ width: '100%', height: '170px' }}>
+                        )}
+                    </div>
+                </Card>
+
+                {/* PANEL DERECHO: CONTEXTUAL (RANKING DE MATERIALES CON MÁS AJUSTES O CURVA DE STOCK DEL MATERIAL SELECCIONADO) */}
+                <Card style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    {!itemId ? (
+                        <>
+                            <div style={{ marginBottom: '12px' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 800, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    🎯 Materiales con más Ajustes Manuales
+                                </div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', marginTop: '2px' }}>
+                                    Hacé clic en un material para investigar su historial completo (Kardex)
+                                </div>
+                            </div>
+
+                            {realAdjustAnalytics.topMaterials.length === 0 ? (
+                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle, #6b7280)', fontSize: '13px' }}>
+                                    No hay materiales con ajustes manuales en este período.
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, justifyContent: 'center' }}>
+                                    {realAdjustAnalytics.topMaterials.map((mat, idx) => (
+                                        <div
+                                            key={mat.id}
+                                            onClick={() => handleSelectItem(mat.id)}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                padding: '10px 12px',
+                                                background: 'rgba(255,255,255,0.03)',
+                                                border: '1px solid var(--border-subtle, #1e2133)',
+                                                borderRadius: '8px',
+                                                cursor: 'pointer',
+                                                transition: 'border-color 0.15s',
+                                            }}
+                                            onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#6366f1')}
+                                            onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle, #1e2133)')}
+                                        >
+                                            <div style={{ minWidth: 0, flex: 1, paddingRight: '10px' }}>
+                                                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary, #f3f4f6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {idx + 1}. {mat.descripcion}
+                                                </div>
+                                                <code style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>{mat.codigo}</code>
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', whiteSpace: 'nowrap' }}>
+                                                <div style={{ textAlign: 'right', fontSize: '12px' }}>
+                                                    {mat.sumaKg > 0 && (
+                                                        <span style={{ color: '#10b981', fontWeight: 700, marginRight: '6px' }}>
+                                                            +{mat.sumaKg.toFixed(1)} {mat.unidad}
+                                                        </span>
+                                                    )}
+                                                    {mat.restaKg > 0 && (
+                                                        <span style={{ color: '#ef4444', fontWeight: 700 }}>
+                                                            -{mat.restaKg.toFixed(1)} {mat.unidad}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <Badge color="#f59e0b">{mat.count} aj.</Badge>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
+                                <div>
+                                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#a5b4fc', textTransform: 'uppercase' }}>
+                                        📈 Evolución de Stock: {selectedItemObj?.codigoInterno}
+                                    </div>
+                                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary, #f3f4f6)', marginTop: '2px' }}>
+                                        {selectedItemObj?.descripcion}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ textAlign: 'right', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', padding: '6px 10px', borderRadius: '8px' }}>
+                                        <div style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>Stock Hoy</div>
+                                        <div style={{ fontSize: '15px', fontWeight: 900, color: '#38bdf8' }}>
+                                            {currentStockTotal.toLocaleString('es-AR', { maximumFractionDigits: 1 })} {unitLabel}
+                                        </div>
+                                    </div>
+                                    <Btn small variant="secondary" onClick={() => handleSelectItem('')} title="Volver a vista general">
+                                        ✕
+                                    </Btn>
+                                </div>
+                            </div>
+
+                            {/* Ubicaciones actuales resumidas en pills */}
+                            {currentItemStock.length > 0 && (
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                    {currentItemStock.map((s: any) => (
+                                        <span
+                                            key={s.id}
+                                            onClick={() => s.batch?.lotNumber && setQuickSearch(quickSearch === s.batch.lotNumber ? '' : s.batch.lotNumber)}
+                                            style={{
+                                                fontSize: '11px',
+                                                background: 'rgba(255,255,255,0.04)',
+                                                border: '1px solid var(--border-subtle, #1e2133)',
+                                                padding: '3px 8px',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                            }}
+                                            title="Clic para filtrar por este lote"
+                                        >
+                                            <strong style={{ color: '#a5b4fc' }}>📍 {s.posicion?.codigo}</strong>{' '}
+                                            <span style={{ color: '#10b981', fontWeight: 700 }}>{Number(s.qtyPrincipal).toFixed(1)} {unitLabel}</span>{' '}
+                                            <code style={{ color: 'var(--text-muted, #9ca3af)' }}>({s.batch?.lotNumber || 'S/L'})</code>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div style={{ height: '145px', width: '100%' }}>
+                                {materialHistoryChart.length > 1 ? (
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={chartData}>
+                                        <AreaChart data={materialHistoryChart}>
                                             <defs>
-                                                <linearGradient id="colorSaldo" x1="0" y1="0" x2="0" y2="1">
+                                                <linearGradient id="saldoGrad" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="5%" stopColor="#6366f1" stopOpacity={0.45} />
                                                     <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
                                                 </linearGradient>
@@ -1514,260 +1278,94 @@ export default function AdminMovementsPage() {
                                                     color: '#fff',
                                                     fontSize: '12px',
                                                 }}
-                                                formatter={(val: any, name: any) => [
-                                                    `${Number(val).toLocaleString('es-AR')} ${unitLabel}`,
-                                                    name === 'saldo' ? 'Saldo al cierre' : name,
-                                                ]}
+                                                formatter={(val: any) => [`${Number(val).toLocaleString('es-AR')} ${unitLabel}`, 'Saldo']}
                                             />
-                                            <Area
-                                                type="monotone"
-                                                dataKey="saldo"
-                                                stroke="#818cf8"
-                                                strokeWidth={2.5}
-                                                fillOpacity={1}
-                                                fill="url(#colorSaldo)"
-                                            />
+                                            <Area type="monotone" dataKey="saldo" stroke="#818cf8" strokeWidth={2.5} fill="url(#saldoGrad)" />
                                         </AreaChart>
                                     </ResponsiveContainer>
-                                </div>
-                            ) : (
-                                <div style={{ height: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle, #6b7280)', fontSize: '12px' }}>
-                                    Seleccioná un rango con más fechas para visualizar la curva de evolución.
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Ubicaciones actuales en stock */}
-                        <div
-                            style={{
-                                background: 'rgba(0,0,0,0.2)',
-                                border: '1px solid var(--border-subtle, #1e2133)',
-                                borderRadius: '10px',
-                                padding: '14px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                            }}
-                        >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted, #9ca3af)', textTransform: 'uppercase' }}>
-                                    📍 Stock Físico Actual por Posición ({itemStockSummary.positions.length})
-                                </span>
-                                <span style={{ fontSize: '14px', fontWeight: 900, color: '#38bdf8' }}>
-                                    Total Hoy: {itemStockSummary.totalPrincipal.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} {unitLabel}
-                                </span>
+                                ) : (
+                                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle, #6b7280)', fontSize: '12px' }}>
+                                        Historial de saldo disponible en la tabla inferior
+                                    </div>
+                                )}
                             </div>
-
-                            {itemStockSummary.positions.length === 0 ? (
-                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle, #6b7280)', fontSize: '12px', padding: '20px' }}>
-                                    Este material no tiene stock físico activo en este momento (0 {unitLabel}).
-                                </div>
-                            ) : (
-                                <div style={{ maxHeight: '160px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {itemStockSummary.positions.map((pos) => (
-                                        <div
-                                            key={pos.id}
-                                            onClick={() => setLotNumber(lotNumber === pos.lotNumber ? '' : pos.lotNumber)}
-                                            style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '7px 10px',
-                                                background: lotNumber === pos.lotNumber ? 'rgba(99, 102, 241, 0.18)' : 'rgba(255,255,255,0.03)',
-                                                border: '1px solid var(--border-subtle, #1e2133)',
-                                                borderRadius: '6px',
-                                                fontSize: '12px',
-                                                cursor: 'pointer',
-                                            }}
-                                            title="Clic para filtrar los movimientos de este lote"
-                                        >
-                                            <div>
-                                                <strong style={{ color: '#a5b4fc' }}>📍 {pos.codigo}</strong>{' '}
-                                                <span style={{ color: 'var(--text-subtle, #6b7280)', fontSize: '11px' }}>({pos.deposito})</span>
-                                                <span style={{ marginLeft: '8px', color: '#fbbf24', fontFamily: 'monospace', fontSize: '11px' }}>
-                                                    Lote: {pos.lotNumber}
-                                                </span>
-                                            </div>
-                                            <div style={{ fontWeight: 800, color: '#10b981' }}>
-                                                {pos.qtyPrincipal.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} {unitLabel}
-                                                {pos.qtySecundaria > 0 && (
-                                                    <span style={{ color: 'var(--text-muted, #9ca3af)', fontWeight: 500, fontSize: '11px', marginLeft: '6px' }}>
-                                                        ({pos.qtySecundaria} {selectedItemObj.unidadSecundaria || 'un'})
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </Card>
-            )}
-
-            {/* ── KPIS RESUMEN DEL PERÍODO FILTRADO ── */}
-            <div className="audit-kpi-grid">
-                <Card style={{ padding: '14px 16px', borderLeft: '4px solid #10b981' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 700, textTransform: 'uppercase' }}>
-                        📥 Total Entradas (Período)
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
-                        +{kpiMetrics.entradasKg.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
-                        <small style={{ fontSize: '12px', fontWeight: 600 }}>{unitLabel}</small>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', marginTop: '2px' }}>
-                        En {kpiMetrics.entradasCount} movimientos de ingreso
-                    </div>
-                </Card>
-
-                <Card style={{ padding: '14px 16px', borderLeft: '4px solid #ef4444' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 700, textTransform: 'uppercase' }}>
-                        📤 Total Salidas (Período)
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#ef4444', marginTop: '4px' }}>
-                        -{kpiMetrics.salidasKg.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
-                        <small style={{ fontSize: '12px', fontWeight: 600 }}>{unitLabel}</small>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', marginTop: '2px' }}>
-                        En {kpiMetrics.salidasCount} despachos / entregas
-                    </div>
-                </Card>
-
-                <Card style={{ padding: '14px 16px', borderLeft: '4px solid #3b82f6' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 700, textTransform: 'uppercase' }}>
-                        ⚖️ Ajustes Manuales (Neto)
-                    </div>
-                    <div
-                        style={{
-                            fontSize: '20px',
-                            fontWeight: 900,
-                            color: kpiMetrics.ajustesNetoKg >= 0 ? '#3b82f6' : '#f59e0b',
-                            marginTop: '4px',
-                        }}
-                    >
-                        {kpiMetrics.ajustesNetoKg > 0 ? '+' : ''}
-                        {kpiMetrics.ajustesNetoKg.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
-                        <small style={{ fontSize: '12px', fontWeight: 600 }}>{unitLabel}</small>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', marginTop: '2px' }}>
-                        {kpiMetrics.ajustesCount} ajustes &middot; {kpiMetrics.trasladosCount} traslados internos
-                    </div>
-                </Card>
-
-                <Card style={{ padding: '14px 16px', borderLeft: '4px solid #818cf8' }}>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 700, textTransform: 'uppercase' }}>
-                        📊 Variación Neta Período
-                    </div>
-                    <div
-                        style={{
-                            fontSize: '20px',
-                            fontWeight: 900,
-                            color: kpiMetrics.balanceNetoPeriodo >= 0 ? '#a5b4fc' : '#f87171',
-                            marginTop: '4px',
-                        }}
-                    >
-                        {kpiMetrics.balanceNetoPeriodo > 0 ? '+' : ''}
-                        {kpiMetrics.balanceNetoPeriodo.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{' '}
-                        <small style={{ fontSize: '12px', fontWeight: 600 }}>{unitLabel}</small>
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', marginTop: '2px' }}>
-                        {kpiMetrics.totalMovimientos} registros ({kpiMetrics.distinctMaterialsCount} mat. / {kpiMetrics.distinctLotsCount} lotes)
-                    </div>
+                        </>
+                    )}
                 </Card>
             </div>
 
-            {/* ── GRÁFICO GLOBAL CUANDO NO HAY MATERIAL SELECCIONADO ── */}
-            {!itemId && chartData.length > 1 && (
-                <Card style={{ marginBottom: '20px', padding: '16px 20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted, #9ca3af)', textTransform: 'uppercase' }}>
-                            📊 Flujo Diario de Entradas vs. Salidas (Período Seleccionado)
-                        </span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>
-                            Hacé clic en cualquier material de la tabla para abrir su Kardex individual
-                        </span>
-                    </div>
-                    <div style={{ width: '100%', height: '170px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                <XAxis dataKey="label" stroke="#9ca3af" fontSize={11} tickLine={false} />
-                                <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} />
-                                <RechartsTooltip
-                                    contentStyle={{
-                                        backgroundColor: '#1a1d2e',
-                                        borderColor: '#374151',
-                                        borderRadius: 8,
-                                        color: '#fff',
-                                        fontSize: '12px',
-                                    }}
-                                />
-                                <Bar dataKey="entradas" name="Entradas (+)" fill="#10b981" radius={[3, 3, 0, 0]} />
-                                <Bar dataKey="salidas" name="Salidas (-)" fill="#ef4444" radius={[3, 3, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </Card>
-            )}
-
-            {/* ── TABS RÁPIDOS DE TIPO DE FLUJO ── */}
-            <div
-                style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '10px',
-                    marginBottom: '14px',
-                }}
-            >
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {(
-                        [
-                            { id: 'ALL', label: `Todos (${movementsWithRunningBalance.length})`, icon: '📋' },
-                            { id: 'IN', label: 'Entradas', icon: '📥' },
-                            { id: 'OUT', label: 'Salidas', icon: '📤' },
-                            { id: 'ADJUST', label: 'Ajustes Manuales', icon: '⚖️' },
-                            { id: 'TRANSFER', label: 'Traslados Internos', icon: '🔄' },
-                            { id: 'CANCELLED', label: 'Anulaciones', icon: '🚫' },
-                        ] as { id: FlowFilter; label: string; icon: string }[]
-                    ).map((tab) => (
-                        <button
-                            key={tab.id}
-                            type="button"
-                            className={`flow-tab ${flowFilter === tab.id ? 'active' : ''}`}
-                            onClick={() => {
-                                setFlowFilter(tab.id);
-                                pagination.setPage(0);
-                            }}
-                        >
-                            <span>{tab.icon}</span>
-                            <span>{tab.label}</span>
-                        </button>
-                    ))}
+            {/* ── 3. FILTROS DE TABLA (EL ÚNICO LUGAR PARA FILTRAR POR TIPO) ── */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                        type="button"
+                        className={`filter-tab-btn ${flowFilter === 'ALL' ? 'active' : ''}`}
+                        onClick={() => {
+                            setFlowFilter('ALL');
+                            pagination.setPage(0);
+                        }}
+                    >
+                        Todos ({categoryCounts.all})
+                    </button>
+                    <button
+                        type="button"
+                        className={`filter-tab-btn warning ${flowFilter === 'REAL_ADJUST' ? 'active' : ''}`}
+                        onClick={() => {
+                            setFlowFilter('REAL_ADJUST');
+                            pagination.setPage(0);
+                        }}
+                    >
+                        ⚠️ Solo Ajustes Forzados ({categoryCounts.realAdjust})
+                    </button>
+                    <button
+                        type="button"
+                        className={`filter-tab-btn ${flowFilter === 'IN' ? 'active' : ''}`}
+                        onClick={() => {
+                            setFlowFilter('IN');
+                            pagination.setPage(0);
+                        }}
+                    >
+                        📥 Entradas ({categoryCounts.inCount})
+                    </button>
+                    <button
+                        type="button"
+                        className={`filter-tab-btn ${flowFilter === 'OUT' ? 'active' : ''}`}
+                        onClick={() => {
+                            setFlowFilter('OUT');
+                            pagination.setPage(0);
+                        }}
+                    >
+                        📤 Salidas ({categoryCounts.outCount})
+                    </button>
+                    <button
+                        type="button"
+                        className={`filter-tab-btn ${flowFilter === 'TRANSFER' ? 'active' : ''}`}
+                        onClick={() => {
+                            setFlowFilter('TRANSFER');
+                            pagination.setPage(0);
+                        }}
+                    >
+                        🔄 Traslados Internos ({categoryCounts.transferCount})
+                    </button>
                 </div>
 
-                {/* Active filter pills */}
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    {lotNumber && (
-                        <Badge color="#fbbf24">
-                            Lote: {lotNumber}{' '}
-                            <span style={{ cursor: 'pointer', marginLeft: '4px' }} onClick={() => setLotNumber('')}>
-                                ✕
-                            </span>
-                        </Badge>
-                    )}
-                    {posicionId && (
-                        <Badge color="#38bdf8">
-                            Posición filtrada{' '}
-                            <span style={{ cursor: 'pointer', marginLeft: '4px' }} onClick={() => setPosicionId('')}>
-                                ✕
-                            </span>
-                        </Badge>
-                    )}
-                </div>
+                {(itemId || depositoId || quickSearch || flowFilter !== 'ALL') && (
+                    <Btn
+                        small
+                        variant="secondary"
+                        onClick={() => {
+                            handleSelectItem('');
+                            setDepositoId('');
+                            setQuickSearch('');
+                            setFlowFilter('ALL');
+                        }}
+                    >
+                        ✕ Limpiar filtros
+                    </Btn>
+                )}
             </div>
 
-            {/* ── TABLA PRINCIPAL DE MOVIMIENTOS / KARDEX ── */}
+            {/* ── 4. TABLA PRINCIPAL ── */}
             <Card style={{ padding: isMobile ? '12px' : '0' }}>
                 <ResponsiveTable
                     loading={isFetching}
@@ -1779,7 +1377,7 @@ export default function AdminMovementsPage() {
             </Card>
 
             <PaginationControls
-                count={filteredMovements.length}
+                count={filteredRows.length}
                 page={pagination.page}
                 pageSize={pagination.pageSize}
                 onPageChange={pagination.setPage}
@@ -1789,171 +1387,73 @@ export default function AdminMovementsPage() {
                 }}
             />
 
-            {/* ── MODAL DE DETALLE COMPLETO DEL MOVIMIENTO ── */}
+            {/* MODAL DE DETALLE DEL MOVIMIENTO */}
             {selectedMovement && (
-                <Modal
-                    title="🔎 Ficha de Auditoría del Movimiento"
-                    onClose={() => setSelectedMovement(null)}
-                >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
-                        <div
-                            style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '12px',
-                                background: 'rgba(255,255,255,0.03)',
-                                borderRadius: '10px',
-                                border: '1px solid var(--border-color, #2a2d3e)',
-                            }}
-                        >
-                            <Badge color={selectedMovement._meta?.color || '#6366f1'}>
-                                {selectedMovement._meta?.icon} {selectedMovement._meta?.label || selectedMovement.tipo}
+                <Modal title="Detalle del Movimiento" onClose={() => setSelectedMovement(null)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Badge color={selectedMovement._badgeColor}>
+                                {selectedMovement._badgeIcon} {selectedMovement._badgeLabel}
                             </Badge>
-                            <Badge color={selectedMovement.status === 'ANULADO' ? '#ef4444' : '#10b981'}>
-                                {selectedMovement.status}
-                            </Badge>
+                            <span style={{ color: 'var(--text-muted, #9ca3af)' }}>
+                                {formatDateAR(selectedMovement.fecha)} {formatTimeAR(selectedMovement.createdAt)}
+                            </span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>Material</div>
+                            <div style={{ fontWeight: 800, fontSize: '15px', color: '#a5b4fc' }}>
+                                {selectedMovement.item?.codigoInterno} — {selectedMovement.item?.descripcion}
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                             <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Fecha Operativa
-                                </div>
-                                <div style={{ fontWeight: 700, color: 'var(--text-primary, #f3f4f6)' }}>
-                                    {formatDateAR(selectedMovement.fecha)}
+                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>Ubicación</div>
+                                <div style={{ fontWeight: 700 }}>
+                                    {selectedMovement._isPairedTransfer
+                                        ? `📍 ${selectedMovement._originPos} → 📍 ${selectedMovement._destPos}`
+                                        : `📍 ${selectedMovement.posicion?.codigo || 'S/P'} (${selectedMovement.deposito?.nombre || ''})`}
                                 </div>
                             </div>
                             <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Timestamp Exacto
-                                </div>
-                                <div style={{ fontWeight: 700, color: 'var(--text-primary, #f3f4f6)' }}>
-                                    {selectedMovement.createdAt ? new Date(selectedMovement.createdAt).toLocaleString('es-AR') : '—'}
-                                </div>
-                            </div>
-                            <div style={{ gridColumn: '1 / -1' }}>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Material
-                                </div>
-                                <div style={{ fontWeight: 800, color: '#818cf8', fontSize: '15px' }}>
-                                    {selectedMovement.item?.codigoInterno} — {selectedMovement.item?.descripcion}
-                                </div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Partida / Lote
-                                </div>
-                                <code style={{ fontWeight: 700, color: '#a5b4fc', fontSize: '13px' }}>
+                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>Lote / Partida</div>
+                                <code style={{ fontWeight: 700, color: '#a5b4fc' }}>
                                     {selectedMovement.batch?.lotNumber || 'Sin lote'}
                                 </code>
                             </div>
                             <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Depósito y Posición
-                                </div>
-                                <div style={{ fontWeight: 700 }}>
-                                    {selectedMovement.deposito?.nombre || selectedMovement.posicion?.depot?.nombre || '—'} &middot;{' '}
-                                    <span style={{ color: '#38bdf8' }}>📍 {selectedMovement.posicion?.codigo || 'S/P'}</span>
+                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>Cantidad</div>
+                                <div style={{ fontWeight: 800, fontSize: '15px' }}>
+                                    {Number(selectedMovement.qtyPrincipal).toLocaleString('es-AR')} {selectedMovement.item?.unidadPrincipal || 'kg'}
                                 </div>
                             </div>
                             <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Cantidad Principal
-                                </div>
-                                <div
-                                    style={{
-                                        fontWeight: 900,
-                                        fontSize: '16px',
-                                        color: (selectedMovement._signedQty || 0) >= 0 ? '#10b981' : '#ef4444',
-                                    }}
-                                >
-                                    {(selectedMovement._signedQty || 0) > 0 ? '+' : ''}
-                                    {Number(selectedMovement._signedQty ?? selectedMovement.qtyPrincipal).toLocaleString('es-AR', {
-                                        minimumFractionDigits: 2,
-                                    })}{' '}
-                                    {selectedMovement.item?.unidadPrincipal || 'kg'}
-                                </div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Cantidad Secundaria
-                                </div>
-                                <div style={{ fontWeight: 700 }}>
-                                    {selectedMovement.qtySecundaria != null
-                                        ? `${Number(selectedMovement.qtySecundaria).toLocaleString('es-AR')} ${selectedMovement.item?.unidadSecundaria || 'un'}`
-                                        : '—'}
-                                </div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Usuario Responsable
-                                </div>
-                                <div style={{ fontWeight: 700 }}>
-                                    👤 {selectedMovement.user?.username || selectedMovement.user?.nombre || 'Sistema'}
-                                </div>
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Documento / Remito
-                                </div>
-                                <div style={{ fontWeight: 700, color: '#38bdf8' }}>
-                                    {selectedMovement.documentoNumero || selectedMovement.documento?.numero || '—'}
-                                </div>
-                            </div>
-                            <div style={{ gridColumn: '1 / -1' }}>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>
-                                    Observaciones Registradas
-                                </div>
-                                <div
-                                    style={{
-                                        marginTop: '4px',
-                                        padding: '10px',
-                                        background: 'rgba(0,0,0,0.2)',
-                                        borderRadius: '8px',
-                                        color: 'var(--text-secondary, #d1d5db)',
-                                    }}
-                                >
-                                    {selectedMovement.observaciones || 'Sin observaciones'}
-                                </div>
-                            </div>
-                            <div style={{ gridColumn: '1 / -1' }}>
-                                <div style={{ fontSize: '10px', color: 'var(--text-dimmed, #4b5563)' }}>
-                                    ID Movimiento: <code>{selectedMovement.id}</code>
-                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>Usuario</div>
+                                <div style={{ fontWeight: 700 }}>👤 {selectedMovement.user?.username || 'Sistema'}</div>
                             </div>
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                {selectedMovement.item?.id && itemId !== selectedMovement.item.id && (
-                                    <Btn
-                                        small
-                                        variant="secondary"
-                                        onClick={() => {
-                                            handleSelectItem(selectedMovement.item.id);
-                                            setSelectedMovement(null);
-                                        }}
-                                    >
-                                        📊 Ver Todo el Historial de este Material
-                                    </Btn>
-                                )}
-                                {selectedMovement.status !== 'ANULADO' &&
-                                    selectedMovement._meta?.canReverse &&
-                                    canReverse && (
-                                        <Btn
-                                            small
-                                            variant="danger"
-                                            onClick={() => {
-                                                const mov = selectedMovement;
-                                                setSelectedMovement(null);
-                                                handleReverse(mov);
-                                            }}
-                                        >
-                                            🔄 Revertir Movimiento
-                                        </Btn>
-                                    )}
+                        {selectedMovement.observaciones && (
+                            <div style={{ padding: '10px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', marginBottom: '2px' }}>Observaciones</div>
+                                <div>{selectedMovement.observaciones}</div>
                             </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+                            {selectedMovement.item?.id && itemId !== selectedMovement.item.id && (
+                                <Btn
+                                    small
+                                    variant="secondary"
+                                    onClick={() => {
+                                        handleSelectItem(selectedMovement.item.id);
+                                        setSelectedMovement(null);
+                                    }}
+                                >
+                                    📊 Ver Historial del Material
+                                </Btn>
+                            )}
                             <Btn small onClick={() => setSelectedMovement(null)}>
                                 Cerrar
                             </Btn>
@@ -1962,12 +1462,7 @@ export default function AdminMovementsPage() {
                 </Modal>
             )}
 
-            {/* ── MODAL DE DETALLE DE REMITO ASOCIADO ── */}
-            <RemitoDetailModal
-                open={showRemitoModal}
-                onClose={() => setShowRemitoModal(false)}
-                remito={selectedRemito}
-            />
+            <RemitoDetailModal open={showRemitoModal} onClose={() => setShowRemitoModal(false)} remito={selectedRemito} />
         </div>
     );
 }
