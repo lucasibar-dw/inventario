@@ -19,13 +19,20 @@ import {
     useIsMobile,
 } from '../../shared/ui';
 import { ALL_SECTORS } from '../../shared/types/roles';
+import {
+    PersonAddOutlined,
+    KeyOutlined,
+    EditOutlined,
+    CheckCircleOutline,
+    BlockOutlined,
+} from '@mui/icons-material';
 
 type RoleFilter = 'ALL' | 'ADMIN' | 'SUPERVISOR' | 'OPERARIO' | 'INACTIVE';
 
-const ROLE_META: Record<string, { label: string; icon: string; color: string }> = {
-    ADMIN: { label: 'ADMIN', icon: '👑', color: '#6366f1' },
-    SUPERVISOR: { label: 'SUPERVISOR', icon: '🛡️', color: '#3b82f6' },
-    OPERARIO: { label: 'OPERARIO', icon: '👷', color: '#10b981' },
+const ROLE_META: Record<string, { label: string; color: string }> = {
+    ADMIN: { label: 'Administrador', color: '#818cf8' },
+    SUPERVISOR: { label: 'Supervisor', color: '#60a5fa' },
+    OPERARIO: { label: 'Operario', color: '#34d399' },
 };
 
 export default function UsersPage() {
@@ -37,18 +44,18 @@ export default function UsersPage() {
     const [createUser, { isLoading: isCreating }] = useCreateUserMutation();
     const [updateUser] = useUpdateUserMutation();
 
-    // Filtros de la barra única
+    // Filtros
     const [quickSearch, setQuickSearch] = useState('');
     const [sectorFilter, setSectorFilter] = useState('');
     const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL');
 
-    // Feedback sutil en pantalla (reemplaza alerts molestos)
+    // Notificación discreta en línea
     const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
     const notify = (type: 'ok' | 'err', msg: string) => {
         setFeedback({ type, msg });
         setTimeout(() => {
             setFeedback((prev) => (prev?.msg === msg ? null : prev));
-        }, 4000);
+        }, 3500);
     };
 
     // Modal Nuevo Usuario
@@ -62,7 +69,7 @@ export default function UsersPage() {
         allowedDepotIds: [] as string[],
     });
 
-    // Modales de edición puntual
+    // Modales de edición
     const [editingDepotsFor, setEditingDepotsFor] = useState<{ user: User; depotIds: string[] } | null>(null);
     const [editingSectorsFor, setEditingSectorsFor] = useState<{ user: User; sectors: string[] } | null>(null);
     const [editingPasswordFor, setEditingPasswordFor] = useState<User | null>(null);
@@ -83,7 +90,6 @@ export default function UsersPage() {
         return [];
     };
 
-    // Contadores para las píldoras de filtro
     const counts = useMemo(() => {
         let admin = 0;
         let supervisor = 0;
@@ -107,7 +113,6 @@ export default function UsersPage() {
         };
     }, [users]);
 
-    // Lista filtrada
     const filteredUsers = useMemo(() => {
         const q = quickSearch.trim().toLowerCase();
 
@@ -171,7 +176,7 @@ export default function UsersPage() {
                 sectors: ['DEPOSITO'],
                 allowedDepotIds: [],
             });
-            notify('ok', '✅ Usuario creado correctamente.');
+            notify('ok', 'Usuario creado correctamente.');
         } catch (e: any) {
             setCreateError(e?.data?.message || 'Error al crear usuario');
         }
@@ -180,7 +185,7 @@ export default function UsersPage() {
     const handleUpdateRole = async (user: User, newRole: string) => {
         try {
             await updateUser({ id: user.id, data: { role: newRole } }).unwrap();
-            notify('ok', `Rol de ${user.username} actualizado a ${newRole}.`);
+            notify('ok', `Rol de ${user.username} actualizado.`);
         } catch (e: any) {
             notify('err', e?.data?.message || 'Error al actualizar rol');
         }
@@ -201,7 +206,7 @@ export default function UsersPage() {
         try {
             await updateUser({ id: userId, data: { allowedDepotIds: depotIds } }).unwrap();
             setEditingDepotsFor(null);
-            notify('ok', '✅ Depósitos permitidos actualizados.');
+            notify('ok', 'Depósitos actualizados.');
         } catch (e: any) {
             notify('err', e?.data?.message || 'Error al actualizar depósitos');
         } finally {
@@ -214,7 +219,7 @@ export default function UsersPage() {
         try {
             await updateUser({ id: userId, data: { sectors } }).unwrap();
             setEditingSectorsFor(null);
-            notify('ok', '✅ Sectores permitidos actualizados.');
+            notify('ok', 'Sectores actualizados.');
         } catch (e: any) {
             notify('err', e?.data?.message || 'Error al actualizar sectores');
         } finally {
@@ -232,7 +237,7 @@ export default function UsersPage() {
         setSavingModal(true);
         try {
             await updateUser({ id: editingPasswordFor.id, data: { password: newPasswordVal } }).unwrap();
-            notify('ok', `🔑 Contraseña de ${editingPasswordFor.username} actualizada.`);
+            notify('ok', `Contraseña de ${editingPasswordFor.username} actualizada.`);
             setEditingPasswordFor(null);
             setNewPasswordVal('');
         } catch (e: any) {
@@ -244,128 +249,106 @@ export default function UsersPage() {
 
     const desktopCols = [
         'Usuario',
-        'Rol / Jerarquía',
+        'Rol',
         'Sectores Permitidos',
-        'Depósitos Habilitados',
+        'Depósitos Permitidos',
         'Estado',
-        'Acciones',
+        '',
     ];
 
     const renderDesktopRow = (u: User) => {
         const uSectors = getUserSectors(u);
         const uRole = (u.role || 'OPERARIO').toUpperCase();
-        const roleMeta = ROLE_META[uRole] || { label: uRole, icon: '👤', color: '#9ca3af' };
+        const roleMeta = ROLE_META[uRole] || { label: uRole, color: '#9ca3af' };
         const isActive = u.isActive !== false;
 
         return [
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', opacity: isActive ? 1 : 0.55 }}>
-                <div
-                    style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '8px',
-                        background: `${roleMeta.color}1f`,
-                        border: `1px solid ${roleMeta.color}4d`,
-                        color: roleMeta.color,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 800,
-                        fontSize: '13px',
-                        flexShrink: 0,
-                        textTransform: 'uppercase',
+            <div style={{ fontWeight: 600, color: 'var(--text-primary, #f3f4f6)', opacity: isActive ? 1 : 0.5 }}>
+                <EditableCell
+                    value={u.username}
+                    onSave={async (v) => {
+                        if (!v.trim()) return;
+                        await updateUser({ id: u.id, data: { username: v.trim() } }).unwrap();
+                        notify('ok', 'Nombre de usuario actualizado.');
                     }}
-                >
-                    {u.username.slice(0, 2)}
-                </div>
-                <div>
-                    <div style={{ fontWeight: 700, color: '#a5b4fc', fontSize: '13px' }}>
-                        <EditableCell
-                            value={u.username}
-                            onSave={async (v) => {
-                                if (!v.trim()) return;
-                                await updateUser({ id: u.id, data: { username: v.trim() } }).unwrap();
-                                notify('ok', 'Nombre de usuario actualizado.');
-                            }}
-                        />
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>
-                        Clic en el nombre para renombrar
-                    </div>
-                </div>
+                />
             </div>,
 
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '14px' }}>{roleMeta.icon}</span>
-                <select
-                    value={uRole}
-                    onChange={(e) => handleUpdateRole(u, e.target.value)}
-                    style={{
-                        background: 'var(--bg-primary, #0f1117)',
-                        border: `1px solid ${roleMeta.color}55`,
-                        color: roleMeta.color,
-                        borderRadius: '8px',
-                        padding: '5px 10px',
-                        fontSize: '12px',
-                        outline: 'none',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                    }}
-                >
-                    <option value="ADMIN">ADMIN</option>
-                    <option value="SUPERVISOR">SUPERVISOR</option>
-                    <option value="OPERARIO">OPERARIO</option>
-                </select>
-            </div>,
+            <select
+                value={uRole}
+                onChange={(e) => handleUpdateRole(u, e.target.value)}
+                style={{
+                    background: 'var(--bg-primary, #0f1117)',
+                    border: '1px solid var(--border-color, #2a2d3e)',
+                    color: roleMeta.color,
+                    borderRadius: '6px',
+                    padding: '5px 10px',
+                    fontSize: '12px',
+                    outline: 'none',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                }}
+            >
+                <option value="ADMIN">ADMIN</option>
+                <option value="SUPERVISOR">SUPERVISOR</option>
+                <option value="OPERARIO">OPERARIO</option>
+            </select>,
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', maxWidth: '330px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxWidth: '340px', alignItems: 'center' }}>
                 {uRole === 'ADMIN' ? (
-                    <Badge color="#6366f1">🌟 Acceso total a todos los sectores</Badge>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', fontWeight: 500 }}>
+                        Acceso total
+                    </span>
                 ) : (
                     <>
                         {uSectors.map((sec) => {
                             const found = ALL_SECTORS.find((s) => s.key === sec);
                             return (
-                                <Badge key={sec} color="#3b82f6">
-                                    {found ? `${found.icon} ${found.label}` : sec}
+                                <Badge key={sec} color="#94a3b8">
+                                    {found ? found.label : sec}
                                 </Badge>
                             );
                         })}
                         {uSectors.length === 0 && (
-                            <span style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 600 }}>
-                                ⚠️ Sin sectores asignados
+                            <span style={{ color: 'var(--text-subtle, #6b7280)', fontSize: '12px' }}>
+                                Sin sectores
                             </span>
                         )}
                         <button
                             type="button"
-                            className="inline-chip-btn"
+                            className="text-action-btn"
                             onClick={() => setEditingSectorsFor({ user: u, sectors: [...uSectors] })}
                         >
-                            {uSectors.length > 0 ? '✏️ Editar' : '+ Asignar'}
+                            <EditOutlined sx={{ fontSize: 12 }} />
+                            {uSectors.length > 0 ? 'Editar' : 'Asignar'}
                         </button>
                     </>
                 )}
             </div>,
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', maxWidth: '290px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxWidth: '300px', alignItems: 'center' }}>
                 {uRole === 'ADMIN' ? (
-                    <Badge color="#6366f1">🏢 Todos los depósitos</Badge>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', fontWeight: 500 }}>
+                        Todos
+                    </span>
                 ) : (
                     <>
                         {u.allowedDepotIds?.map((id) => {
                             const d = depots.find((depo: any) => depo.id === id);
                             return (
-                                <Badge key={id} color="#a5b4fc">
-                                    🏢 {d?.nombre || id}
+                                <Badge key={id} color="#94a3b8">
+                                    {d?.nombre || id}
                                 </Badge>
                             );
                         })}
                         {(!u.allowedDepotIds || u.allowedDepotIds.length === 0) && (
-                            <Badge color="#10b981">🏢 Todos (Sin restricción)</Badge>
+                            <span style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '12px' }}>
+                                Todos
+                            </span>
                         )}
                         <button
                             type="button"
-                            className="inline-chip-btn"
+                            className="text-action-btn"
                             onClick={() =>
                                 setEditingDepotsFor({
                                     user: u,
@@ -373,42 +356,18 @@ export default function UsersPage() {
                                 })
                             }
                         >
-                            {u.allowedDepotIds && u.allowedDepotIds.length > 0 ? '✏️ Editar' : 'Restringir'}
+                            <EditOutlined sx={{ fontSize: 12 }} />
+                            Editar
                         </button>
                     </>
                 )}
             </div>,
 
-            <button
-                type="button"
-                onClick={() => handleToggleActive(u)}
-                title="Clic para activar o desactivar el acceso de este usuario"
-                style={{
-                    background: isActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                    border: `1px solid ${isActive ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`,
-                    color: isActive ? '#10b981' : '#ef4444',
-                    borderRadius: '99px',
-                    padding: '3px 10px',
-                    fontSize: '11px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                }}
-            >
-                <span
-                    style={{
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        background: isActive ? '#10b981' : '#ef4444',
-                    }}
-                />
-                {isActive ? 'ACTIVO' : 'INACTIVO'}
-            </button>,
+            <Badge color={isActive ? '#10b981' : '#ef4444'}>
+                {isActive ? 'Activo' : 'Inactivo'}
+            </Badge>,
 
-            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                 <Btn
                     small
                     variant="secondary"
@@ -417,15 +376,16 @@ export default function UsersPage() {
                         setNewPasswordVal('');
                         setEditingPasswordFor(u);
                     }}
-                    title="Cambiar contraseña del usuario"
                 >
-                    🔑 Clave
+                    <KeyOutlined sx={{ fontSize: 14 }} />
+                    Contraseña
                 </Btn>
                 <Btn
                     small
-                    variant={isActive ? 'danger' : 'secondary'}
+                    variant="secondary"
                     onClick={() => handleToggleActive(u)}
                 >
+                    {isActive ? <BlockOutlined sx={{ fontSize: 14 }} /> : <CheckCircleOutline sx={{ fontSize: 14 }} />}
                     {isActive ? 'Desactivar' : 'Activar'}
                 </Btn>
             </div>,
@@ -435,102 +395,85 @@ export default function UsersPage() {
     const renderMobileCard = (u: User) => {
         const uSectors = getUserSectors(u);
         const uRole = (u.role || 'OPERARIO').toUpperCase();
-        const roleMeta = ROLE_META[uRole] || { label: uRole, icon: '👤', color: '#9ca3af' };
+        const roleMeta = ROLE_META[uRole] || { label: uRole, color: '#9ca3af' };
         const isActive = u.isActive !== false;
 
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', opacity: isActive ? 1 : 0.65 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div
-                            style={{
-                                width: '30px',
-                                height: '30px',
-                                borderRadius: '8px',
-                                background: `${roleMeta.color}1f`,
-                                border: `1px solid ${roleMeta.color}4d`,
-                                color: roleMeta.color,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 800,
-                                fontSize: '12px',
-                                textTransform: 'uppercase',
-                            }}
-                        >
-                            {u.username.slice(0, 2)}
-                        </div>
-                        <span style={{ fontWeight: 800, color: '#a5b4fc', fontSize: '15px' }}>{u.username}</span>
-                    </div>
-                    <Badge color={isActive ? '#10b981' : '#ef4444'}>{isActive ? 'ACTIVO' : 'INACTIVO'}</Badge>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary, #f3f4f6)', fontSize: '14px' }}>
+                        {u.username}
+                    </span>
+                    <Badge color={isActive ? '#10b981' : '#ef4444'}>{isActive ? 'Activo' : 'Inactivo'}</Badge>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)' }}>Rol:</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)' }}>Rol</span>
                     <select
                         value={uRole}
                         onChange={(e) => handleUpdateRole(u, e.target.value)}
                         style={{
                             background: 'var(--bg-primary, #0f1117)',
-                            border: `1px solid ${roleMeta.color}55`,
+                            border: '1px solid var(--border-color, #2a2d3e)',
                             color: roleMeta.color,
-                            borderRadius: '8px',
-                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            padding: '4px 8px',
                             fontSize: '12px',
-                            fontWeight: 800,
+                            fontWeight: 600,
                         }}
                     >
-                        <option value="ADMIN">👑 ADMIN</option>
-                        <option value="SUPERVISOR">🛡️ SUPERVISOR</option>
-                        <option value="OPERARIO">👷 OPERARIO</option>
+                        <option value="ADMIN">ADMIN</option>
+                        <option value="SUPERVISOR">SUPERVISOR</option>
+                        <option value="OPERARIO">OPERARIO</option>
                     </select>
                 </div>
 
                 {uRole !== 'ADMIN' && (
                     <>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', marginRight: '4px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', marginRight: '4px' }}>
                                 Sectores:
                             </span>
                             {uSectors.map((sec) => {
                                 const found = ALL_SECTORS.find((s) => s.key === sec);
                                 return (
-                                    <Badge key={sec} color="#3b82f6">
-                                        {found ? `${found.icon} ${found.label}` : sec}
+                                    <Badge key={sec} color="#94a3b8">
+                                        {found ? found.label : sec}
                                     </Badge>
                                 );
                             })}
                             {uSectors.length === 0 && (
-                                <span style={{ color: '#f59e0b', fontSize: '11px' }}>Ninguno</span>
+                                <span style={{ color: 'var(--text-subtle, #6b7280)', fontSize: '12px' }}>Ninguno</span>
                             )}
                             <button
                                 type="button"
-                                className="inline-chip-btn"
+                                className="text-action-btn"
                                 onClick={() => setEditingSectorsFor({ user: u, sectors: [...uSectors] })}
                             >
-                                ✏️ Sectores
+                                <EditOutlined sx={{ fontSize: 12 }} />
+                                Editar
                             </button>
                         </div>
 
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', marginRight: '4px' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', marginRight: '4px' }}>
                                 Depósitos:
                             </span>
                             {u.allowedDepotIds && u.allowedDepotIds.length > 0 ? (
                                 u.allowedDepotIds.map((id) => {
                                     const d = depots.find((depo: any) => depo.id === id);
                                     return (
-                                        <Badge key={id} color="#a5b4fc">
+                                        <Badge key={id} color="#94a3b8">
                                             {d?.nombre || id}
                                         </Badge>
                                     );
                                 })
                             ) : (
-                                <Badge color="#10b981">Todos</Badge>
+                                <span style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '12px' }}>Todos</span>
                             )}
                             <button
                                 type="button"
-                                className="inline-chip-btn"
+                                className="text-action-btn"
                                 onClick={() =>
                                     setEditingDepotsFor({
                                         user: u,
@@ -538,13 +481,14 @@ export default function UsersPage() {
                                     })
                                 }
                             >
-                                ✏️ Depósitos
+                                <EditOutlined sx={{ fontSize: 12 }} />
+                                Editar
                             </button>
                         </div>
                     </>
                 )}
 
-                <div style={{ display: 'flex', gap: '8px', paddingTop: '6px', borderTop: '1px solid var(--border-subtle, #1e2133)' }}>
+                <div style={{ display: 'flex', gap: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle, #1e2133)' }}>
                     <Btn
                         small
                         variant="secondary"
@@ -555,11 +499,12 @@ export default function UsersPage() {
                             setEditingPasswordFor(u);
                         }}
                     >
-                        🔑 Cambiar Clave
+                        <KeyOutlined sx={{ fontSize: 14 }} />
+                        Contraseña
                     </Btn>
                     <Btn
                         small
-                        variant={isActive ? 'danger' : 'secondary'}
+                        variant="secondary"
                         style={{ flex: 1 }}
                         onClick={() => handleToggleActive(u)}
                     >
@@ -571,52 +516,52 @@ export default function UsersPage() {
     };
 
     return (
-        <div style={{ padding: isMobile ? '14px' : '24px', maxWidth: '1440px', margin: '0 auto' }}>
+        <div style={{ padding: isMobile ? '14px' : '24px', maxWidth: '1360px', margin: '0 auto' }}>
             <style>{`
-                .period-pill {
+                .filter-pill {
                     background: transparent;
                     border: 1px solid var(--border-strong, #374151);
                     color: var(--text-muted, #9ca3af);
                     padding: 7px 12px;
-                    border-radius: 8px;
+                    border-radius: 6px;
                     font-size: 12px;
-                    font-weight: 700;
+                    font-weight: 600;
                     cursor: pointer;
                     transition: all 0.15s;
                     white-space: nowrap;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
                 }
-                .period-pill:hover {
+                .filter-pill:hover {
+                    border-color: var(--text-muted, #9ca3af);
+                    color: var(--text-primary, #f3f4f6);
+                }
+                .filter-pill.active {
+                    background: rgba(99, 102, 241, 0.14);
                     border-color: #6366f1;
                     color: var(--text-primary, #f3f4f6);
                 }
-                .period-pill.active {
-                    background: rgba(99, 102, 241, 0.18);
-                    border-color: #6366f1;
-                    color: #a5b4fc;
-                }
-                .inline-chip-btn {
-                    background: rgba(99, 102, 241, 0.1);
-                    border: 1px solid rgba(99, 102, 241, 0.3);
-                    color: #a5b4fc;
-                    border-radius: 99px;
-                    padding: 2px 9px;
+                .text-action-btn {
+                    background: transparent;
+                    border: 1px solid var(--border-color, #2a2d3e);
+                    color: var(--text-muted, #9ca3af);
+                    border-radius: 6px;
+                    padding: 2px 8px;
                     font-size: 11px;
-                    font-weight: 700;
+                    font-weight: 600;
                     cursor: pointer;
                     transition: all 0.15s;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
                 }
-                .inline-chip-btn:hover {
-                    background: rgba(99, 102, 241, 0.22);
+                .text-action-btn:hover {
                     border-color: #6366f1;
+                    color: var(--text-primary, #f3f4f6);
                 }
             `}</style>
 
             <PageHeader
-                title="Administración de Usuarios y Sesiones"
-                subtitle="Configurá cuentas, roles, permisos por sector, depósitos habilitados y contraseñas"
+                title="Usuarios"
+                subtitle="Administración de cuentas, roles y permisos de acceso"
             >
                 <Btn
                     onClick={() => {
@@ -624,7 +569,8 @@ export default function UsersPage() {
                         setShowNewUserModal(true);
                     }}
                 >
-                    + Crear Nuevo Usuario
+                    <PersonAddOutlined sx={{ fontSize: 17 }} />
+                    Nuevo usuario
                 </Btn>
             </PageHeader>
 
@@ -633,19 +579,19 @@ export default function UsersPage() {
                     style={{
                         marginBottom: '14px',
                         padding: '10px 14px',
-                        borderRadius: '10px',
+                        borderRadius: '8px',
                         background:
                             feedback.type === 'ok'
-                                ? 'rgba(16, 185, 129, 0.12)'
-                                : 'rgba(239, 68, 68, 0.12)',
+                                ? 'rgba(16, 185, 129, 0.1)'
+                                : 'rgba(239, 68, 68, 0.1)',
                         border: `1px solid ${
                             feedback.type === 'ok'
-                                ? 'rgba(16, 185, 129, 0.35)'
-                                : 'rgba(239, 68, 68, 0.35)'
+                                ? 'rgba(16, 185, 129, 0.3)'
+                                : 'rgba(239, 68, 68, 0.3)'
                         }`,
                         color: feedback.type === 'ok' ? '#10b981' : '#f87171',
                         fontSize: '13px',
-                        fontWeight: 600,
+                        fontWeight: 500,
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
@@ -660,7 +606,7 @@ export default function UsersPage() {
                             border: 'none',
                             color: 'inherit',
                             cursor: 'pointer',
-                            fontSize: '14px',
+                            fontSize: '13px',
                             padding: '0 4px',
                         }}
                     >
@@ -669,8 +615,7 @@ export default function UsersPage() {
                 </div>
             )}
 
-            {/* ── BARRA ÚNICA DE FILTROS (1 SOLA FILA LIMPIA, MISMO DISEÑO QUE AUDITORÍA DE STOCK) ── */}
-            <Card style={{ padding: '14px 16px', marginBottom: '18px' }}>
+            <Card style={{ padding: '14px 16px', marginBottom: '16px' }}>
                 <div
                     style={{
                         display: 'grid',
@@ -680,21 +625,21 @@ export default function UsersPage() {
                     }}
                 >
                     <Input
-                        label="🔍 Buscar por usuario, rol, sector o depósito"
-                        placeholder="Ej: juan, supervisor, depósito..."
+                        label="Buscar"
+                        placeholder="Filtrar por usuario, sector o depósito..."
                         value={quickSearch}
                         onChange={setQuickSearch}
                     />
 
                     <Select
-                        label="🏭 Filtrar por Sector"
+                        label="Sector"
                         value={sectorFilter}
                         onChange={setSectorFilter}
                         options={[
                             { value: '', label: 'Todos los sectores' },
                             ...ALL_SECTORS.map((s) => ({
                                 value: s.key,
-                                label: `${s.icon} ${s.label}`,
+                                label: s.label,
                             })),
                         ]}
                     />
@@ -708,24 +653,24 @@ export default function UsersPage() {
                                 marginBottom: '4px',
                             }}
                         >
-                            🛡️ Rol / Estado
+                            Rol / Estado
                         </label>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             {(
                                 [
                                     { id: 'ALL', label: `Todos (${counts.all})` },
-                                    { id: 'ADMIN', label: `👑 Admin (${counts.admin})` },
-                                    { id: 'SUPERVISOR', label: `🛡️ Supervisor (${counts.supervisor})` },
-                                    { id: 'OPERARIO', label: `👷 Operario (${counts.operario})` },
+                                    { id: 'ADMIN', label: `Admin (${counts.admin})` },
+                                    { id: 'SUPERVISOR', label: `Supervisor (${counts.supervisor})` },
+                                    { id: 'OPERARIO', label: `Operario (${counts.operario})` },
                                     ...(counts.inactive > 0
-                                        ? [{ id: 'INACTIVE', label: `🚫 Inactivos (${counts.inactive})` }]
+                                        ? [{ id: 'INACTIVE', label: `Inactivos (${counts.inactive})` }]
                                         : []),
                                 ] as { id: RoleFilter; label: string }[]
                             ).map((tab) => (
                                 <button
                                     key={tab.id}
                                     type="button"
-                                    className={`period-pill ${roleFilter === tab.id ? 'active' : ''}`}
+                                    className={`filter-pill ${roleFilter === tab.id ? 'active' : ''}`}
                                     onClick={() => setRoleFilter(tab.id)}
                                 >
                                     {tab.label}
@@ -736,7 +681,6 @@ export default function UsersPage() {
                 </div>
             </Card>
 
-            {/* ── TABLA PRINCIPAL RESPONSIVA ── */}
             <Card style={{ padding: isMobile ? '12px' : 0, overflow: 'hidden' }}>
                 <ResponsiveTable
                     loading={loadingUsers}
@@ -747,34 +691,34 @@ export default function UsersPage() {
                 />
             </Card>
 
-            {/* ── MODAL CREAR NUEVO USUARIO ── */}
+            {/* Modal Crear Usuario */}
             {showNewUserModal && (
-                <Modal title="Nuevo Usuario" onClose={() => setShowNewUserModal(false)}>
+                <Modal title="Nuevo usuario" onClose={() => setShowNewUserModal(false)}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
                             <Input
-                                label="👤 Nombre de Usuario"
+                                label="Nombre de usuario"
                                 placeholder="Ej: jperez"
                                 value={newUserForm.username}
                                 onChange={(v) => setNewUserForm((p) => ({ ...p, username: v }))}
                             />
                             <Input
-                                label="🔑 Contraseña Inicial"
+                                label="Contraseña inicial"
                                 type="password"
-                                placeholder="Contraseña..."
+                                placeholder="Contraseña"
                                 value={newUserForm.password}
                                 onChange={(v) => setNewUserForm((p) => ({ ...p, password: v }))}
                             />
                         </div>
 
                         <Select
-                            label="🛡️ Rol / Jerarquía"
+                            label="Rol"
                             value={newUserForm.role}
                             onChange={(val) => setNewUserForm((p) => ({ ...p, role: val }))}
                             options={[
-                                { value: 'SUPERVISOR', label: '🛡️ SUPERVISOR (Gestión operativa de sus sectores)' },
-                                { value: 'OPERARIO', label: '👷 OPERARIO (Carga y consulta en sus sectores)' },
-                                { value: 'ADMIN', label: '👑 ADMIN (Acceso total a todo el sistema)' },
+                                { value: 'SUPERVISOR', label: 'SUPERVISOR' },
+                                { value: 'OPERARIO', label: 'OPERARIO' },
+                                { value: 'ADMIN', label: 'ADMIN (Acceso total)' },
                             ]}
                         />
 
@@ -789,13 +733,13 @@ export default function UsersPage() {
                                             marginBottom: '8px',
                                         }}
                                     >
-                                        <label style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '12px', fontWeight: 600 }}>
-                                            Sectores Permitidos ({newUserForm.sectors.length})
+                                        <label style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '12px' }}>
+                                            Sectores permitidos ({newUserForm.sectors.length})
                                         </label>
-                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                        <div style={{ display: 'flex', gap: '6px' }}>
                                             <button
                                                 type="button"
-                                                className="inline-chip-btn"
+                                                className="text-action-btn"
                                                 onClick={() =>
                                                     setNewUserForm((p) => ({
                                                         ...p,
@@ -803,11 +747,11 @@ export default function UsersPage() {
                                                     }))
                                                 }
                                             >
-                                                Marcar todos
+                                                Todos
                                             </button>
                                             <button
                                                 type="button"
-                                                className="inline-chip-btn"
+                                                className="text-action-btn"
                                                 onClick={() => setNewUserForm((p) => ({ ...p, sectors: [] }))}
                                             >
                                                 Ninguno
@@ -817,7 +761,7 @@ export default function UsersPage() {
                                     <div
                                         style={{
                                             display: 'grid',
-                                            gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))',
+                                            gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
                                             gap: '8px',
                                             maxHeight: '190px',
                                             overflowY: 'auto',
@@ -834,9 +778,9 @@ export default function UsersPage() {
                                                         gap: '8px',
                                                         padding: '8px 10px',
                                                         background: isChecked
-                                                            ? 'rgba(99,102,241,0.16)'
-                                                            : 'var(--bg-hover-row, rgba(255,255,255,0.03))',
-                                                        borderRadius: '8px',
+                                                            ? 'rgba(99,102,241,0.12)'
+                                                            : 'var(--bg-hover-row, rgba(255,255,255,0.02))',
+                                                        borderRadius: '6px',
                                                         cursor: 'pointer',
                                                         border: isChecked
                                                             ? '1px solid #6366f1'
@@ -853,8 +797,8 @@ export default function UsersPage() {
                                                             setNewUserForm((p) => ({ ...p, sectors: next }));
                                                         }}
                                                     />
-                                                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary, #f3f4f6)' }}>
-                                                        {sec.icon} {sec.label}
+                                                    <span style={{ fontSize: '13px', color: 'var(--text-primary, #f3f4f6)' }}>
+                                                        {sec.label}
                                                     </span>
                                                 </label>
                                             );
@@ -872,28 +816,28 @@ export default function UsersPage() {
                                                 marginBottom: '6px',
                                             }}
                                         >
-                                            <label style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '12px', fontWeight: 600 }}>
-                                                🏢 Depósitos Habilitados{' '}
-                                                <span style={{ fontWeight: 400, color: 'var(--text-subtle, #6b7280)' }}>
-                                                    (Vacío = Acceso a todos)
+                                            <label style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '12px' }}>
+                                                Depósitos permitidos{' '}
+                                                <span style={{ color: 'var(--text-subtle, #6b7280)' }}>
+                                                    (vacío = todos)
                                                 </span>
                                             </label>
                                             {newUserForm.allowedDepotIds.length > 0 && (
                                                 <button
                                                     type="button"
-                                                    className="inline-chip-btn"
+                                                    className="text-action-btn"
                                                     onClick={() =>
                                                         setNewUserForm((p) => ({ ...p, allowedDepotIds: [] }))
                                                     }
                                                 >
-                                                    Liberar todos
+                                                    Limpiar
                                                 </button>
                                             )}
                                         </div>
                                         <div
                                             style={{
                                                 display: 'grid',
-                                                gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))',
+                                                gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
                                                 gap: '8px',
                                                 maxHeight: '140px',
                                                 overflowY: 'auto',
@@ -910,9 +854,9 @@ export default function UsersPage() {
                                                             gap: '8px',
                                                             padding: '8px 10px',
                                                             background: isChecked
-                                                                ? 'rgba(99,102,241,0.16)'
-                                                                : 'var(--bg-hover-row, rgba(255,255,255,0.03))',
-                                                            borderRadius: '8px',
+                                                                ? 'rgba(99,102,241,0.12)'
+                                                                : 'var(--bg-hover-row, rgba(255,255,255,0.02))',
+                                                            borderRadius: '6px',
                                                             cursor: 'pointer',
                                                             border: isChecked
                                                                 ? '1px solid #6366f1'
@@ -929,7 +873,7 @@ export default function UsersPage() {
                                                                 setNewUserForm((p) => ({ ...p, allowedDepotIds: next }));
                                                             }}
                                                         />
-                                                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary, #f3f4f6)' }}>
+                                                        <span style={{ fontSize: '13px', color: 'var(--text-primary, #f3f4f6)' }}>
                                                             {d.nombre}
                                                         </span>
                                                     </label>
@@ -945,12 +889,11 @@ export default function UsersPage() {
                             <div
                                 style={{
                                     padding: '8px 12px',
-                                    borderRadius: '8px',
-                                    background: 'rgba(239, 68, 68, 0.12)',
+                                    borderRadius: '6px',
+                                    background: 'rgba(239, 68, 68, 0.1)',
                                     border: '1px solid rgba(239, 68, 68, 0.3)',
                                     color: '#f87171',
                                     fontSize: '12px',
-                                    fontWeight: 600,
                                 }}
                             >
                                 {createError}
@@ -963,27 +906,27 @@ export default function UsersPage() {
                             Cancelar
                         </Btn>
                         <Btn onClick={handleCreateSubmit} disabled={isCreating}>
-                            {isCreating ? 'Creando...' : 'Crear Usuario'}
+                            {isCreating ? 'Creando...' : 'Crear usuario'}
                         </Btn>
                     </div>
                 </Modal>
             )}
 
-            {/* ── MODAL EDITAR SECTORES ── */}
+            {/* Modal Editar Sectores */}
             {editingSectorsFor && (
                 <Modal
-                    title={`Sectores de ${editingSectorsFor.user.username}`}
+                    title={`Sectores — ${editingSectorsFor.user.username}`}
                     onClose={() => setEditingSectorsFor(null)}
                 >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                             <span style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '13px' }}>
-                                Seleccioná los sectores habilitados para este usuario:
+                                Seleccioná los sectores habilitados:
                             </span>
                             <div style={{ display: 'flex', gap: '6px' }}>
                                 <button
                                     type="button"
-                                    className="inline-chip-btn"
+                                    className="text-action-btn"
                                     onClick={() =>
                                         setEditingSectorsFor({
                                             ...editingSectorsFor,
@@ -995,7 +938,7 @@ export default function UsersPage() {
                                 </button>
                                 <button
                                     type="button"
-                                    className="inline-chip-btn"
+                                    className="text-action-btn"
                                     onClick={() =>
                                         setEditingSectorsFor({
                                             ...editingSectorsFor,
@@ -1008,7 +951,7 @@ export default function UsersPage() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '10px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' }}>
                             {ALL_SECTORS.map((sec) => {
                                 const isChecked = editingSectorsFor.sectors.includes(sec.key);
                                 return (
@@ -1020,9 +963,9 @@ export default function UsersPage() {
                                             gap: '10px',
                                             padding: '10px 12px',
                                             background: isChecked
-                                                ? 'rgba(99,102,241,0.18)'
-                                                : 'var(--bg-hover-row, rgba(255,255,255,0.03))',
-                                            borderRadius: '8px',
+                                                ? 'rgba(99,102,241,0.12)'
+                                                : 'var(--bg-hover-row, rgba(255,255,255,0.02))',
+                                            borderRadius: '6px',
                                             cursor: 'pointer',
                                             border: isChecked
                                                 ? '1px solid #6366f1'
@@ -1040,8 +983,8 @@ export default function UsersPage() {
                                                 setEditingSectorsFor({ ...editingSectorsFor, sectors: next });
                                             }}
                                         />
-                                        <span style={{ color: 'var(--text-primary, #f3f4f6)', fontWeight: 600, fontSize: '13px' }}>
-                                            {sec.icon} {sec.label}
+                                        <span style={{ color: 'var(--text-primary, #f3f4f6)', fontWeight: 500, fontSize: '13px' }}>
+                                            {sec.label}
                                         </span>
                                     </label>
                                 );
@@ -1057,16 +1000,16 @@ export default function UsersPage() {
                             disabled={savingModal}
                             onClick={() => handleUpdateSectors(editingSectorsFor.user.id, editingSectorsFor.sectors)}
                         >
-                            {savingModal ? 'Guardando...' : 'Guardar Sectores'}
+                            {savingModal ? 'Guardando...' : 'Guardar'}
                         </Btn>
                     </div>
                 </Modal>
             )}
 
-            {/* ── MODAL EDITAR DEPÓSITOS ── */}
+            {/* Modal Editar Depósitos */}
             {editingDepotsFor && (
                 <Modal
-                    title={`Depósitos para ${editingDepotsFor.user.username}`}
+                    title={`Depósitos — ${editingDepotsFor.user.username}`}
                     onClose={() => setEditingDepotsFor(null)}
                 >
                     <div
@@ -1081,12 +1024,12 @@ export default function UsersPage() {
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                             <span style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '13px' }}>
-                                Si no marcás ninguno, tendrá acceso a <strong>todos los depósitos</strong>.
+                                Si no seleccionás ninguno, tendrá acceso a todos los depósitos.
                             </span>
                             <div style={{ display: 'flex', gap: '6px' }}>
                                 <button
                                     type="button"
-                                    className="inline-chip-btn"
+                                    className="text-action-btn"
                                     onClick={() =>
                                         setEditingDepotsFor({
                                             ...editingDepotsFor,
@@ -1098,7 +1041,7 @@ export default function UsersPage() {
                                 </button>
                                 <button
                                     type="button"
-                                    className="inline-chip-btn"
+                                    className="text-action-btn"
                                     onClick={() =>
                                         setEditingDepotsFor({
                                             ...editingDepotsFor,
@@ -1106,7 +1049,7 @@ export default function UsersPage() {
                                         })
                                     }
                                 >
-                                    Liberar
+                                    Limpiar
                                 </button>
                             </div>
                         </div>
@@ -1122,9 +1065,9 @@ export default function UsersPage() {
                                         gap: '12px',
                                         padding: '10px 12px',
                                         background: isChecked
-                                            ? 'rgba(99,102,241,0.16)'
-                                            : 'var(--bg-hover-row, rgba(255,255,255,0.03))',
-                                        borderRadius: '8px',
+                                            ? 'rgba(99,102,241,0.12)'
+                                            : 'var(--bg-hover-row, rgba(255,255,255,0.02))',
+                                        borderRadius: '6px',
                                         cursor: 'pointer',
                                         border: isChecked
                                             ? '1px solid #6366f1'
@@ -1143,11 +1086,11 @@ export default function UsersPage() {
                                         }}
                                     />
                                     <div>
-                                        <div style={{ color: 'var(--text-primary, #f3f4f6)', fontWeight: 600, fontSize: '13px' }}>
-                                            🏢 {d.nombre}
+                                        <div style={{ color: 'var(--text-primary, #f3f4f6)', fontWeight: 500, fontSize: '13px' }}>
+                                            {d.nombre}
                                         </div>
                                         <div style={{ color: 'var(--text-subtle, #6b7280)', fontSize: '11px' }}>
-                                            {d.planta || 'Sin planta especificada'}
+                                            {d.planta || 'Sin planta'}
                                         </div>
                                     </div>
                                 </label>
@@ -1163,16 +1106,16 @@ export default function UsersPage() {
                             disabled={savingModal}
                             onClick={() => handleUpdateDepots(editingDepotsFor.user.id, editingDepotsFor.depotIds)}
                         >
-                            {savingModal ? 'Guardando...' : 'Guardar Cambios'}
+                            {savingModal ? 'Guardando...' : 'Guardar'}
                         </Btn>
                     </div>
                 </Modal>
             )}
 
-            {/* ── MODAL CAMBIAR CONTRASEÑA ── */}
+            {/* Modal Cambiar Contraseña */}
             {editingPasswordFor && (
                 <Modal
-                    title={`🔑 Cambiar clave de ${editingPasswordFor.username}`}
+                    title={`Cambiar contraseña — ${editingPasswordFor.username}`}
                     onClose={() => {
                         setEditingPasswordFor(null);
                         setNewPasswordVal('');
@@ -1181,9 +1124,9 @@ export default function UsersPage() {
                 >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
                         <Input
-                            label="Nueva Contraseña"
+                            label="Nueva contraseña"
                             type="password"
-                            placeholder="Escribí la nueva contraseña..."
+                            placeholder="Ingresá la nueva contraseña"
                             value={newPasswordVal}
                             onChange={setNewPasswordVal}
                             onKeyDown={(e) => {
@@ -1194,12 +1137,11 @@ export default function UsersPage() {
                             <div
                                 style={{
                                     padding: '8px 12px',
-                                    borderRadius: '8px',
-                                    background: 'rgba(239, 68, 68, 0.12)',
+                                    borderRadius: '6px',
+                                    background: 'rgba(239, 68, 68, 0.1)',
                                     border: '1px solid rgba(239, 68, 68, 0.3)',
                                     color: '#f87171',
                                     fontSize: '12px',
-                                    fontWeight: 600,
                                 }}
                             >
                                 {passwordError}
@@ -1218,7 +1160,7 @@ export default function UsersPage() {
                             Cancelar
                         </Btn>
                         <Btn disabled={savingModal} onClick={handleSavePassword}>
-                            {savingModal ? 'Guardando...' : 'Guardar Contraseña'}
+                            {savingModal ? 'Guardando...' : 'Guardar'}
                         </Btn>
                     </div>
                 </Modal>

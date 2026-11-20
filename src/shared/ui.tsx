@@ -153,7 +153,19 @@ export function Input({ label, value, onChange, type = 'text', placeholder, styl
                             padding: '4px', display: 'flex', alignItems: 'center', fontSize: '14px'
                         }}
                     >
-                        {showPassword ? '👁️' : '🙈'}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            {showPassword ? (
+                                <>
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </>
+                            ) : (
+                                <>
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                    <line x1="1" y1="1" x2="23" y2="23" />
+                                </>
+                            )}
+                        </svg>
                     </button>
                 )}
             </div>
@@ -444,7 +456,7 @@ export function GroupedSelect({ label, value, onChange, groups, style }: {
             >
                 <option value="">— Sin posición —</option>
                 {groups.map(g => (
-                    <optgroup key={g.groupLabel} label={`📦 ${g.groupLabel}`}>
+                    <optgroup key={g.groupLabel} label={g.groupLabel}>
                         {g.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </optgroup>
                 ))}
@@ -702,7 +714,12 @@ export function Badge({ children, color = '#a5b4fc' }: { children: React.ReactNo
 export function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
     return (
         <div style={{ position: 'relative' }}>
-            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle, #6b7280)' }}>🔍</span>
+            <span style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle, #6b7280)', display: 'flex', alignItems: 'center' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+            </span>
             <input
                 value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder ?? 'Buscar...'}
                 style={{

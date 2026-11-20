@@ -8,15 +8,75 @@ import { useChangeMyPasswordMutation } from '../entities/auth/api/authApi';
 import { setCurrentAlerts, selectHasUnreadNotifications } from '../entities/notifications/notificationsSlice';
 import { useIsMobile, PageLoader, Modal, Input, Btn } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
+import {
+    DashboardOutlined,
+    PeopleOutline,
+    ManageSearchOutlined,
+    PrecisionManufacturingOutlined,
+    CalendarMonthOutlined,
+    UploadFileOutlined,
+    SwapHorizOutlined,
+    EditNoteOutlined,
+    HistoryOutlined,
+    AssessmentOutlined,
+    ScienceOutlined,
+    MenuBookOutlined,
+    WarehouseOutlined,
+    TrackChangesOutlined,
+    LocalShippingOutlined,
+    AssignmentOutlined,
+    EventNoteOutlined,
+    Inventory2Outlined,
+    CallReceivedOutlined,
+    CallMadeOutlined,
+    CategoryOutlined,
+    DataUsageOutlined,
+    AcUnitOutlined,
+    BarChartOutlined,
+    FactCheckOutlined,
+    ChecklistRtlOutlined,
+    RuleOutlined,
+    SummarizeOutlined,
+    SettingsOutlined,
+    SellOutlined,
+    AllInboxOutlined,
+    DomainOutlined,
+    HandshakeOutlined,
+    ShieldOutlined,
+    ShoppingCartOutlined,
+    BoltOutlined,
+    ReceiptLongOutlined,
+    ShowChartOutlined,
+    BuildOutlined,
+    TvOutlined,
+    PostAddOutlined,
+    PendingActionsOutlined,
+    AccessTimeOutlined,
+    TrendingUpOutlined,
+    TimelineOutlined,
+    VerifiedOutlined,
+    MonetizationOnOutlined,
+    BadgeOutlined,
+    NotificationsNoneOutlined,
+    HelpOutlineOutlined,
+    LightModeOutlined,
+    DarkModeOutlined,
+    KeyOutlined,
+    LogoutOutlined,
+    ChevronRightOutlined,
+    ChevronLeftOutlined,
+} from '@mui/icons-material';
 
 interface NavItem {
     to: string;
     label: string;
+    icon: React.ReactNode;
 }
 
 interface NavSubGroup {
     id: string;
     label: string;
+    icon: React.ReactNode;
     isSubGroup: true;
     items: NavItem[];
 }
@@ -24,9 +84,12 @@ interface NavSubGroup {
 interface NavGroup {
     id: string;
     label: string;
-    icon: string;
+    icon: React.ReactNode;
     items: (NavItem | NavSubGroup)[];
 }
+
+const ic = { fontSize: 17 };
+const gIc = { fontSize: 16 };
 
 const flattenItems = (items: (NavItem | NavSubGroup)[]): NavItem[] => {
     const flat: NavItem[] = [];
@@ -44,95 +107,99 @@ const navGroups: NavGroup[] = [
     {
         id: 'administracion',
         label: 'Administración',
-        icon: '📊',
+        icon: <ShieldOutlined sx={gIc} />,
         items: [
-            { to: '/admin/dashboard', label: '📈 Dashboard General' },
-            { to: '/users', label: '👥 Usuarios' },
-            { to: '/admin/auditoria', label: '🔎 Auditoría del sistema' },
+            { to: '/admin/dashboard', label: 'Dashboard General', icon: <DashboardOutlined sx={ic} /> },
+            { to: '/users', label: 'Usuarios', icon: <PeopleOutline sx={ic} /> },
+            { to: '/admin/auditoria', label: 'Auditoría del sistema', icon: <ManageSearchOutlined sx={ic} /> },
         ]
     },
     {
         id: 'produccion',
         label: 'Producción',
-        icon: '⚙️',
+        icon: <PrecisionManufacturingOutlined sx={gIc} />,
         items: [
-            { to: '/produccion/dashboard', label: '📊 Dashboard' },
-            { to: '/produccion/programacion-gantt', label: '📅 Programación Gantt' },
-            { to: '/produccion/planificacion', label: '📥 Carga de Producción del Día' },
+            { to: '/produccion/dashboard', label: 'Dashboard', icon: <DashboardOutlined sx={ic} /> },
+            { to: '/produccion/programacion-gantt', label: 'Programación Gantt', icon: <CalendarMonthOutlined sx={ic} /> },
+            { to: '/produccion/planificacion', label: 'Carga de Producción del Día', icon: <UploadFileOutlined sx={ic} /> },
             {
                 id: 'produccion-cambios',
-                label: '🔄 Cambios',
+                label: 'Cambios',
+                icon: <SwapHorizOutlined sx={ic} />,
                 isSubGroup: true,
                 items: [
-                    { to: '/produccion/cambios', label: '📝 Registro de Cambios' },
-                    { to: '/produccion/historial-cambios', label: '📜 Historial de Cambios' },
-                    { to: '/produccion/informe-cambios', label: '📊 Informe de Cambios' },
+                    { to: '/produccion/cambios', label: 'Registro de Cambios', icon: <EditNoteOutlined sx={ic} /> },
+                    { to: '/produccion/historial-cambios', label: 'Historial de Cambios', icon: <HistoryOutlined sx={ic} /> },
+                    { to: '/produccion/informe-cambios', label: 'Informe de Cambios', icon: <AssessmentOutlined sx={ic} /> },
                 ]
             },
         ]
     },
-    
     {
         id: 'desarrollo',
         label: 'Desarrollo',
-        icon: '🧪',
+        icon: <ScienceOutlined sx={gIc} />,
         items: [
-            { to: '/desarrollo/articulos', label: '📋 Catálogo de Artículos' },
+            { to: '/desarrollo/articulos', label: 'Catálogo de Artículos', icon: <MenuBookOutlined sx={ic} /> },
         ]
     },
     {
         id: 'deposito',
         label: 'Depósito',
-        icon: '🏭',
+        icon: <WarehouseOutlined sx={gIc} />,
         items: [
-            { to: '/deposito/dashboard', label: '📊 Dashboard' },
-            { to: '/deposito/centro-comando', label: '🎯 Centro de Comando' },
+            { to: '/deposito/dashboard', label: 'Dashboard', icon: <DashboardOutlined sx={ic} /> },
+            { to: '/deposito/centro-comando', label: 'Centro de Comando', icon: <TrackChangesOutlined sx={ic} /> },
             {
                 id: 'deposito-operaciones',
-                label: '🚚 Operaciones',
+                label: 'Operaciones',
+                icon: <LocalShippingOutlined sx={ic} />,
                 isSubGroup: true,
                 items: [
-                    { to: '/deposito/tareas', label: '📋 Tareas & Pedidos' },
-                    { to: '/deposito/programacion', label: '🗓️ Planificación Semanal' },
-                    { to: '/stock', label: '📋 Stock' },
-                    { to: '/movimientos', label: '🔄 Movimientos' },
-                    { to: '/remitos-entrada', label: '📥 Entrada de mercadería' },
-                    { to: '/remitos-salida', label: '📤 Salida de mercadería' },
-                    { to: '/deposito/picking', label: '🧶 Picking de Hilados' },
+                    { to: '/deposito/tareas', label: 'Tareas y Pedidos', icon: <AssignmentOutlined sx={ic} /> },
+                    { to: '/deposito/programacion', label: 'Planificación Semanal', icon: <EventNoteOutlined sx={ic} /> },
+                    { to: '/stock', label: 'Stock', icon: <Inventory2Outlined sx={ic} /> },
+                    { to: '/movimientos', label: 'Movimientos', icon: <SwapHorizOutlined sx={ic} /> },
+                    { to: '/remitos-entrada', label: 'Entrada de mercadería', icon: <CallReceivedOutlined sx={ic} /> },
+                    { to: '/remitos-salida', label: 'Salida de mercadería', icon: <CallMadeOutlined sx={ic} /> },
+                    { to: '/deposito/picking', label: 'Picking de Hilados', icon: <CategoryOutlined sx={ic} /> },
                 ]
             },
             {
                 id: 'deposito-informes',
-                label: '📊 Informes',
+                label: 'Informes',
+                icon: <AssessmentOutlined sx={ic} />,
                 isSubGroup: true,
                 items: [
-                    { to: '/deposito/capacidad', label: '📦 Medidor de Capacidad' },
-                    { to: '/deposito/materiales-estancados', label: '🧊 Material Estancado' },
-                    { to: '/reporte-consumo-detallado', label: '📊 Consumo de Materiales' },
-                    { to: '/deposito/completitud-materiales', label: '✅ Completitud de Materiales' },
+                    { to: '/deposito/capacidad', label: 'Medidor de Capacidad', icon: <DataUsageOutlined sx={ic} /> },
+                    { to: '/deposito/materiales-estancados', label: 'Material Estancado', icon: <AcUnitOutlined sx={ic} /> },
+                    { to: '/reporte-consumo-detallado', label: 'Consumo de Materiales', icon: <BarChartOutlined sx={ic} /> },
+                    { to: '/deposito/completitud-materiales', label: 'Completitud de Materiales', icon: <FactCheckOutlined sx={ic} /> },
                 ]
             },
             {
                 id: 'deposito-inventario',
-                label: '📦 Inventario',
+                label: 'Inventario',
+                icon: <Inventory2Outlined sx={ic} />,
                 isSubGroup: true,
                 items: [
-                    { to: '/deposito/informes', label: '📈 Informe de inventariado' },
-                    { to: '/chequeo-inventario', label: '🔍 Chequeo de inventario' },
-                    { to: '/chequeo-categoria', label: '🏷️ Chequeo por catálogo' },
-                    { to: '/reporte-chequeo', label: '📊 Reporte de chequeo' },
+                    { to: '/deposito/informes', label: 'Informe de inventariado', icon: <TrendingUpOutlined sx={ic} /> },
+                    { to: '/chequeo-inventario', label: 'Chequeo de inventario', icon: <ChecklistRtlOutlined sx={ic} /> },
+                    { to: '/chequeo-categoria', label: 'Chequeo por catálogo', icon: <RuleOutlined sx={ic} /> },
+                    { to: '/reporte-chequeo', label: 'Reporte de chequeo', icon: <SummarizeOutlined sx={ic} /> },
                 ]
             },
             {
                 id: 'configuracion',
-                label: '⚙️ Configuración',
+                label: 'Configuración',
+                icon: <SettingsOutlined sx={ic} />,
                 isSubGroup: true,
                 items: [
-                    { to: '/items', label: '🏷️ Materiales' },
-                    { to: '/items/box-types', label: '📦 Cajas/Embalaje' },
-                    { to: '/deposito', label: '🏢 Depósitos' },
-                    { to: '/socios', label: '🤝 Socios' },
-                    { to: '/admin/movements', label: '🛡️ Auditoría de Stock' },
+                    { to: '/items', label: 'Materiales', icon: <SellOutlined sx={ic} /> },
+                    { to: '/items/box-types', label: 'Cajas / Embalaje', icon: <AllInboxOutlined sx={ic} /> },
+                    { to: '/deposito', label: 'Depósitos', icon: <DomainOutlined sx={ic} /> },
+                    { to: '/socios', label: 'Socios', icon: <HandshakeOutlined sx={ic} /> },
+                    { to: '/admin/movements', label: 'Auditoría de Stock', icon: <ShieldOutlined sx={ic} /> },
                 ]
             }
         ]
@@ -140,20 +207,21 @@ const navGroups: NavGroup[] = [
     {
         id: 'compras',
         label: 'Compras',
-        icon: '🛒',
+        icon: <ShoppingCartOutlined sx={gIc} />,
         items: [
-            { to: '/compras/materiales-criticos-dashboard', label: '⚡ Tablero de Compras' },
-            { to: '/compras/ordenes-compra', label: '📋 Órdenes de Compra' },
-            { to: '/compras/pedidos-deposito', label: '🚚 Pedidos a Depósito' },
-            { to: '/compras/diente-de-sierra', label: '📈 Gráfico Diente de Sierra' },
-            { to: '/reporte-consumo-detallado', label: '📊 Consumo de Materiales' },
+            { to: '/compras/materiales-criticos-dashboard', label: 'Tablero de Compras', icon: <BoltOutlined sx={ic} /> },
+            { to: '/compras/ordenes-compra', label: 'Órdenes de Compra', icon: <ReceiptLongOutlined sx={ic} /> },
+            { to: '/compras/pedidos-deposito', label: 'Pedidos a Depósito', icon: <LocalShippingOutlined sx={ic} /> },
+            { to: '/compras/diente-de-sierra', label: 'Gráfico Diente de Sierra', icon: <ShowChartOutlined sx={ic} /> },
+            { to: '/reporte-consumo-detallado', label: 'Consumo de Materiales', icon: <BarChartOutlined sx={ic} /> },
             {
                 id: 'compras-configuracion',
-                label: '⚙️ Configuración',
+                label: 'Configuración',
+                icon: <SettingsOutlined sx={ic} />,
                 isSubGroup: true,
                 items: [
-                    { to: '/items', label: '🏷️ Materiales y Precios' },
-                    { to: '/socios', label: '🤝 Proveedores / Socios' },
+                    { to: '/items', label: 'Materiales y Precios', icon: <SellOutlined sx={ic} /> },
+                    { to: '/socios', label: 'Proveedores / Socios', icon: <HandshakeOutlined sx={ic} /> },
                 ]
             },
         ]
@@ -161,32 +229,34 @@ const navGroups: NavGroup[] = [
     {
         id: 'mantenimiento',
         label: 'Mantenimiento',
-        icon: '🛠️',
+        icon: <BuildOutlined sx={gIc} />,
         items: [
-            { to: '/mantenimiento/dashboard', label: '📊 Dashboard Mant' },
-            { to: '/mantenimiento/monitoreo', label: '📺 Monitoreo en Vivo' },
-            { to: '/mantenimiento/registro', label: '📋 Registrar Novedades' },
-            { to: '/mantenimiento/cambios', label: '🔄 Registrar Cambios' },
-            { to: '/mantenimiento/historial', label: '📜 Historial Novedades' },
-            { to: '/mantenimiento/historial-cambios', label: '🔄 Historial de Cambios' },
-            { to: '/mantenimiento/buscador', label: '🔍 Detalle' },
-            { to: '/mantenimiento/pendientes', label: '📑 Pendientes' },
+            { to: '/mantenimiento/dashboard', label: 'Dashboard Mant', icon: <DashboardOutlined sx={ic} /> },
+            { to: '/mantenimiento/monitoreo', label: 'Monitoreo en Vivo', icon: <TvOutlined sx={ic} /> },
+            { to: '/mantenimiento/registro', label: 'Registrar Novedades', icon: <PostAddOutlined sx={ic} /> },
+            { to: '/mantenimiento/cambios', label: 'Registrar Cambios', icon: <SwapHorizOutlined sx={ic} /> },
+            { to: '/mantenimiento/historial', label: 'Historial Novedades', icon: <HistoryOutlined sx={ic} /> },
+            { to: '/mantenimiento/historial-cambios', label: 'Historial de Cambios', icon: <HistoryOutlined sx={ic} /> },
+            { to: '/mantenimiento/buscador', label: 'Detalle', icon: <ManageSearchOutlined sx={ic} /> },
+            { to: '/mantenimiento/pendientes', label: 'Pendientes', icon: <PendingActionsOutlined sx={ic} /> },
             {
                 id: 'mantenimiento-informes',
-                label: '📊 Informes',
+                label: 'Informes',
+                icon: <AssessmentOutlined sx={ic} />,
                 isSubGroup: true,
                 items: [
-                    { to: '/mantenimiento/informe-turnos', label: '⏱️ Informe Turnos' },
-                    { to: '/mantenimiento/informe-cambios', label: '📈 Informe Cambios' },
+                    { to: '/mantenimiento/informe-turnos', label: 'Informe Turnos', icon: <AccessTimeOutlined sx={ic} /> },
+                    { to: '/mantenimiento/informe-cambios', label: 'Informe Cambios', icon: <TrendingUpOutlined sx={ic} /> },
                 ]
             },
             {
                 id: 'mantenimiento-kpi',
-                label: '📈 KPI',
+                label: 'KPI',
+                icon: <TrendingUpOutlined sx={ic} />,
                 isSubGroup: true,
                 items: [
-                    { to: '/mantenimiento/kpi/disponibilidad', label: '🏭 Disponibilidad Máquinas' },
-                    { to: '/mantenimiento/kpi/disponibilidad-v2', label: '📊 Disponibilidad Timeline (V2)' },
+                    { to: '/mantenimiento/kpi/disponibilidad', label: 'Disponibilidad Máquinas', icon: <PrecisionManufacturingOutlined sx={ic} /> },
+                    { to: '/mantenimiento/kpi/disponibilidad-v2', label: 'Disponibilidad Timeline (V2)', icon: <TimelineOutlined sx={ic} /> },
                 ]
             },
         ]
@@ -194,48 +264,50 @@ const navGroups: NavGroup[] = [
     {
         id: 'calidad',
         label: 'Calidad',
-        icon: '🎯',
+        icon: <VerifiedOutlined sx={gIc} />,
         items: [
-            { to: '/calidad/cuarentena', label: '🧪 Cuarentena y liberación' },
+            { to: '/calidad/cuarentena', label: 'Cuarentena y liberación', icon: <ScienceOutlined sx={ic} /> },
         ]
     },
     {
         id: 'ventas',
         label: 'Ventas',
-        icon: '📈',
+        icon: <TrendingUpOutlined sx={gIc} />,
         items: [
-            { to: '/ventas/dashboard', label: '📊 Dashboard Ventas' },
+            { to: '/ventas/dashboard', label: 'Dashboard Ventas', icon: <DashboardOutlined sx={ic} /> },
         ]
     },
     {
         id: 'finanzas',
         label: 'Finanzas',
-        icon: '💰',
+        icon: <MonetizationOnOutlined sx={gIc} />,
         items: [
-            { to: '/finanzas/dashboard', label: '📊 Dashboard Finanzas' },
+            { to: '/finanzas/dashboard', label: 'Dashboard Finanzas', icon: <DashboardOutlined sx={ic} /> },
         ]
     },
     {
         id: 'rrhh',
         label: 'Recursos Humanos',
-        icon: '👥',
+        icon: <BadgeOutlined sx={gIc} />,
         items: [
-            { to: '/rrhh/dashboard', label: '📊 Dashboard RRHH' },
+            { to: '/rrhh/dashboard', label: 'Dashboard RRHH', icon: <DashboardOutlined sx={ic} /> },
         ]
     }
 ];
 
 const navStyle = (isActive: boolean, isMobile: boolean, isLight: boolean = false): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: '12px',
-    paddingTop: isMobile ? '14px' : '10px',
-    paddingBottom: isMobile ? '14px' : '10px',
-    paddingRight: isMobile ? '20px' : '14px',
-    paddingLeft: isMobile ? '20px' : '14px',
+    display: 'flex', alignItems: 'center', gap: '10px',
+    paddingTop: isMobile ? '13px' : '9px',
+    paddingBottom: isMobile ? '13px' : '9px',
+    paddingRight: isMobile ? '18px' : '14px',
+    paddingLeft: isMobile ? '18px' : '14px',
     textDecoration: 'none',
     color: isActive ? '#6366f1' : (isLight ? 'var(--text-dimmed, #4b5563)' : 'var(--text-muted, #9ca3af)'),
-    background: isActive ? (isLight ? 'rgba(99,102,241,0.12)' : 'rgba(165,180,252,0.08)') : 'transparent',
+    background: isActive ? (isLight ? 'rgba(99,102,241,0.1)' : 'rgba(165,180,252,0.07)') : 'transparent',
     borderLeft: isActive ? '3px solid #6366f1' : '3px solid transparent',
-    fontSize: isMobile ? '15px' : '13px', whiteSpace: 'nowrap',
+    fontSize: isMobile ? '14px' : '13px',
+    fontWeight: isActive ? 600 : 400,
+    whiteSpace: 'nowrap',
     transition: 'all 0.15s',
 });
 
@@ -311,7 +383,6 @@ export default function Layout() {
     const isAllowed = (to: string) => {
         if (isAdmin) return true;
 
-        // Admin-only paths
         if (to === '/users' || to.startsWith('/admin/dashboard') || to === '/admin/auditoria') {
             return false;
         }
@@ -497,7 +568,7 @@ export default function Layout() {
                             onClick={() => setMobileMenuOpen(true)}
                             style={{
                                 background: 'transparent', border: 'none', color: 'var(--text-primary, #f3f4f6)',
-                                fontSize: '24px', cursor: 'pointer', padding: '4px',
+                                fontSize: '22px', cursor: 'pointer', padding: '4px',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 position: 'relative',
                             }}
@@ -513,16 +584,16 @@ export default function Layout() {
                             )}
                         </button>
                         <span style={{
-                            fontWeight: 800,
+                            fontWeight: 700,
                             color: '#6366f1',
-                            fontSize: '15px',
+                            fontSize: '14px',
                             letterSpacing: '0.2px',
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             textTransform: 'uppercase'
                         }}>
-                            {allItems.find(i => i.to === location.pathname.split('?')[0])?.label.split(' ').slice(1).join(' ') || 'WMS'}
+                            {allItems.find(i => i.to === location.pathname.split('?')[0])?.label || 'WMS'}
                         </span>
                     </div>
 
@@ -561,26 +632,31 @@ export default function Layout() {
                 position: isMobile || location.pathname === '/mantenimiento/monitoreo' ? 'fixed' : 'relative',
                 left: (isMobile || location.pathname === '/mantenimiento/monitoreo') && !mobileMenuOpen ? '-280px' : '0',
                 top: 0, bottom: 0,
-                width: isMobile || location.pathname === '/mantenimiento/monitoreo' ? '280px' : (collapsed ? '60px' : '220px'),
-                background: theme === 'light' ? 'linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%)' : 'linear-gradient(180deg, var(--bg-secondary, #1a1d2e) 0%, #141622 100%)',
+                width: isMobile || location.pathname === '/mantenimiento/monitoreo' ? '270px' : (collapsed ? '60px' : '230px'),
+                background: theme === 'light' ? 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)' : 'linear-gradient(180deg, var(--bg-secondary, #1a1d2e) 0%, #141622 100%)',
                 borderRight: '1px solid var(--border-color, #2a2d3e)',
                 display: 'flex', flexDirection: 'column',
                 transition: 'all 0.3s ease',
                 zIndex: 999,
                 flexShrink: 0,
             }}>
-                <div style={{ padding: '16px 12px', borderBottom: '1px solid var(--border-color, #2a2d3e)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        {(!collapsed || isMobile) && <span style={{ color: theme === 'light' ? '#6366f1' : '#a5b4fc', fontWeight: 700, fontSize: '15px', whiteSpace: 'nowrap' }}>📦 WMS INVENTARIO</span>}
-                        {(!collapsed || isMobile) && <span style={{ color: theme === 'light' ? 'var(--text-subtle, #94a3b8)' : 'var(--text-subtle, #6b7280)', fontSize: '10px', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '1px' }}>{role}</span>}
+                <div style={{ padding: '16px 14px', borderBottom: '1px solid var(--border-color, #2a2d3e)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Inventory2Outlined sx={{ fontSize: 20, color: theme === 'light' ? '#6366f1' : '#a5b4fc' }} />
+                        {(!collapsed || isMobile) && (
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ color: theme === 'light' ? '#0f172a' : '#f3f4f6', fontWeight: 700, fontSize: '14px', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>WMS INVENTARIO</span>
+                                <span style={{ color: 'var(--text-subtle, #6b7280)', fontSize: '10px', marginTop: '1px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{role}</span>
+                            </div>
+                        )}
                     </div>
                     {!isMobile && (
                         <button
                             type="button"
                             onClick={() => setCollapsed(!collapsed)}
-                            style={{ background: 'none', border: 'none', color: theme === 'light' ? 'var(--text-subtle, #94a3b8)' : 'var(--text-subtle, #6b7280)', cursor: 'pointer', fontSize: '18px', padding: '2px 6px' }}
+                            style={{ background: 'none', border: 'none', color: 'var(--text-subtle, #6b7280)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
                         >
-                            {collapsed ? '›' : '‹'}
+                            {collapsed ? <ChevronRightOutlined sx={{ fontSize: 18 }} /> : <ChevronLeftOutlined sx={{ fontSize: 18 }} />}
                         </button>
                     )}
                 </div>
@@ -592,25 +668,25 @@ export default function Layout() {
                         const hasActiveChild = leafItems.some(item => location.pathname === item.to);
 
                         return (
-                            <div key={group.id} style={{ marginBottom: '8px' }}>
+                            <div key={group.id} style={{ marginBottom: '6px' }}>
                                 {(!collapsed || isMobile) && (
                                     <button
                                         type="button"
                                         onClick={() => toggleGroup(group.id)}
                                         style={{
-                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            display: 'flex', alignItems: 'center', gap: '10px',
                                             width: '100%', padding: '8px 14px',
                                             background: 'transparent', border: 'none',
                                             color: isExpanded || hasActiveChild ? (theme === 'light' ? '#6366f1' : '#a5b4fc') : (theme === 'light' ? 'var(--text-muted, #64748b)' : 'var(--text-subtle, #6b7280)'),
                                             fontSize: '11px', fontWeight: 700,
-                                            textTransform: 'uppercase', letterSpacing: '1px',
+                                            textTransform: 'uppercase', letterSpacing: '0.8px',
                                             cursor: 'pointer', transition: 'all 0.15s'
                                         }}
                                     >
-                                        <span style={{ fontSize: '14px' }}>{group.icon}</span>
+                                        <span style={{ display: 'flex', alignItems: 'center', opacity: 0.9 }}>{group.icon}</span>
                                         <span>{group.label}</span>
-                                        <span style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-                                            ›
+                                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                                            <ChevronRightOutlined sx={{ fontSize: 15 }} />
                                         </span>
                                     </button>
                                 )}
@@ -618,27 +694,30 @@ export default function Layout() {
                                 {collapsed && !isMobile && (
                                     <div style={{
                                         display: 'flex', justifyContent: 'center',
-                                        padding: '12px 0', borderBottom: theme === 'light' ? '1px solid rgba(0,0,0,0.06)' : '1px solid var(--bg-hover-dynamic, rgba(255,255,255,0.05))',
-                                        color: hasActiveChild ? (theme === 'light' ? '#6366f1' : '#a5b4fc') : (theme === 'light' ? 'var(--text-subtle, #94a3b8)' : 'var(--text-dimmed, #4b5563)')
+                                        padding: '10px 0', borderBottom: theme === 'light' ? '1px solid rgba(0,0,0,0.06)' : '1px solid var(--bg-hover-dynamic, rgba(255,255,255,0.05))',
+                                        color: hasActiveChild ? (theme === 'light' ? '#6366f1' : '#a5b4fc') : 'var(--text-subtle, #6b7280)'
                                     }}>
-                                        <span style={{ fontSize: '20px' }}>{group.icon}</span>
+                                        {group.icon}
                                     </div>
                                 )}
 
                                 {(isExpanded || (collapsed && !isMobile)) && (
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         {collapsed && !isMobile ? (
-                                            leafItems.map(({ to, label }) => (
+                                            leafItems.map(({ to, label, icon }) => (
                                                 <NavLink
                                                     key={to}
                                                     to={to}
+                                                    title={label}
                                                     style={({ isActive }) => ({
                                                         ...navStyle(isActive, isMobile, theme === 'light'),
-                                                        paddingLeft: '14px',
-                                                        opacity: !hasActiveChild ? 0.6 : 1
+                                                        justifyContent: 'center',
+                                                        paddingLeft: 0,
+                                                        paddingRight: 0,
+                                                        opacity: !hasActiveChild ? 0.65 : 1
                                                     })}
                                                 >
-                                                    <span style={{ fontSize: '16px', minWidth: '24px' }}>{label.split(' ')[0]}</span>
+                                                    <span style={{ display: 'flex', alignItems: 'center' }}>{icon}</span>
                                                 </NavLink>
                                             ))
                                         ) : (
@@ -658,37 +737,38 @@ export default function Layout() {
                                                                     );
                                                                 }}
                                                                 style={{
-                                                                    display: 'flex', alignItems: 'center', gap: '12px',
-                                                                    paddingTop: isMobile ? '14px' : '10px',
-                                                                    paddingBottom: isMobile ? '14px' : '10px',
-                                                                    paddingRight: isMobile ? '20px' : '14px',
-                                                                    paddingLeft: '32px',
+                                                                    display: 'flex', alignItems: 'center', gap: '10px',
+                                                                    paddingTop: isMobile ? '12px' : '9px',
+                                                                    paddingBottom: isMobile ? '12px' : '9px',
+                                                                    paddingRight: isMobile ? '18px' : '14px',
+                                                                    paddingLeft: '28px',
                                                                     background: 'transparent', border: 'none',
                                                                     color: isSubExpanded || hasActiveSubChild ? (theme === 'light' ? '#6366f1' : '#a5b4fc') : (theme === 'light' ? 'var(--text-dimmed, #4b5563)' : 'var(--text-muted, #9ca3af)'),
-                                                                    fontSize: isMobile ? '15px' : '13px',
+                                                                    fontSize: isMobile ? '14px' : '13px',
+                                                                    fontWeight: isSubExpanded || hasActiveSubChild ? 600 : 400,
                                                                     cursor: 'pointer', transition: 'all 0.15s',
                                                                     width: '100%', textAlign: 'left'
                                                                 }}
                                                             >
-                                                                <span style={{ fontSize: isMobile ? '20px' : '16px', minWidth: '24px' }}>{item.label.split(' ')[0]}</span>
-                                                                <span>{item.label.split(' ').slice(1).join(' ')}</span>
-                                                                <span style={{ marginLeft: 'auto', transition: 'transform 0.2s', transform: isSubExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-                                                                    ›
+                                                                <span style={{ display: 'flex', alignItems: 'center', opacity: 0.85 }}>{item.icon}</span>
+                                                                <span>{item.label}</span>
+                                                                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', transition: 'transform 0.2s', transform: isSubExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                                                                    <ChevronRightOutlined sx={{ fontSize: 15 }} />
                                                                 </span>
                                                             </button>
                                                             {isSubExpanded && (
                                                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                                    {item.items.map(({ to, label }) => (
+                                                                    {item.items.map(({ to, label, icon }) => (
                                                                         <NavLink
                                                                             key={to}
                                                                             to={to}
                                                                             style={({ isActive }) => ({
                                                                                 ...navStyle(isActive, isMobile, theme === 'light'),
-                                                                                paddingLeft: '48px',
+                                                                                paddingLeft: '44px',
                                                                             })}
                                                                         >
-                                                                            <span style={{ fontSize: isMobile ? '20px' : '16px', minWidth: '24px' }}>{label.split(' ')[0]}</span>
-                                                                            <span>{label.split(' ').slice(1).join(' ')}</span>
+                                                                            <span style={{ display: 'flex', alignItems: 'center', opacity: 0.85 }}>{icon}</span>
+                                                                            <span>{label}</span>
                                                                         </NavLink>
                                                                     ))}
                                                                 </div>
@@ -703,11 +783,11 @@ export default function Layout() {
                                                             to={std.to}
                                                             style={({ isActive }) => ({
                                                                 ...navStyle(isActive, isMobile, theme === 'light'),
-                                                                paddingLeft: '32px',
+                                                                paddingLeft: '28px',
                                                             })}
                                                         >
-                                                            <span style={{ fontSize: isMobile ? '20px' : '16px', minWidth: '24px' }}>{std.label.split(' ')[0]}</span>
-                                                            <span>{std.label.split(' ').slice(1).join(' ')}</span>
+                                                            <span style={{ display: 'flex', alignItems: 'center', opacity: 0.85 }}>{std.icon}</span>
+                                                            <span>{std.label}</span>
                                                         </NavLink>
                                                     );
                                                 }
@@ -725,15 +805,15 @@ export default function Layout() {
                             ...navStyle(isActive, isMobile, theme === 'light'),
                             marginTop: '12px',
                             borderTop: '1px solid var(--border-color, #2a2d3e)',
-                            paddingTop: isMobile ? '16px' : '12px',
+                            paddingTop: isMobile ? '14px' : '11px',
                         })}
                     >
-                        <span style={{ fontSize: isMobile ? '20px' : '16px', minWidth: '24px', position: 'relative' }}>
-                            🔔
+                        <span style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                            <NotificationsNoneOutlined sx={ic} />
                             {hasUnread && (
                                 <span style={{
-                                    position: 'absolute', top: '-2px', right: '-4px',
-                                    width: '9px', height: '9px', borderRadius: '50%',
+                                    position: 'absolute', top: '-2px', right: '-2px',
+                                    width: '8px', height: '8px', borderRadius: '50%',
                                     background: '#ef4444', border: theme === 'light' ? '2px solid #ffffff' : '2px solid var(--bg-secondary, #1a1d2e)',
                                     animation: 'pulse-dot 2s ease-in-out infinite',
                                 }} />
@@ -747,10 +827,10 @@ export default function Layout() {
                                         background: '#ef4444',
                                         color: '#ffffff',
                                         fontSize: '10px',
-                                        fontWeight: 800,
-                                        padding: '1px 7px',
+                                        fontWeight: 700,
+                                        padding: '1px 6px',
                                         borderRadius: '10px',
-                                        minWidth: '18px',
+                                        minWidth: '16px',
                                         textAlign: 'center' as const,
                                     }}>
                                         {alerts.length}
@@ -764,13 +844,12 @@ export default function Layout() {
                         to="/ayuda"
                         style={({ isActive }) => ({
                             ...navStyle(isActive, isMobile, theme === 'light'),
-                            marginTop: '4px',
+                            marginTop: '2px',
                             borderTop: 'none',
-                            paddingTop: isMobile ? '12px' : '10px',
                         })}
                     >
-                        <span style={{ fontSize: isMobile ? '20px' : '16px', minWidth: '24px' }}>
-                            ❓
+                        <span style={{ display: 'flex', alignItems: 'center' }}>
+                            <HelpOutlineOutlined sx={ic} />
                         </span>
                         {(!collapsed || isMobile) && (
                             <span>Ayuda / Soporte</span>
@@ -778,48 +857,50 @@ export default function Layout() {
                     </NavLink>
                 </nav>
 
-                <div style={{ borderTop: '1px solid var(--border-color, #2a2d3e)', padding: '8px 0' }}>
+                <div style={{ borderTop: '1px solid var(--border-color, #2a2d3e)', padding: '6px 0' }}>
                     <button
                         type="button"
                         onClick={toggleTheme}
                         style={{
-                            display: 'flex', alignItems: 'center', gap: '12px',
-                            padding: isMobile ? '16px 20px' : '10px 14px', width: '100%',
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: isMobile ? '14px 18px' : '9px 14px', width: '100%',
                             background: 'transparent', border: 'none',
-                            color: theme === 'light' ? 'var(--border-strong, #374151)' : 'var(--text-muted, #9ca3af)', fontSize: isMobile ? '15px' : '13px',
+                            color: theme === 'light' ? 'var(--border-strong, #374151)' : 'var(--text-muted, #9ca3af)', fontSize: isMobile ? '14px' : '13px',
                             cursor: 'pointer', transition: 'all 0.15s',
                         }}
                     >
-                        <span style={{ fontSize: isMobile ? '20px' : '16px', minWidth: '24px' }}>{theme === 'dark' ? '☀️' : '🌙'}</span>
+                        <span style={{ display: 'flex', alignItems: 'center' }}>
+                            {theme === 'dark' ? <LightModeOutlined sx={ic} /> : <DarkModeOutlined sx={ic} />}
+                        </span>
                         {(!collapsed || isMobile) && <span>Modo {theme === 'dark' ? 'Claro' : 'Oscuro'}</span>}
                     </button>
                     <button
                         type="button"
                         onClick={() => setShowPasswordModal(true)}
                         style={{
-                            display: 'flex', alignItems: 'center', gap: '12px',
-                            padding: isMobile ? '16px 20px' : '10px 14px', width: '100%',
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: isMobile ? '14px 18px' : '9px 14px', width: '100%',
                             background: 'transparent', border: 'none',
-                            color: theme === 'light' ? 'var(--border-strong, #374151)' : 'var(--text-muted, #9ca3af)', fontSize: isMobile ? '15px' : '13px',
+                            color: theme === 'light' ? 'var(--border-strong, #374151)' : 'var(--text-muted, #9ca3af)', fontSize: isMobile ? '14px' : '13px',
                             cursor: 'pointer', transition: 'all 0.15s',
                         }}
                     >
-                        <span style={{ fontSize: isMobile ? '20px' : '16px', minWidth: '24px' }}>🔑</span>
+                        <span style={{ display: 'flex', alignItems: 'center' }}><KeyOutlined sx={ic} /></span>
                         {(!collapsed || isMobile) && <span>Cambiar Contraseña</span>}
                     </button>
                     <button
                         type="button"
                         onClick={handleLogout}
                         style={{
-                            display: 'flex', alignItems: 'center', gap: '12px',
-                            padding: isMobile ? '16px 20px' : '10px 14px', width: '100%',
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: isMobile ? '14px 18px' : '9px 14px', width: '100%',
                             background: 'transparent', border: 'none',
-                            color: '#ef4444', fontSize: isMobile ? '15px' : '13px',
+                            color: '#ef4444', fontSize: isMobile ? '14px' : '13px',
                             cursor: 'pointer', transition: 'all 0.15s',
-                            fontWeight: 600,
+                            fontWeight: 500,
                         }}
                     >
-                        <span style={{ fontSize: isMobile ? '20px' : '16px', minWidth: '24px' }}>🚪</span>
+                        <span style={{ display: 'flex', alignItems: 'center' }}><LogoutOutlined sx={ic} /></span>
                         {(!collapsed || isMobile) && <span>Cerrar Sesión</span>}
                     </button>
                 </div>
