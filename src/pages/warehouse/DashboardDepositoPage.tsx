@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { 
     Box, 
     Typography, 
@@ -43,6 +44,7 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import EditIcon from '@mui/icons-material/Edit';
+import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 
 import { 
     useGetStockQuery, 
@@ -868,6 +870,103 @@ export default function DashboardDepositoPage() {
 
     const detailGroup = useMemo(() => groupedData.find((g: any) => g.item.id === detailGroupId), [groupedData, detailGroupId]);
 
+    // Modal de exportación de Stock a Excel
+    const [exportExcelModal, setExportExcelModal] = useState(false);
+    const [exportDepotId, setExportDepotId] = useState<string>('ALL');
+
+    const openExportModal = () => {
+        setExportDepotId(depotId || (depots.length === 1 ? depots[0].id : 'ALL'));
+        setExportExcelModal(true);
+    };
+
+    const handleDownloadStockExcel = () => {
+        const pool = globalStock.length > 0 ? globalStock : rawStock;
+        const allowedDepotIdsSet = new Set(depots.map((d: any) => d.id));
+
+        const filteredForExport = pool.filter((entry: any) => {
+            const qtyP = Number(entry.qtyPrincipal || 0);
+            if (qtyP <= 0) return false;
+            const entryDepotId = entry.depositoId || entry.posicion?.depotId || entry.posicion?.depot?.id || '';
+            if (exportDepotId === 'ALL') {
+                return !entryDepotId || allowedDepotIdsSet.has(entryDepotId);
+            }
+            return entryDepotId === exportDepotId;
+        });
+
+        if (filteredForExport.length === 0) {
+            setFeedbackToast({ msg: 'No hay stock disponible en el depósito seleccionado para exportar.', severity: 'info' });
+            return;
+        }
+
+        const sorted = [...filteredForExport].sort((a: any, b: any) => {
+            const depA = a.deposito?.nombre || a.posicion?.depot?.nombre || '';
+            const depB = b.deposito?.nombre || b.posicion?.depot?.nombre || '';
+            if (depA !== depB) return depA.localeCompare(depB);
+
+            const posA = a.posicion?.codigo || '';
+            const posB = b.posicion?.codigo || '';
+            if (posA !== posB) return posA.localeCompare(posB, undefined, { numeric: true });
+
+            const matA = a.batch?.item?.descripcion || '';
+            const matB = b.batch?.item?.descripcion || '';
+            if (matA !== matB) return matA.localeCompare(matB);
+
+            const lotA = a.batch?.lotNumber || '';
+            const lotB = b.batch?.lotNumber || '';
+            return lotA.localeCompare(lotB, undefined, { numeric: true });
+        });
+
+        const rows = sorted.map((entry: any) => {
+            const depotObj = depots.find((d: any) => d.id === (entry.depositoId || entry.posicion?.depotId));
+            const depotName = entry.deposito?.nombre || entry.posicion?.depot?.nombre || depotObj?.nombre || '—';
+            const posCode = entry.posicion?.codigo || 'S/P';
+            const item = entry.batch?.item || {};
+            const categoryName = item.category?.nombre || item.categoria || 'General';
+            const lotNum = entry.batch?.lotNumber || 'S/L';
+            const supplierName = entry.batch?.supplier?.name || item.supplier?.name || '—';
+            const qtyP = Number(entry.qtyPrincipal || 0);
+            const qtyS = entry.qtySecundaria != null ? Number(entry.qtySecundaria) : '';
+
+            return {
+                'Depósito': depotName,
+                'Posición': posCode,
+                'Código': item.codigoInterno || '—',
+                'Material': item.descripcion || '—',
+                'Categoría': categoryName,
+                'Partida / Lote': lotNum,
+                'Proveedor': supplierName,
+                'Cantidad Principal': Number(qtyP.toFixed(2)),
+                'Unidad Principal': item.unidadPrincipal || 'kg',
+                'Cantidad Secundaria (Bultos)': qtyS !== '' ? Number(Number(qtyS).toFixed(2)) : '',
+                'Unidad Secundaria': item.unidadSecundaria || 'cajas',
+                'Observaciones': entry.batch?.observaciones || '',
+            };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const colKeys = Object.keys(rows[0] || {});
+        worksheet['!cols'] = colKeys.map((key) => {
+            const maxLen = Math.max(
+                key.length,
+                ...rows.map((r: any) => String(r[key] ?? '').length)
+            );
+            return { wch: Math.min(Math.max(maxLen + 3, 12), 45) };
+        });
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Stock por Posicion');
+
+        const selectedDepotName =
+            exportDepotId === 'ALL'
+                ? 'Todos_los_Depositos'
+                : (depots.find((d: any) => d.id === exportDepotId)?.nombre || 'Deposito').replace(/\s+/g, '_');
+        const dateStr = getLocalDateString();
+
+        XLSX.writeFile(workbook, `Stock_${selectedDepotName}_${dateStr}.xlsx`);
+        setExportExcelModal(false);
+        setFeedbackToast({ msg: `Excel descargado (${rows.length} registros de stock)`, severity: 'success' });
+    };
+
     return (
         <Box sx={{ p: isMobile ? 1.5 : 3.5, maxWidth: '1440px', margin: '0 auto', color: colors.text, minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 2.5 }}>
             
@@ -875,20 +974,39 @@ export default function DashboardDepositoPage() {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
                 <Box>
                     <Typography variant="h5" sx={{ fontWeight: 900, color: '#fff', letterSpacing: '-0.5px' }}>
-                        🎯 Centro de Comando de Depósito
+                        Centro de Comando de Depósito
                     </Typography>
                     <Typography variant="caption" sx={{ color: colors.textDim }}>
                         Gestión física de inventario, stock por pallet y reubicación de posiciones
                     </Typography>
                 </Box>
-                <Button 
-                    variant="contained" 
-                    startIcon={<AddIcon />} 
-                    onClick={() => setQuickAddModal(true)}
-                    sx={{ bgcolor: colors.primary, color: '#000', fontWeight: 800, borderRadius: 2, px: 2, '&:hover': { bgcolor: '#d97706' } }}
-                >
-                    Carga Rápida
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1.2, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<FileDownloadOutlinedIcon />}
+                        onClick={openExportModal}
+                        sx={{
+                            borderColor: colors.border,
+                            color: colors.text,
+                            fontWeight: 700,
+                            borderRadius: 2,
+                            px: 2,
+                            textTransform: 'none',
+                            bgcolor: 'rgba(255,255,255,0.03)',
+                            '&:hover': { borderColor: colors.primary, bgcolor: 'rgba(245, 158, 11, 0.08)' }
+                        }}
+                    >
+                        Exportar Excel
+                    </Button>
+                    <Button 
+                        variant="contained" 
+                        startIcon={<AddIcon />} 
+                        onClick={() => setQuickAddModal(true)}
+                        sx={{ bgcolor: colors.primary, color: '#000', fontWeight: 800, borderRadius: 2, px: 2, textTransform: 'none', '&:hover': { bgcolor: '#d97706' } }}
+                    >
+                        Carga Rápida
+                    </Button>
+                </Box>
             </Box>
 
             {/* Barra de Filtros Sticky en Mobile */}
@@ -2524,6 +2642,85 @@ export default function DashboardDepositoPage() {
                         onClick={handleQuickAddSubmit}
                     >
                         {isQuickAdding ? 'REGISTRANDO...' : 'REGISTRAR STOCK'}
+                    </Button>
+                </Box>
+            </Dialog>
+
+            {/* Modal para elegir depósito y descargar Excel de Stock */}
+            <Dialog
+                open={exportExcelModal}
+                onClose={() => setExportExcelModal(false)}
+                maxWidth="xs"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        bgcolor: colors.bg,
+                        color: colors.text,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 3,
+                        p: 2.5,
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.85)',
+                    },
+                }}
+            >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff', fontSize: '1.05rem' }}>
+                        Exportar Stock a Excel
+                    </Typography>
+                    <IconButton size="small" onClick={() => setExportExcelModal(false)} sx={{ color: colors.textDim }}>
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                </Box>
+
+                <Typography variant="body2" sx={{ color: colors.textDim, mb: 2, fontSize: '0.82rem' }}>
+                    Seleccioná el depósito del cual querés descargar el listado completo de stock desglosado por posición, partida y material:
+                </Typography>
+
+                <TextField
+                    select
+                    label="Depósito a exportar"
+                    fullWidth
+                    size="small"
+                    value={exportDepotId}
+                    onChange={(e) => setExportDepotId(e.target.value)}
+                    sx={{
+                        mb: 2.5,
+                        '& .MuiInputLabel-root': { color: colors.textDim },
+                        '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 },
+                    }}
+                >
+                    {depots.length > 1 && (
+                        <MenuItem value="ALL">Todos los depósitos habilitados ({depots.length})</MenuItem>
+                    )}
+                    {depots.map((d: any) => (
+                        <MenuItem key={d.id} value={d.id}>
+                            {d.nombre} {d.planta ? `(${d.planta})` : ''}
+                        </MenuItem>
+                    ))}
+                </TextField>
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                    <Button
+                        variant="text"
+                        onClick={() => setExportExcelModal(false)}
+                        sx={{ color: colors.textDim, textTransform: 'none' }}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button
+                        variant="contained"
+                        startIcon={<FileDownloadOutlinedIcon />}
+                        onClick={handleDownloadStockExcel}
+                        sx={{
+                            bgcolor: colors.primary,
+                            color: '#000',
+                            fontWeight: 800,
+                            borderRadius: 2,
+                            textTransform: 'none',
+                            '&:hover': { bgcolor: '#d97706' },
+                        }}
+                    >
+                        Descargar Excel
                     </Button>
                 </Box>
             </Dialog>
