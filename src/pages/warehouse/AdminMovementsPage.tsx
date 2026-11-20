@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
     ResponsiveContainer,
@@ -90,7 +90,6 @@ function getMovementImpactSign(tipo: string): 1 | -1 | 0 {
 
 export default function AdminMovementsPage() {
     const isMobile = useIsMobile();
-    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
 
     const user = useSelector(selectCurrentUser);
