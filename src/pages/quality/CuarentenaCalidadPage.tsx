@@ -211,6 +211,7 @@ export default function CuarentenaCalidadPage() {
                         sx={{ minWidth: 190 }}
                     >
                         <MenuItem value="QUARANTINE">En cuarentena</MenuItem>
+                        <MenuItem value="REJECTED">Rechazados</MenuItem>
                         <MenuItem value="RELEASED">Liberados</MenuItem>
                         <MenuItem value="">Todos</MenuItem>
                     </TextField>
@@ -233,8 +234,20 @@ export default function CuarentenaCalidadPage() {
                                 </Box>
                                 <Chip
                                     icon={lot.qualityStatus === 'RELEASED' ? <VerifiedOutlinedIcon /> : <ScienceOutlinedIcon />}
-                                    label={lot.qualityStatus === 'RELEASED' ? 'Liberado' : 'Cuarentena'}
-                                    color={lot.qualityStatus === 'RELEASED' ? 'success' : 'warning'}
+                                    label={
+                                        lot.qualityStatus === 'RELEASED'
+                                            ? 'Liberado'
+                                            : lot.qualityStatus === 'REJECTED'
+                                              ? 'Rechazado'
+                                              : 'Cuarentena'
+                                    }
+                                    color={
+                                        lot.qualityStatus === 'RELEASED'
+                                            ? 'success'
+                                            : lot.qualityStatus === 'REJECTED'
+                                              ? 'error'
+                                              : 'warning'
+                                    }
                                     size="small"
                                 />
                             </Stack>
@@ -249,7 +262,7 @@ export default function CuarentenaCalidadPage() {
                                         {lot.locations.map((location) => `${location.deposito || 'Depósito'} / ${location.posicion || 's/p'}`).join(' · ')}
                                     </Typography>
                                 </Box>
-                                {lot.qualityStatus === 'QUARANTINE' && (
+                                {(lot.qualityStatus === 'QUARANTINE' || lot.qualityStatus === 'REJECTED') && (
                                     <Button
                                         fullWidth={isMobile}
                                         variant="contained"

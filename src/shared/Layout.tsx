@@ -267,6 +267,7 @@ const navGroups: NavGroup[] = [
         icon: <VerifiedOutlined sx={gIc} />,
         items: [
             { to: '/calidad/cuarentena', label: 'Cuarentena y liberación', icon: <ScienceOutlined sx={ic} /> },
+            { to: '/calidad/chequeo-localizado', label: 'Chequeos localizados', icon: <FactCheckOutlined sx={ic} /> },
         ]
     },
     {
@@ -420,7 +421,7 @@ export default function Layout() {
                 '/mantenimiento/kpi/disponibilidad',
                 '/mantenimiento/kpi/disponibilidad-v2',
             ],
-            CALIDAD: ['/calidad/cuarentena'],
+            CALIDAD: ['/calidad/cuarentena', '/calidad/chequeo-localizado'],
             VENTAS: ['/ventas/dashboard'],
             FINANZAS: ['/finanzas/dashboard'],
             RRHH: ['/rrhh/dashboard'],
@@ -477,16 +478,18 @@ export default function Layout() {
     // Hay rutas compartidas entre sectores (ej. /items y /socios están en Depósito y en Compras).
     // Recordamos desde qué grupo hizo click el usuario para expandir ESE grupo y no el último que coincida.
     const NAV_GROUP_KEY = 'nav-active-group';
+    const [preferredGroupId, setPreferredGroupId] = useState<string | null>(() => {
+        try { return sessionStorage.getItem(NAV_GROUP_KEY); } catch { return null; }
+    });
     const rememberGroup = (groupId: string) => {
+        setPreferredGroupId(groupId);
         try { sessionStorage.setItem(NAV_GROUP_KEY, groupId); } catch { /* ignore */ }
     };
 
-    const resolveActiveGroup = (pathname: string) => {
+    const resolveActiveGroup = (pathname: string, pref: string | null = preferredGroupId) => {
         const candidates = filteredGroups.filter(g => flattenItems(g.items).some(i => i.to === pathname));
         if (candidates.length === 0) return null;
-        let preferred: string | null = null;
-        try { preferred = sessionStorage.getItem(NAV_GROUP_KEY); } catch { /* ignore */ }
-        return candidates.find(g => g.id === preferred) || candidates[0];
+        return candidates.find(g => g.id === pref) || candidates[0];
     };
 
     const activeGroup = resolveActiveGroup(location.pathname);
@@ -498,10 +501,12 @@ export default function Layout() {
         let activeGroupId: string | null = null;
         let activeSubGroupId: string | null = null;
 
-        const group = resolveActiveGroup(location.pathname);
+        const group = resolveActiveGroup(location.pathname, preferredGroupId);
         if (group) {
             activeGroupId = group.id;
-            rememberGroup(group.id);
+            if (preferredGroupId !== group.id) {
+                rememberGroup(group.id);
+            }
             group.items.forEach(item => {
                 if ('isSubGroup' in item && item.isSubGroup) {
                     if (item.items.some(sub => location.pathname === sub.to)) {
@@ -510,7 +515,6 @@ export default function Layout() {
                 }
             });
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
 
         if (activeGroupId) {
             setExpandedGroups([activeGroupId]);
@@ -523,7 +527,8 @@ export default function Layout() {
         } else {
             setExpandedSubGroups([]);
         }
-    }, [location.pathname]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.pathname, preferredGroupId]);
 
     const handleLogout = () => {
         dispatch(api.util.resetApiState());

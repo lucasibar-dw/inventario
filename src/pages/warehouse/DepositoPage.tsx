@@ -1,247 +1,281 @@
-import { useState, useRef, useEffect, useMemo, useDeferredValue } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
-import { useGetItemsQuery, useGetItemCategoriesQuery, useCreateItemCategoryMutation, useUpdateItemCategoryMutation } from '../../features/warehouse/materiales/api/items.api';
-import { useGetDepotsQuery, useCreateDepotMutation, useUpdateDepotMutation, useCreatePositionMutation, useUpdatePositionMutation, useDeleteDepotMutation } from '../../features/warehouse/deposito/api/deposito.api';
+import {
+    useGetItemsQuery,
+    useGetItemCategoriesQuery,
+    useCreateItemCategoryMutation,
+    useUpdateItemCategoryMutation,
+} from '../../features/warehouse/materiales/api/items.api';
+import { useGetBoxTypesQuery } from '../../features/warehouse/materiales/api/box-types.api';
+import { useGetStockQuery } from '../../features/warehouse/stock/api/stock.api';
+import {
+    useGetDepotsQuery,
+    useCreateDepotMutation,
+    useUpdateDepotMutation,
+    useDeleteDepotMutation,
+    useRestoreDepotMutation,
+    useRenamePlantMutation,
+    useTogglePlantStatusMutation,
+} from '../../features/warehouse/deposito/api/deposito.api';
 import { selectCurrentUser } from '../../entities/auth/model/authSlice';
-import { PageHeader, Card, Btn, Input, Modal, Badge, Spinner } from '../../shared/ui';
+import { PageHeader, Card, Btn, Input, Modal, Spinner } from '../../shared/ui';
+import {
+    computePositionStats,
+    buildPositionView,
+    summarizeDepot,
+    fmt,
+    PositionView,
+    OccupancyStatus,
+} from '../../features/warehouse/deposito/lib/depotMetrics';
+import { Kpi, OccBar, Pill, TabBar, inputStyle, labelStyle, thStyle, tdStyle } from '../../features/warehouse/deposito/ui/common';
+import PositionsTab from '../../features/warehouse/deposito/ui/PositionsTab';
+import LayoutMapTab from '../../features/warehouse/deposito/ui/LayoutMapTab';
+import AnalyticsTab from '../../features/warehouse/deposito/ui/AnalyticsTab';
+import PositionDetailModal from '../../features/warehouse/deposito/ui/PositionDetailModal';
+import BulkCreatePositionsModal from '../../features/warehouse/deposito/ui/BulkCreatePositionsModal';
+import BulkEditPositionsModal from '../../features/warehouse/deposito/ui/BulkEditPositionsModal';
 
-/* ─── Inline-editable cell ─── */
-function EditableCell({ value, onSave, label, type = 'text', options }: { value: string; onSave: (v: string) => Promise<void>; label?: string; type?: string; options?: { value: string, label: string }[] }) {
+/* ─── Celda editable inline ─── */
+function EditableCell({ value, onSave, label, type = 'text', disabled = false }: {
+    value: string;
+    onSave: (v: string) => Promise<void>;
+    label?: string;
+    type?: string;
+    disabled?: boolean;
+}) {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(value);
     const [saving, setSaving] = useState(false);
-    const ref = useRef<HTMLInputElement | HTMLSelectElement>(null);
+    const ref = useRef<HTMLInputElement>(null);
 
     useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
 
     const commit = async () => {
         if (draft === value) { setEditing(false); return; }
         setSaving(true);
-        try { await onSave(draft); setEditing(false); } catch { /* keep open on error */ }
+        try { await onSave(draft); setEditing(false); } catch { /* mantener abierto si falla */ }
         setSaving(false);
     };
 
-    if (!editing) return (
-        <div onClick={() => { setDraft(value); setEditing(true); }} style={{ cursor: 'pointer', padding: '6px 0', borderBottom: '1px dashed transparent', transition: 'all 0.2s' }} className="editable-trigger">
+    if (!editing || disabled) return (
+        <div
+            onClick={(e) => {
+                if (disabled) return;
+                e.stopPropagation();
+                setDraft(value);
+                setEditing(true);
+            }}
+            style={{ cursor: disabled ? 'default' : 'pointer', padding: '4px 0' }}
+            className={disabled ? undefined : 'editable-trigger'}
+            title={disabled ? undefined : 'Click para editar'}
+        >
             {label && <div style={{ fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase', marginBottom: '2px' }}>{label}</div>}
-            <div style={{ color: 'var(--text-primary, #f3f4f6)', fontWeight: 500 }}>{value || '—'}</div>
+            <div style={{ color: 'var(--text-primary, #f3f4f6)', fontWeight: 600 }}>{value || '—'}</div>
         </div>
     );
 
     return (
-        <div style={{ padding: '4px 0' }}>
+        <div style={{ padding: '4px 0' }} onClick={e => e.stopPropagation()}>
             {label && <div style={{ fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase', marginBottom: '2px' }}>{label}</div>}
-            {options ? (
-                <select
-                    ref={ref as any}
-                    value={draft}
-                    onChange={e => setDraft(e.target.value)}
-                    onBlur={commit}
-                    disabled={saving}
-                    style={{ width: '100%', background: 'var(--bg-primary, #0f1117)', border: '1px solid #6366f1', borderRadius: '6px', padding: '6px 10px', color: 'var(--text-primary, #f3f4f6)', fontSize: '13px', outline: 'none' }}
-                >
-                    {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-            ) : (
-                <input
-                    ref={ref as any}
-                    type={type}
-                    value={draft}
-                    onChange={e => setDraft(e.target.value)}
-                    onBlur={commit}
-                    onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-                    disabled={saving}
-                    style={{
-                        width: '100%', background: 'var(--bg-primary, #0f1117)', border: '1px solid #6366f1',
-                        borderRadius: '6px', padding: '6px 10px', color: 'var(--text-primary, #f3f4f6)',
-                        fontSize: '13px', outline: 'none', boxShadow: '0 0 0 2px rgba(99, 102, 241, 0.2)'
-                    }}
-                />
-            )}
+            <input
+                ref={ref}
+                type={type}
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+                disabled={saving}
+                style={{
+                    width: '100%', background: 'var(--bg-primary, #0f1117)', border: '1px solid #6366f1',
+                    borderRadius: '6px', padding: '5px 9px', color: 'var(--text-primary, #f3f4f6)',
+                    fontSize: '13px', outline: 'none', boxShadow: '0 0 0 2px rgba(99, 102, 241, 0.2)',
+                    boxSizing: 'border-box',
+                }}
+            />
         </div>
     );
 }
 
-/* ─── Category Manager ─── */
-function CategoryManager({ categoriaPrincipal, categoriaSecundaria, itemCategories, onUpdate, onClose }: { 
-    categoriaPrincipal: string | null, 
-    categoriaSecundaria: string | null,
-    itemCategories: string[], 
-    onUpdate: (catP: string | null, catS: string | null) => Promise<void>,
-    onClose: () => void 
-}) {
-    return (
-        <div style={{ 
-            display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-primary, #0f1117)', 
-            padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle, #1e2133)', minWidth: '250px',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)', position: 'relative', zIndex: 100
-        }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle, #1e2133)', paddingBottom: '8px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)', fontWeight: 600, textTransform: 'uppercase' }}>Filtros de Material</span>
-                <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-subtle, #6b7280)', cursor: 'pointer', fontSize: '14px' }}>✕</button>
-            </div>
-
-            <div>
-                <label style={{ display: 'block', color: 'var(--text-muted, #9ca3af)', fontSize: '11px', marginBottom: '4px' }}>Categoría Principal</label>
-                <select 
-                    value={categoriaPrincipal || ''}
-                    onChange={e => onUpdate(e.target.value || null, categoriaSecundaria)}
-                    style={{ width: '100%', background: 'var(--bg-secondary, #1a1d2e)', border: '1px solid var(--border-color, #2a2d3e)', borderRadius: '6px', padding: '6px', color: 'var(--text-primary, #f3f4f6)', fontSize: '12px', outline: 'none' }}
-                >
-                    <option value="">— Libre —</option>
-                    {itemCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                </select>
-            </div>
-
-            <div>
-                <label style={{ display: 'block', color: 'var(--text-muted, #9ca3af)', fontSize: '11px', marginBottom: '4px' }}>Categoría Secundaria</label>
-                <select 
-                    value={categoriaSecundaria || ''}
-                    onChange={e => onUpdate(categoriaPrincipal, e.target.value || null)}
-                    style={{ width: '100%', background: 'var(--bg-secondary, #1a1d2e)', border: '1px solid var(--border-color, #2a2d3e)', borderRadius: '6px', padding: '6px', color: 'var(--text-primary, #f3f4f6)', fontSize: '12px', outline: 'none' }}
-                >
-                    <option value="">— Libre —</option>
-                    {itemCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                </select>
-            </div>
-        </div>
-    );
-}
+type DetailTab = 'positions' | 'map' | 'analytics' | 'categories';
 
 export default function DepositoPage() {
     const user = useSelector(selectCurrentUser);
-    const isAdmin = user?.role?.toUpperCase() === 'ADMIN';
+    const canEdit = user?.role?.toUpperCase() === 'ADMIN';
     const allowedDepots = user?.allowedDepotIds || user?.depots;
 
-    // API Hooks
+    // Datos principales
     const { data: rawDepots = [], isLoading: loadingDepots, refetch } = useGetDepotsQuery();
-    const depots = useMemo(() => {
-        return rawDepots.filter((d: any) => !allowedDepots || allowedDepots.includes(d.id));
-    }, [rawDepots, allowedDepots]);
+    const { data: stock = [], isFetching: loadingStock } = useGetStockQuery({});
+    const { data: boxTypes = [] } = useGetBoxTypesQuery();
+    const { data: items = [] } = useGetItemsQuery({});
 
-    const [createDepot] = useCreateDepotMutation();
+    // Mutaciones
+    const [createDepot, { isLoading: isSavingDepot }] = useCreateDepotMutation();
     const [updateDepot] = useUpdateDepotMutation();
     const [deleteDepot] = useDeleteDepotMutation();
-    const [createPosition, { isLoading: isCreatingPosition }] = useCreatePositionMutation();
-    const [updatePosition] = useUpdatePositionMutation();
+    const [restoreDepot] = useRestoreDepotMutation();
+    const [renamePlant, { isLoading: isRenamingPlant }] = useRenamePlantMutation();
+    const [togglePlantStatus] = useTogglePlantStatusMutation();
 
-    const handleDeleteDepot = async (id: string) => {
-        if (!window.confirm('¿Estás seguro de que querés eliminar este depósito? Esta acción no se puede deshacer.')) return;
-        try {
-            await deleteDepot(id).unwrap();
-            if (selectedDepotId === id) setSelectedDepotId(null);
-            refetch();
-        } catch (e: any) { alert(e?.data?.message || 'Error al eliminar'); }
-    };
-    const { data: items = [] } = useGetItemsQuery({});
-    
-    const itemCategories = [...new Set((Array.isArray(items) ? items : []).map(i => i.categoria))].filter(Boolean).sort();
-    
+    // Estado UI
     const [selectedDepotId, setSelectedDepotId] = useState<string | null>(null);
-    const [detailTab, setDetailTab] = useState<'positions' | 'categories'>('positions');
-    
+    const [detailTab, setDetailTab] = useState<DetailTab>('positions');
+    const [positionsFilterSeed, setPositionsFilterSeed] = useState<{ status: OccupancyStatus | ''; nonce: number }>({ status: '', nonce: 0 });
+    const [depotSearch, setDepotSearch] = useState('');
+    const [plantFilter, setPlantFilter] = useState('');
+    const [showInactiveDepots, setShowInactiveDepots] = useState(true);
+
+    // Modales
+    const [showNewDepot, setShowNewDepot] = useState(false);
+    const [newDepotForm, setNewDepotForm] = useState({ nombre: '', planta: '' });
+    const [showPlantsModal, setShowPlantsModal] = useState(false);
+    const [plantDrafts, setPlantDrafts] = useState<Record<string, string>>({});
+    const [showNewCategory, setShowNewCategory] = useState(false);
+    const [newCategoryForm, setNewCategoryForm] = useState({ nombre: '', minimo: '', maximo: '' });
+    const [detailPosId, setDetailPosId] = useState<string | null>(null);
+    const [showBulkCreate, setShowBulkCreate] = useState(false);
+    const [bulkEditViews, setBulkEditViews] = useState<PositionView[] | null>(null);
+
     // Categorías del depósito seleccionado
     const { data: categories = [], refetch: refetchCategories } = useGetItemCategoriesQuery(selectedDepotId || '', { skip: !selectedDepotId });
     const [createCategory, { isLoading: isCreatingCategory }] = useCreateItemCategoryMutation();
     const [updateItemCategory] = useUpdateItemCategoryMutation();
 
+    // Lista de depósitos permitidos
+    const depots = useMemo(() => {
+        const arr = Array.isArray(rawDepots) ? rawDepots : [];
+        return arr.filter((d: any) => !allowedDepots || allowedDepots.length === 0 || allowedDepots.includes(d.id));
+    }, [rawDepots, allowedDepots]);
+
+    // Categorías globales de materiales (para restricciones de posición)
+    const itemCategories = useMemo(() =>
+        [...new Set((Array.isArray(items) ? items : []).map((i: any) => i.category?.nombre || i.categoria))].filter(Boolean).sort() as string[],
+        [items]);
+
+    // Estadísticas por posición y resúmenes por depósito
+    const statsMap = useMemo(() => computePositionStats(stock, boxTypes), [stock, boxTypes]);
+
+    const { viewsByDepot, summaries } = useMemo(() => {
+        const vMap = new Map<string, PositionView[]>();
+        const sumList = depots.map((d: any) => {
+            const views = (d.positions || []).map((p: any) => buildPositionView(p, statsMap));
+            vMap.set(d.id, views);
+            return summarizeDepot(d, views);
+        });
+        return { viewsByDepot: vMap, summaries: sumList };
+    }, [depots, statsMap]);
+
+    // Plantas detectadas
+    const plants = useMemo(() => {
+        const map = new Map<string, { name: string; total: number; activos: number }>();
+        for (const d of depots) {
+            const name = (d.planta || '').trim();
+            if (!name) continue;
+            if (!map.has(name)) map.set(name, { name, total: 0, activos: 0 });
+            const p = map.get(name)!;
+            p.total++;
+            if (d.activo) p.activos++;
+        }
+        return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    }, [depots]);
+
+    // Depósitos filtrados
+    const filteredSummaries = useMemo(() => {
+        const q = depotSearch.trim().toLowerCase();
+        return summaries.filter(s => {
+            if (!showInactiveDepots && !s.depot.activo) return false;
+            if (plantFilter && (s.depot.planta || '') !== plantFilter) return false;
+            if (q && !(s.depot.nombre || '').toLowerCase().includes(q) && !(s.depot.planta || '').toLowerCase().includes(q)) return false;
+            return true;
+        });
+    }, [summaries, depotSearch, plantFilter, showInactiveDepots]);
+
+    // KPIs globales (sobre todos los depósitos visibles para el usuario)
+    const globalKpi = useMemo(() => {
+        const activos = summaries.filter(s => s.depot.activo);
+        const cap = activos.reduce((a, s) => a + s.capacidadM3, 0);
+        const occ = summaries.reduce((a, s) => a + s.ocupadoM3, 0);
+        return {
+            depotsActivos: activos.length,
+            depotsTotal: summaries.length,
+            posActivas: summaries.reduce((a, s) => a + s.posActivas, 0),
+            posTotal: summaries.reduce((a, s) => a + s.posTotal, 0),
+            capacidadM3: cap,
+            ocupadoM3: occ,
+            ocupacionPct: cap > 0 ? (occ / cap) * 100 : null,
+            kilos: summaries.reduce((a, s) => a + s.kilos, 0),
+            alertas: summaries.reduce((a, s) => a + s.excedidas + s.inactivasConStock, 0),
+        };
+    }, [summaries]);
+
+    const selectedSummary = useMemo(
+        () => summaries.find(s => s.depot.id === selectedDepotId) || null,
+        [summaries, selectedDepotId],
+    );
+    const selectedDepot = selectedSummary?.depot || null;
+    const selectedViews = useMemo(
+        () => (selectedDepotId ? viewsByDepot.get(selectedDepotId) || [] : []),
+        [viewsByDepot, selectedDepotId],
+    );
+    const existingCodes = useMemo(
+        () => new Set(selectedViews.map(v => String(v.pos.codigo || '').toUpperCase())),
+        [selectedViews],
+    );
+    const activeDetailView = useMemo(
+        () => (detailPosId ? selectedViews.find(v => v.pos.id === detailPosId) || null : null),
+        [detailPosId, selectedViews],
+    );
+
     useEffect(() => {
         setDetailTab('positions');
+        setPositionsFilterSeed({ status: '', nonce: 0 });
     }, [selectedDepotId]);
 
-    const [showNewDepot, setShowNewDepot] = useState(false);
-    const [showNewCategory, setShowNewCategory] = useState(false);
-    const [newCategoryForm, setNewCategoryForm] = useState({ nombre: '', minimo: '', maximo: '' });
-    const [showNewPosition, setShowNewPosition] = useState<string | null>(null);
-    const [newDepotForm, setNewDepotForm] = useState({ nombre: '', planta: '' });
-    const [newPosForm, setNewPosForm] = useState({ codigo: '', categoria: 'STOCK', categoria_item_primario: '', categoria_item_secundario: '', metrosCubicos: '' });
-
-    const [posSearch, setPosSearch] = useState('');
-    const [posFilterCat, setPosFilterCat] = useState('');
-    const [posFilterItem, setPosFilterItem] = useState('');
-    const [expandedPosId, setExpandedPosId] = useState<string | null>(null);
-
-    const deferredPosSearch = useDeferredValue(posSearch);
-
-    const selectedDepot = useMemo(() => 
-        Array.isArray(depots) ? depots.find(d => d.id === selectedDepotId) : null
-    , [depots, selectedDepotId]);
-    
-    const filteredPositions = useMemo(() => {
-        if (!selectedDepot) return [];
-        const search = deferredPosSearch.toLowerCase();
-        return (selectedDepot.positions || []).filter((p: any) => {
-            const matchSearch = p.codigo?.toLowerCase().includes(search) || false;
-            const matchCat = !posFilterCat || p.categoria === posFilterCat;
-            const matchItem = !posFilterItem || p.categoriaPrincipal === posFilterItem || p.categoriaSecundaria === posFilterItem;
-            return matchSearch && matchCat && matchItem;
-        });
-    }, [selectedDepot, deferredPosSearch, posFilterCat, posFilterItem]);
-
-    if (!isAdmin) {
-        return (
-            <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted, #9ca3af)' }}>
-                <h2 style={{ color: 'var(--text-primary, #f3f4f6)', marginBottom: '8px' }}>Acceso Restringido</h2>
-                <p>Solo los administradores registrados pueden gestionar la infraestructura.</p>
-            </div>
-        );
-    }
-
-    const handleToggleDepotStatus = async (depot: any) => {
+    // Acciones
+    const handleCreateDepot = async () => {
+        if (!newDepotForm.nombre.trim()) return;
         try {
-            await updateDepot({ id: depot.id, data: { activo: !depot.activo } }).unwrap();
+            const result = await createDepot({
+                nombre: newDepotForm.nombre.trim(),
+                planta: newDepotForm.planta.trim() || undefined,
+            }).unwrap();
+            setShowNewDepot(false);
+            setNewDepotForm({ nombre: '', planta: '' });
+            setSelectedDepotId(result.id);
             refetch();
-        } catch (e) { console.error(e); }
+        } catch (e: any) {
+            alert(e?.data?.message || 'Error al crear depósito');
+        }
     };
 
     const handleUpdateDepot = async (id: string, field: string, value: string) => {
         try {
             await updateDepot({ id, data: { [field]: value } }).unwrap();
             refetch();
-        } catch (e) { console.error(e); }
+        } catch (e: any) {
+            alert(e?.data?.message || 'Error al actualizar depósito');
+        }
     };
 
-    const [isSavingDepot, setIsSavingDepot] = useState(false);
-
-    const handleCreateDepot = async () => {
-        if (!newDepotForm.nombre) return;
-        setIsSavingDepot(true);
+    const handleToggleDepotStatus = async (s: typeof summaries[number]) => {
+        if (!canEdit) return;
+        if (s.depot.activo && s.kilos > 0) {
+            if (!window.confirm(`El depósito "${s.depot.nombre}" todavía tiene ${fmt(s.kilos)} kg de stock. ¿Desactivarlo igual?`)) return;
+        }
         try {
-            const result = await createDepot(newDepotForm).unwrap();
-            setShowNewDepot(false);
-            setNewDepotForm({ nombre: '', planta: '' });
-            setSelectedDepotId(result.id);
+            if (s.depot.activo) await deleteDepot(s.depot.id).unwrap();
+            else await restoreDepot(s.depot.id).unwrap();
             refetch();
-        } catch (e) { console.error(e); }
-        setIsSavingDepot(false);
-    };
-
-    const handleAddPosition = async () => {
-        if (isCreatingPosition) return;
-        if (!showNewPosition || !newPosForm.codigo) return;
-        try {
-            await createPosition({ 
-                depotId: showNewPosition, 
-                data: { 
-                    codigo: newPosForm.codigo,
-                    categoria: newPosForm.categoria,
-                    categoriaPrincipal: newPosForm.categoria_item_primario || null,
-                    categoriaSecundaria: newPosForm.categoria_item_secundario || null,
-                    metrosCubicos: newPosForm.metrosCubicos ? parseFloat(newPosForm.metrosCubicos) : undefined 
-                } 
-            }).unwrap();
-            setShowNewPosition(null);
-            setNewPosForm({ codigo: '', categoria: 'STOCK', categoria_item_primario: '', categoria_item_secundario: '', metrosCubicos: '' });
-            refetch();
-        } catch (e) { console.error(e); }
+        } catch (e: any) {
+            alert(e?.data?.message || 'No se pudo cambiar el estado del depósito');
+        }
     };
 
     const handleCreateCategory = async () => {
-        if (isCreatingCategory) return;
-        if (!selectedDepotId || !newCategoryForm.nombre) return;
+        if (isCreatingCategory || !selectedDepotId || !newCategoryForm.nombre.trim()) return;
         try {
             await createCategory({
-                nombre: newCategoryForm.nombre,
+                nombre: newCategoryForm.nombre.trim(),
                 depositoId: selectedDepotId,
                 minimo: newCategoryForm.minimo ? parseFloat(newCategoryForm.minimo) : undefined,
                 maximo: newCategoryForm.maximo ? parseFloat(newCategoryForm.maximo) : undefined,
@@ -249,450 +283,461 @@ export default function DepositoPage() {
             setShowNewCategory(false);
             setNewCategoryForm({ nombre: '', minimo: '', maximo: '' });
             refetchCategories();
-        } catch (e) { console.error('Error al crear categoría', e); }
+        } catch (e: any) {
+            alert(e?.data?.message || 'Error al crear categoría');
+        }
     };
 
-    const handleTogglePosStatus = async (pos: any) => {
-        try {
-            await updatePosition({ id: pos.id, data: { activo: !pos.activo } }).unwrap();
-            refetch();
-        } catch (e) { console.error(e); }
+    const handleJumpToStatus = (status: OccupancyStatus) => {
+        setPositionsFilterSeed(prev => ({ status, nonce: prev.nonce + 1 }));
+        setDetailTab('positions');
     };
 
     return (
-        <div className="infra-container" style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+        <div className="infra-container" style={{ padding: '24px', maxWidth: '1440px', margin: '0 auto' }}>
             <style>{`
                 .infra-container { font-family: 'Inter', sans-serif; }
-                .depot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 32px; }
-                .depot-card { 
-                    border: 1px solid var(--border-subtle, #1e2133); background: var(--bg-secondary, #1a1d2e); border-radius: 12px; padding: 20px; cursor: pointer;
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden;
+                .depot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
+                .depot-card {
+                    border: 1px solid var(--border-subtle, #1e2133); background: var(--bg-secondary, #1a1d2e); border-radius: 12px; padding: 18px; cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); position: relative;
                 }
                 .depot-card:hover { border-color: var(--text-dimmed, #4b5563); transform: translateY(-2px); }
-                .depot-card.selected { border-color: #6366f1; background: rgba(99, 102, 241, 0.05); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
-                .depot-card.inactive { opacity: 0.6; filter: grayscale(0.5); }
-                .pos-table-container { animation: slideUp 0.3s ease-out; }
-                @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-                .editable-trigger:hover { border-bottom-color: var(--text-dimmed, #4b5563); }
+                .depot-card.selected { border-color: #6366f1; background: rgba(99, 102, 241, 0.06); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.22); }
+                .depot-card.inactive { opacity: 0.62; }
+                .pos-row:hover { background: rgba(99, 102, 241, 0.06); }
+                .editable-trigger:hover { text-decoration: underline dotted var(--text-dimmed, #6b7280); }
             `}</style>
 
-            <PageHeader title="Infraestructura" subtitle="Gestión de Plantas, Depósitos y Posiciones">
-                <Btn small onClick={() => setShowNewDepot(true)}>+ Nuevo Depósito</Btn>
+            <PageHeader
+                title="Centro de Mando · Depósitos"
+                subtitle="Infraestructura, posiciones, medidas y análisis de capacidad"
+            >
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {canEdit && plants.length > 0 && (
+                        <Btn small variant="secondary" onClick={() => {
+                            const init: Record<string, string> = {};
+                            plants.forEach(p => { init[p.name] = p.name; });
+                            setPlantDrafts(init);
+                            setShowPlantsModal(true);
+                        }}>
+                            🏭 Gestionar Plantas ({plants.length})
+                        </Btn>
+                    )}
+                    {canEdit && <Btn small onClick={() => setShowNewDepot(true)}>+ Nuevo Depósito</Btn>}
+                </div>
             </PageHeader>
+
+            {!canEdit && (
+                <div style={{
+                    marginBottom: 16, padding: '10px 14px', borderRadius: 10, fontSize: 12,
+                    background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.28)', color: '#a5b4fc',
+                }}>
+                    Modo solo lectura: podés analizar ocupación, medidas y contenido de todos tus depósitos. Para crear o modificar depósitos y posiciones se requiere rol <b>ADMIN</b>.
+                </div>
+            )}
 
             {loadingDepots ? (
                 <div style={{ textAlign: 'center', padding: '48px' }}><Spinner /></div>
             ) : (
                 <>
-                    <div className="depot-grid">
-                        {depots.map((d: any) => (
-                            <div 
-                                key={d.id} 
-                                className={`depot-card ${selectedDepotId === d.id ? 'selected' : ''} ${!d.activo ? 'inactive' : ''}`}
-                                onClick={() => setSelectedDepotId(d.id === selectedDepotId ? null : d.id)}
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <EditableCell 
-                                            value={d.nombre} 
-                                            onSave={v => handleUpdateDepot(d.id, 'nombre', v)} 
-                                            label="Depósito"
-                                        />
-                                    </div>
-                                    <div 
-                                        onClick={(e) => { e.stopPropagation(); handleToggleDepotStatus(d); }}
-                                        style={{ cursor: 'pointer' }}
-                                    >
-                                        <Badge color={d.activo ? '#10b981' : '#ef4444'}>
-                                            {d.activo ? 'ACTIVO' : 'INACTIVO'}
-                                        </Badge>
-                                    </div>
-                                </div>
-                                
-                                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <EditableCell 
-                                            value={d.planta || 'Sin planta'} 
-                                            onSave={v => handleUpdateDepot(d.id, 'planta', v)} 
-                                            label="Planta"
-                                        />
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase' }}>Posiciones</div>
-                                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary, #f3f4f6)' }}>{d.positions?.length || 0}</div>
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '8px', marginTop: '16px', borderTop: '1px solid var(--border-color, #2a2d3e)', paddingTop: '12px' }}>
-                                    <Btn small variant={selectedDepotId === d.id ? 'primary' : 'secondary'} style={{ flex: 1 }}>
-                                        {selectedDepotId === d.id ? 'Ocultar Posiciones' : 'Ver Posiciones'}
-                                    </Btn>
-                                    <Btn small variant="danger" onClick={(e: any) => { e.stopPropagation(); handleDeleteDepot(d.id); }} style={{ padding: '0 8px' }}>🗑</Btn>
-                                </div>
-                            </div>
-                        ))}
+                    {/* KPIs Globales */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+                        <Kpi
+                            label="Depósitos activos"
+                            value={`${globalKpi.depotsActivos} / ${globalKpi.depotsTotal}`}
+                            sub={`${plants.length} planta${plants.length === 1 ? '' : 's'}`}
+                        />
+                        <Kpi
+                            label="Posiciones activas"
+                            value={`${fmt(globalKpi.posActivas, 0)} / ${fmt(globalKpi.posTotal, 0)}`}
+                            sub="en todos los depósitos"
+                        />
+                        <Kpi
+                            label="Capacidad ocupada"
+                            value={globalKpi.ocupacionPct === null ? '—' : `${fmt(globalKpi.ocupacionPct, 1)}%`}
+                            sub={`${fmt(globalKpi.ocupadoM3, 1)} / ${fmt(globalKpi.capacidadM3, 1)} m³${loadingStock ? ' · actualizando…' : ''}`}
+                        />
+                        <Kpi
+                            label="Stock total"
+                            value={`${fmt(globalKpi.kilos, 0)} kg`}
+                            sub="distribuido en posiciones"
+                        />
+                        <Kpi
+                            label="Alertas"
+                            value={globalKpi.alertas}
+                            color={globalKpi.alertas > 0 ? '#ef4444' : '#10b981'}
+                            sub={globalKpi.alertas > 0 ? 'Excedidas o inactivas con stock' : 'Sin anomalías críticas'}
+                        />
                     </div>
 
-                    {selectedDepot && (
-                        <div className="pos-table-container">
-                            <Card style={{ padding: '24px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle, #1e2133)', paddingBottom: '16px' }}>
-                                    <div>
-                                        <h3 style={{ margin: 0, color: 'var(--text-primary, #f3f4f6)', fontSize: '18px' }}>Detalles de {selectedDepot.nombre}</h3>
-                                        <p style={{ margin: '4px 0 0', color: 'var(--text-muted, #9ca3af)', fontSize: '13px' }}>Gestiona posiciones físicas o configura los límites máximos y mínimos de las categorías.</p>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '12px' }}>
-                                        {detailTab === 'positions' ? (
-                                            <>
-                                                <Btn small variant="secondary" onClick={() => { setPosFilterCat(''); setPosFilterItem(''); setPosSearch(''); }}>Limpiar Filtros</Btn>
-                                                <Btn small onClick={() => setShowNewPosition(selectedDepot.id)}>+ Añadir Posición</Btn>
-                                            </>
-                                        ) : (
-                                            <Btn small onClick={() => setShowNewCategory(true)}>+ Nueva Categoría</Btn>
-                                        )}
-                                    </div>
-                                </div>
+                    {/* Filtros de depósitos */}
+                    <div style={{
+                        display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16,
+                        background: 'var(--bg-secondary, #1a1d2e)', padding: '10px 14px', borderRadius: 12,
+                        border: '1px solid var(--border-subtle, #1e2133)',
+                    }}>
+                        <input
+                            value={depotSearch}
+                            onChange={e => setDepotSearch(e.target.value)}
+                            placeholder="Buscar depósito o planta…"
+                            style={{ ...inputStyle, maxWidth: 260 }}
+                        />
+                        <select
+                            value={plantFilter}
+                            onChange={e => setPlantFilter(e.target.value)}
+                            style={{ ...inputStyle, maxWidth: 220 }}
+                        >
+                            <option value="">Todas las plantas</option>
+                            {plants.map(p => <option key={p.name} value={p.name}>{p.name} ({p.total})</option>)}
+                        </select>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer', marginLeft: 'auto' }}>
+                            <input type="checkbox" checked={showInactiveDepots} onChange={e => setShowInactiveDepots(e.target.checked)} />
+                            Mostrar inactivos
+                        </label>
+                    </div>
 
-                                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border-subtle, #1e2133)' }}>
-                                    <button 
-                                        onClick={() => setDetailTab('positions')}
-                                        style={{
-                                            background: 'none', border: 'none', padding: '12px 16px', fontSize: '14px', fontWeight: 600,
-                                            color: detailTab === 'positions' ? '#6366f1' : 'var(--text-muted, #9ca3af)',
-                                            borderBottom: detailTab === 'positions' ? '2px solid #6366f1' : '2px solid transparent',
-                                            cursor: 'pointer', outline: 'none', transition: 'all 0.2s'
-                                        }}
+                    {/* Grilla de Depósitos */}
+                    {filteredSummaries.length === 0 ? (
+                        <Card style={{ padding: 36, textAlign: 'center', color: 'var(--text-muted)', marginBottom: 24 }}>
+                            No se encontraron depósitos con esos filtros.
+                        </Card>
+                    ) : (
+                        <div className="depot-grid">
+                            {filteredSummaries.map(s => {
+                                const d = s.depot;
+                                const isSel = selectedDepotId === d.id;
+                                return (
+                                    <div
+                                        key={d.id}
+                                        className={`depot-card ${isSel ? 'selected' : ''} ${!d.activo ? 'inactive' : ''}`}
+                                        onClick={() => setSelectedDepotId(isSel ? null : d.id)}
                                     >
-                                        📍 Posiciones ({selectedDepot.positions?.length || 0})
-                                    </button>
-                                    <button 
-                                        onClick={() => setDetailTab('categories')}
-                                        style={{
-                                            background: 'none', border: 'none', padding: '12px 16px', fontSize: '14px', fontWeight: 600,
-                                            color: detailTab === 'categories' ? '#6366f1' : 'var(--text-muted, #9ca3af)',
-                                            borderBottom: detailTab === 'categories' ? '2px solid #6366f1' : '2px solid transparent',
-                                            cursor: 'pointer', outline: 'none', transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        🏷️ Categorías ({categories.length})
-                                    </button>
-                                </div>
-
-                                {detailTab === 'positions' ? (
-                                    <>
-                                        {/* Filtros de Búsqueda */}
-                                        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', background: 'var(--bg-primary, #0f1117)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle, #1e2133)' }}>
-                                            <div style={{ flex: 2 }}>
-                                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase', marginBottom: '6px' }}>Buscar por Código</label>
-                                                <input 
-                                                    placeholder="Ej: 1-1-A..."
-                                                    value={posSearch}
-                                                    onChange={e => setPosSearch(e.target.value)}
-                                                    style={{ width: '100%', background: 'var(--bg-secondary, #1a1d2e)', border: '1px solid var(--border-color, #2a2d3e)', borderRadius: '8px', padding: '8px 12px', color: 'var(--text-primary, #f3f4f6)', outline: 'none' }}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <EditableCell
+                                                    value={d.nombre}
+                                                    onSave={v => handleUpdateDepot(d.id, 'nombre', v)}
+                                                    label="Depósito"
+                                                    disabled={!canEdit}
                                                 />
                                             </div>
-                                            <div style={{ flex: 1 }}>
-                                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase', marginBottom: '6px' }}>Zona / Categoría</label>
-                                                <select 
-                                                    value={posFilterCat}
-                                                    onChange={e => setPosFilterCat(e.target.value)}
-                                                    style={{ width: '100%', background: 'var(--bg-secondary, #1a1d2e)', border: '1px solid var(--border-color, #2a2d3e)', borderRadius: '8px', padding: '8px 12px', color: 'var(--text-primary, #f3f4f6)', outline: 'none' }}
-                                                >
-                                                    <option value="">Todas las zonas</option>
-                                                    <option value="STOCK">Stock</option>
-                                                    <option value="PICKING">Picking</option>
-                                                    <option value="DEVOLUCION_LINEA">Devolución de línea</option>
-                                                    <option value="PASILLO">Pasillo</option>
-                                                    <option value="ENTRADA">Entrada</option>
-                                                    <option value="CUARENTENA">Cuarentena</option>
-                                                </select>
+                                            <Pill
+                                                color={d.activo ? '#10b981' : '#ef4444'}
+                                                onClick={canEdit ? (e) => { e.stopPropagation(); handleToggleDepotStatus(s); } : undefined}
+                                                title={canEdit ? (d.activo ? 'Click para desactivar' : 'Click para reactivar') : undefined}
+                                            >
+                                                {d.activo ? 'ACTIVO' : 'INACTIVO'}
+                                            </Pill>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10, marginBottom: 12 }}>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <EditableCell
+                                                    value={d.planta || ''}
+                                                    onSave={v => handleUpdateDepot(d.id, 'planta', v)}
+                                                    label="Planta"
+                                                    disabled={!canEdit}
+                                                />
                                             </div>
-                                            <div style={{ flex: 1 }}>
-                                                <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase', marginBottom: '6px' }}>Cat. Material</label>
-                                                <select 
-                                                    value={posFilterItem}
-                                                    onChange={e => setPosFilterItem(e.target.value)}
-                                                    style={{ width: '100%', background: 'var(--bg-secondary, #1a1d2e)', border: '1px solid var(--border-color, #2a2d3e)', borderRadius: '8px', padding: '8px 12px', color: 'var(--text-primary, #f3f4f6)', outline: 'none' }}
-                                                >
-                                                    <option value="">Todos los materiales</option>
-                                                    {itemCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                                </select>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Posiciones</div>
+                                                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                                                    {s.posActivas}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>/{s.posTotal}</span>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div style={{ overflowX: 'auto', maxHeight: '600px', overflowY: 'auto' }}>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary, #1a1d2e)', zIndex: 10 }}>
-                                                    <tr>
-                                                        {['Código', 'Volumen (m³)', 'Tipo / Zona', 'Items Asignados', 'Estado'].map(h => (
-                                                            <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid var(--border-subtle, #1e2133)' }}>{h}</th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {filteredPositions.length === 0 ? (
-                                                        <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-dimmed, #4b5563)' }}>No se encontraron posiciones con los filtros seleccionados.</td></tr>
-                                                    ) : filteredPositions.slice(0, 200).map((p: any) => (
-                                                        <tr key={p.id} style={{ borderBottom: '1px solid var(--border-subtle, #1e2133)', opacity: p.activo ? 1 : 0.5 }}>
-                                                            <td style={{ padding: '8px 16px' }}>
-                                                                <EditableCell 
-                                                                    value={p.codigo} 
-                                                                    onSave={async (v) => {
-                                                                        await updatePosition({ id: p.id, data: { codigo: v } }).unwrap();
-                                                                        refetch();
-                                                                    }} 
-                                                                />
-                                                            </td>
-                                                            <td style={{ padding: '8px 16px', width: '140px' }}>
-                                                                <EditableCell 
-                                                                    value={p.metrosCubicos?.toString() || ''} 
-                                                                    type="number"
-                                                                    onSave={async (v) => {
-                                                                        await updatePosition({ id: p.id, data: { metrosCubicos: parseFloat(v) || undefined } }).unwrap();
-                                                                        refetch();
-                                                                    }} 
-                                                                />
-                                                            </td>
-                                                            <td style={{ padding: '8px 16px' }}>
-                                                                <select 
-                                                                    value={p.categoria?.toUpperCase() || 'STOCK'} 
-                                                                    onChange={async (e) => {
-                                                                        await updatePosition({ id: p.id, data: { categoria: e.target.value } }).unwrap(); 
-                                                                        refetch();
-                                                                    }}
-                                                                    style={{ background: 'var(--bg-primary, #0f1117)', border: '1px solid var(--border-color, #2a2d3e)', color: 'var(--text-primary, #f3f4f6)', borderRadius: '6px', padding: '6px 12px', fontSize: '13px', outline: 'none' }}
-                                                                >
-                                                                    <option value="STOCK">Stock General</option>
-                                                                    <option value="PICKING">Picking</option>
-                                                                    <option value="DEVOLUCION_LINEA">Devolución de línea</option>
-                                                                    <option value="PASILLO">Pasillo</option>
-                                                                    <option value="ENTRADA">Entrada / Recepción</option>
-                                                                    <option value="CUARENTENA">Cuarentena</option>
-                                                                    <option value="EXTERNO">Externo / Depo Terceros</option>
-                                                                    <option value="STORAGE">Almacenamiento (Legacy)</option>
-                                                                </select>
-                                                            </td>
-                                                            <td style={{ padding: '8px 16px' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
-                                                                    {expandedPosId === p.id ? (
-                                                                        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: '4px', zIndex: 100 }}>
-                                                                            <CategoryManager 
-                                                                                categoriaPrincipal={p.categoriaPrincipal}
-                                                                                categoriaSecundaria={p.categoriaSecundaria}
-                                                                                itemCategories={itemCategories}
-                                                                                onUpdate={async (catP, catS) => {
-                                                                                    await updatePosition({ id: p.id, data: { categoriaPrincipal: catP, categoriaSecundaria: catS } }).unwrap();
-                                                                                    refetch();
-                                                                                }}
-                                                                                onClose={() => setExpandedPosId(null)}
-                                                                            />
-                                                                        </div>
-                                                                    ) : (
-                                                                        <button 
-                                                                            onClick={(e) => { e.stopPropagation(); setExpandedPosId(p.id); }}
-                                                                            style={{ 
-                                                                                display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(99, 102, 241, 0.1)', 
-                                                                                border: '1px solid rgba(99, 102, 241, 0.2)', color: '#818cf8', borderRadius: '4px', 
-                                                                                padding: '4px 10px', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s'
-                                                                            }}
-                                                                        >
-                                                                            <span style={{ fontSize: '14px' }}>🏷️</span>
-                                                                            {p.categoriaPrincipal || p.categoriaSecundaria ? (
-                                                                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                                                                    {p.categoriaPrincipal && (
-                                                                                        <span style={{ background: 'rgba(99, 102, 241, 0.2)', padding: '1px 6px', borderRadius: '3px', fontSize: '10px' }}>
-                                                                                            {p.categoriaPrincipal}
-                                                                                        </span>
-                                                                                    )}
-                                                                                    {p.categoriaSecundaria && (
-                                                                                        <span style={{ background: 'rgba(168, 85, 247, 0.2)', padding: '1px 6px', borderRadius: '3px', fontSize: '10px' }}>
-                                                                                            {p.categoriaSecundaria}
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
-                                                                            ) : (
-                                                                                <span style={{ opacity: 0.6 }}>Libre / Todo</span>
-                                                                            )}
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </td>
-                                                            <td style={{ padding: '8px 16px' }}>
-                                                                <button 
-                                                                    onClick={() => handleTogglePosStatus(p)}
-                                                                    style={{ 
-                                                                        background: p.activo ? 'rgba(52,211,153,0.1)' : 'rgba(239,68,68,0.1)',
-                                                                        border: `1px solid ${p.activo ? '#34d399' : '#f87171'}`,
-                                                                        color: p.activo ? '#34d399' : '#f87171',
-                                                                        borderRadius: '20px', padding: '4px 12px', fontSize: '10px', fontWeight: 600, cursor: 'pointer'
-                                                                    }}
-                                                                >
-                                                                    {p.activo ? 'ACTIVO' : 'INACTIVO'}
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                    {filteredPositions.length > 200 && (
-                                                        <tr>
-                                                            <td colSpan={6} style={{ padding: '16px', textAlign: 'center', color: '#6366f1', fontSize: '12px' }}>
-                                                                Mostrando los primeros 200 resultados de {filteredPositions.length}. Usá los filtros para refinar la búsqueda.
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
+                                        {/* Ocupación del depósito */}
+                                        <div style={{ marginBottom: 10 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+                                                <span>{fmt(s.ocupadoM3, 1)} / {fmt(s.capacidadM3, 1)} m³</span>
+                                                <span>{fmt(s.kilos, 0)} kg</span>
+                                            </div>
+                                            <OccBar pct={s.ocupacionPct} height={7} />
                                         </div>
-                                    </>
-                                ) : (
-                                    <div style={{ overflowX: 'auto', maxHeight: '600px', overflowY: 'auto' }}>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                            <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary, #1a1d2e)', zIndex: 10 }}>
-                                                <tr>
-                                                    {['Nombre Categoría', 'Stock Mínimo Alerta', 'Stock Máximo Alerta', 'Estado'].map(h => (
-                                                        <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', color: 'var(--text-subtle, #6b7280)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '2px solid var(--border-subtle, #1e2133)' }}>{h}</th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {categories.length === 0 ? (
-                                                    <tr><td colSpan={4} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-dimmed, #4b5563)' }}>No hay categorías de materiales registradas en este depósito.</td></tr>
-                                                ) : categories.map((cat: any) => (
-                                                    <tr key={cat.id} style={{ borderBottom: '1px solid var(--border-subtle, #1e2133)', opacity: cat.activo ? 1 : 0.5 }}>
-                                                        <td style={{ padding: '8px 16px', fontWeight: 600, color: 'var(--text-primary, #f3f4f6)' }}>
-                                                            {cat.nombre}
-                                                        </td>
-                                                        <td style={{ padding: '8px 16px', width: '180px' }}>
-                                                            <EditableCell 
-                                                                value={cat.minimo?.toString() || ''} 
-                                                                type="number"
-                                                                onSave={async (v) => {
-                                                                    await updateItemCategory({ id: cat.id, data: { minimo: v ? parseFloat(v) : null } }).unwrap();
-                                                                    refetchCategories();
-                                                                }} 
-                                                            />
-                                                        </td>
-                                                        <td style={{ padding: '8px 16px', width: '180px' }}>
-                                                            <EditableCell 
-                                                                value={cat.maximo?.toString() || ''} 
-                                                                type="number"
-                                                                onSave={async (v) => {
-                                                                    await updateItemCategory({ id: cat.id, data: { maximo: v ? parseFloat(v) : null } }).unwrap();
-                                                                    refetchCategories();
-                                                                }} 
-                                                            />
-                                                        </td>
-                                                        <td style={{ padding: '8px 16px' }}>
-                                                            <button 
-                                                                onClick={async () => {
-                                                                    await updateItemCategory({ id: cat.id, data: { activo: !cat.activo } }).unwrap();
-                                                                    refetchCategories();
-                                                                }}
-                                                                style={{ 
-                                                                    background: cat.activo ? 'rgba(52,211,153,0.1)' : 'rgba(239,68,68,0.1)',
-                                                                    border: `1px solid ${cat.activo ? '#34d399' : '#f87171'}`,
-                                                                    color: cat.activo ? '#34d399' : '#f87171',
-                                                                    borderRadius: '20px', padding: '4px 12px', fontSize: '10px', fontWeight: 600, cursor: 'pointer'
-                                                                }}
-                                                            >
-                                                                {cat.activo ? 'ACTIVO' : 'INACTIVO'}
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+
+                                        {/* Badges de salud */}
+                                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, minHeight: 22 }}>
+                                            <Pill color="#64748b">{s.vacias} vacías</Pill>
+                                            {s.excedidas > 0 && <Pill color="#ef4444">⚠ {s.excedidas} exced.</Pill>}
+                                            {s.llenas > 0 && <Pill color="#f59e0b">{s.llenas} casi llenas</Pill>}
+                                            {s.inactivasConStock > 0 && <Pill color="#f97316">{s.inactivasConStock} inact. c/stock</Pill>}
+                                        </div>
+
+                                        <div style={{ display: 'flex', gap: 8, borderTop: '1px solid var(--border-color, #2a2d3e)', paddingTop: 10 }}>
+                                            <Btn small variant={isSel ? 'primary' : 'secondary'} style={{ flex: 1 }}>
+                                                {isSel ? 'Ocultar panel' : 'Administrar depósito'}
+                                            </Btn>
+                                            {canEdit && (
+                                                <Btn
+                                                    small
+                                                    variant={d.activo ? 'danger' : 'secondary'}
+                                                    onClick={(e: any) => { e.stopPropagation(); handleToggleDepotStatus(s); }}
+                                                    title={d.activo ? 'Desactivar depósito' : 'Reactivar depósito'}
+                                                >
+                                                    {d.activo ? '⏸' : '▶'}
+                                                </Btn>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
-                            </Card>
+                                );
+                            })}
                         </div>
+                    )}
+
+                    {/* Panel de detalle del depósito seleccionado */}
+                    {selectedDepot && selectedSummary && (
+                        <Card style={{ padding: '22px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+                                <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <h3 style={{ margin: 0, color: 'var(--text-primary, #f3f4f6)', fontSize: 18 }}>
+                                            {selectedDepot.nombre}
+                                        </h3>
+                                        {selectedDepot.planta && <Pill color="#6366f1">{selectedDepot.planta}</Pill>}
+                                        <Pill color={selectedDepot.activo ? '#10b981' : '#ef4444'}>
+                                            {selectedDepot.activo ? 'ACTIVO' : 'INACTIVO'}
+                                        </Pill>
+                                    </div>
+                                    <p style={{ margin: '4px 0 0', color: 'var(--text-muted, #9ca3af)', fontSize: 12 }}>
+                                        {fmt(selectedSummary.ocupadoM3, 2)} / {fmt(selectedSummary.capacidadM3, 2)} m³ ({selectedSummary.ocupacionPct === null ? '—' : `${fmt(selectedSummary.ocupacionPct, 1)}%`}) · {fmt(selectedSummary.kilos, 0)} kg · {selectedSummary.materiales} materiales
+                                    </p>
+                                </div>
+                                {detailTab === 'categories' && canEdit && (
+                                    <Btn small onClick={() => setShowNewCategory(true)}>+ Nueva Categoría</Btn>
+                                )}
+                            </div>
+
+                            <TabBar<DetailTab>
+                                value={detailTab}
+                                onChange={setDetailTab}
+                                tabs={[
+                                    { id: 'positions', label: `📍 Posiciones (${selectedViews.length})` },
+                                    { id: 'map', label: '🗺️ Mapa visual' },
+                                    { id: 'analytics', label: '📊 Análisis y Capacidad' },
+                                    { id: 'categories', label: `🏷️ Categorías (${categories.length})` },
+                                ]}
+                            />
+
+                            {detailTab === 'positions' && (
+                                <PositionsTab
+                                    key={`${selectedDepot.id}-${positionsFilterSeed.nonce}`}
+                                    depot={selectedDepot}
+                                    views={selectedViews}
+                                    itemCategories={itemCategories}
+                                    canEdit={canEdit}
+                                    initialStatus={positionsFilterSeed.status}
+                                    onOpen={(v) => setDetailPosId(v.pos.id)}
+                                    onAdd={() => setShowBulkCreate(true)}
+                                    onBulkEdit={(views) => setBulkEditViews(views)}
+                                />
+                            )}
+
+                            {detailTab === 'map' && (
+                                <LayoutMapTab
+                                    views={selectedViews}
+                                    onOpen={(v) => setDetailPosId(v.pos.id)}
+                                />
+                            )}
+
+                            {detailTab === 'analytics' && (
+                                <AnalyticsTab
+                                    summary={selectedSummary}
+                                    views={selectedViews}
+                                    onOpenPosition={(v) => setDetailPosId(v.pos.id)}
+                                    onJumpToStatus={handleJumpToStatus}
+                                />
+                            )}
+
+                            {detailTab === 'categories' && (
+                                <div style={{ overflowX: 'auto', maxHeight: 560, overflowY: 'auto', border: '1px solid var(--border-subtle, #1e2133)', borderRadius: 10 }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead style={{ position: 'sticky', top: 0 }}>
+                                            <tr>
+                                                {['Nombre Categoría', 'Stock Mínimo Alerta', 'Stock Máximo Alerta', 'Estado'].map(h => (
+                                                    <th key={h} style={thStyle}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {categories.length === 0 ? (
+                                                <tr><td colSpan={4} style={{ padding: 32, textAlign: 'center', color: 'var(--text-dimmed)' }}>No hay categorías de materiales registradas en este depósito.</td></tr>
+                                            ) : categories.map((cat: any) => (
+                                                <tr key={cat.id} style={{ borderBottom: '1px solid var(--border-subtle, #1e2133)', opacity: cat.activo ? 1 : 0.5 }}>
+                                                    <td style={{ ...tdStyle, fontWeight: 600 }}>{cat.nombre}</td>
+                                                    <td style={{ ...tdStyle, width: 180 }}>
+                                                        <EditableCell
+                                                            value={cat.minimo?.toString() || ''}
+                                                            type="number"
+                                                            disabled={!canEdit}
+                                                            onSave={async (v) => {
+                                                                await updateItemCategory({ id: cat.id, data: { minimo: v ? parseFloat(v) : null } }).unwrap();
+                                                                refetchCategories();
+                                                            }}
+                                                        />
+                                                    </td>
+                                                    <td style={{ ...tdStyle, width: 180 }}>
+                                                        <EditableCell
+                                                            value={cat.maximo?.toString() || ''}
+                                                            type="number"
+                                                            disabled={!canEdit}
+                                                            onSave={async (v) => {
+                                                                await updateItemCategory({ id: cat.id, data: { maximo: v ? parseFloat(v) : null } }).unwrap();
+                                                                refetchCategories();
+                                                            }}
+                                                        />
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                        <Pill
+                                                            color={cat.activo ? '#10b981' : '#ef4444'}
+                                                            onClick={canEdit ? async () => {
+                                                                await updateItemCategory({ id: cat.id, data: { activo: !cat.activo } }).unwrap();
+                                                                refetchCategories();
+                                                            } : undefined}
+                                                        >
+                                                            {cat.activo ? 'ACTIVO' : 'INACTIVO'}
+                                                        </Pill>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </Card>
                     )}
                 </>
             )}
 
-            {showNewDepot && (
-                <Modal title="Nuevo Depósito" onClose={() => setShowNewDepot(false)}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <p style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '13px', margin: 0 }}>Crea un nuevo depósito físico. Se generará automáticamente una posición ENTRADA.</p>
-                        <Input label="Nombre del Depósito" value={newDepotForm.nombre} onChange={v => setNewDepotForm(p => ({...p, nombre: v}))} />
-                        <Input label="Planta" value={newDepotForm.planta} onChange={v => setNewDepotForm(p => ({...p, planta: v}))} />
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-subtle, #1e2133)', paddingTop: '16px' }}>
-                            <Btn variant="secondary" onClick={() => setShowNewDepot(false)}>Cancelar</Btn>
-                            <Btn onClick={handleCreateDepot} disabled={isSavingDepot}>{isSavingDepot ? 'Guardando...' : 'Crear Depósito'}</Btn>
-                        </div>
-                    </div>
-                </Modal>
+            {/* Modal: Detalle / Edición de Posición */}
+            {activeDetailView && (
+                <PositionDetailModal
+                    view={activeDetailView}
+                    itemCategories={itemCategories}
+                    existingCodes={existingCodes}
+                    canEdit={canEdit}
+                    onClose={() => setDetailPosId(null)}
+                />
             )}
 
-            {showNewPosition && (
-                <Modal title="Nueva Posición" onClose={() => setShowNewPosition(null)}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <p style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '13px', margin: 0 }}>Define una nueva ubicación física dentro del depósito.</p>
-                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
-                            <Input label="Código de Posición" value={newPosForm.codigo} onChange={v => setNewPosForm(p => ({...p, codigo: v}))} placeholder="Ej: A-01-01" />
-                            <Input label="m³" type="number" value={newPosForm.metrosCubicos} onChange={v => setNewPosForm(p => ({...p, metrosCubicos: v}))} placeholder="0.0" />
+            {/* Modal: Crear posiciones (individual / patrón / lista) */}
+            {showBulkCreate && selectedDepot && (
+                <BulkCreatePositionsModal
+                    depot={selectedDepot}
+                    itemCategories={itemCategories}
+                    existingCodes={existingCodes}
+                    onClose={() => setShowBulkCreate(false)}
+                />
+            )}
+
+            {/* Modal: Edición masiva de posiciones */}
+            {bulkEditViews && (
+                <BulkEditPositionsModal
+                    views={bulkEditViews}
+                    itemCategories={itemCategories}
+                    onClose={() => setBulkEditViews(null)}
+                    onDone={() => refetch()}
+                />
+            )}
+
+            {/* Modal: Nuevo Depósito */}
+            {showNewDepot && (
+                <Modal title="Nuevo Depósito" onClose={() => setShowNewDepot(false)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <p style={{ color: 'var(--text-muted, #9ca3af)', fontSize: 13, margin: 0 }}>
+                            Crea un nuevo depósito físico. Se generará automáticamente la posición del sistema <b>ENTRADA</b>.
+                        </p>
+                        <Input label="Nombre del Depósito" value={newDepotForm.nombre} onChange={v => setNewDepotForm(p => ({ ...p, nombre: v }))} placeholder="Ej: Depósito Principal" />
+                        <div>
+                            <label style={labelStyle}>Planta</label>
+                            <input
+                                list="plants-datalist"
+                                value={newDepotForm.planta}
+                                onChange={e => setNewDepotForm(p => ({ ...p, planta: e.target.value }))}
+                                placeholder="Ej: Planta 1"
+                                style={inputStyle}
+                            />
+                            <datalist id="plants-datalist">
+                                {plants.map(p => <option key={p.name} value={p.name} />)}
+                            </datalist>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                            <div>
-                                <label style={{ display: 'block', color: 'var(--text-muted, #9ca3af)', fontSize: '12px', marginBottom: '4px' }}>Tipo / Categoría</label>
-                                <select 
-                                    value={newPosForm.categoria} 
-                                    onChange={e => setNewPosForm(p => ({...p, categoria: e.target.value}))}
-                                    style={{ width: '100%', background: 'var(--bg-primary, #0f1117)', border: '1px solid var(--border-strong, #374151)', borderRadius: '8px', padding: '8px 10px', color: 'var(--text-primary, #f3f4f6)', fontSize: '13px', outline: 'none' }}
-                                >
-                                    <option value="STOCK">Stock General</option>
-                                    <option value="PICKING">Picking</option>
-                                    <option value="DEVOLUCION_LINEA">Devolución de línea</option>
-                                    <option value="PASILLO">Pasillo</option>
-                                    <option value="ENTRADA">Entrada / Recepción</option>
-                                    <option value="CUARENTENA">Cuarentena</option>
-                                    <option value="EXTERNO">Externo</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', color: 'var(--text-muted, #9ca3af)', fontSize: '12px', marginBottom: '4px' }}>Cat. Principal (Opcional)</label>
-                                <select 
-                                    value={newPosForm.categoria_item_primario} 
-                                    onChange={e => setNewPosForm(p => ({...p, categoria_item_primario: e.target.value}))}
-                                    style={{ width: '100%', background: 'var(--bg-primary, #0f1117)', border: '1px solid var(--border-strong, #374151)', borderRadius: '8px', padding: '8px 10px', color: 'var(--text-primary, #f3f4f6)', fontSize: '13px', outline: 'none' }}
-                                >
-                                    <option value="">— Ninguna —</option>
-                                    {itemCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', color: 'var(--text-muted, #9ca3af)', fontSize: '12px', marginBottom: '4px' }}>Cat. Secundaria (Opcional)</label>
-                                <select 
-                                    value={newPosForm.categoria_item_secundario} 
-                                    onChange={e => setNewPosForm(p => ({...p, categoria_item_secundario: e.target.value}))}
-                                    style={{ width: '100%', background: 'var(--bg-primary, #0f1117)', border: '1px solid var(--border-strong, #374151)', borderRadius: '8px', padding: '8px 10px', color: 'var(--text-primary, #f3f4f6)', fontSize: '13px', outline: 'none' }}
-                                >
-                                    <option value="">— Ninguna —</option>
-                                    {itemCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-subtle, #1e2133)', paddingTop: '16px' }}>
-                            <Btn variant="secondary" onClick={() => setShowNewPosition(null)} disabled={isCreatingPosition}>Cancelar</Btn>
-                            <Btn onClick={handleAddPosition} disabled={isCreatingPosition}>
-                                {isCreatingPosition ? 'Creando...' : 'Crear Posición'}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, borderTop: '1px solid var(--border-subtle, #1e2133)', paddingTop: 16 }}>
+                            <Btn variant="secondary" onClick={() => setShowNewDepot(false)}>Cancelar</Btn>
+                            <Btn onClick={handleCreateDepot} disabled={isSavingDepot || !newDepotForm.nombre.trim()}>
+                                {isSavingDepot ? 'Guardando…' : 'Crear Depósito'}
                             </Btn>
                         </div>
                     </div>
                 </Modal>
             )}
+
+            {/* Modal: Gestionar Plantas */}
+            {showPlantsModal && (
+                <Modal title="Gestionar Plantas" onClose={() => setShowPlantsModal(false)} wide>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                            Podés renombrar una planta o activar/desactivar todos sus depósitos de una sola vez.
+                        </p>
+                        {plants.map(p => {
+                            const draft = plantDrafts[p.name] ?? p.name;
+                            const allActive = p.activos === p.total;
+                            return (
+                                <div key={p.name} style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--bg-primary, #0f1117)', padding: 10, borderRadius: 8, border: '1px solid var(--border-subtle, #1e2133)', flexWrap: 'wrap' }}>
+                                    <input
+                                        value={draft}
+                                        onChange={e => setPlantDrafts(prev => ({ ...prev, [p.name]: e.target.value }))}
+                                        style={{ ...inputStyle, flex: '1 1 200px' }}
+                                    />
+                                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.activos}/{p.total} activos</span>
+                                    <Btn
+                                        small
+                                        variant="secondary"
+                                        disabled={isRenamingPlant || !draft.trim() || draft.trim() === p.name}
+                                        onClick={async () => {
+                                            await renamePlant({ oldName: p.name, newName: draft.trim() }).unwrap();
+                                            refetch();
+                                        }}
+                                    >
+                                        Renombrar
+                                    </Btn>
+                                    <Btn
+                                        small
+                                        variant={allActive ? 'danger' : 'primary'}
+                                        onClick={async () => {
+                                            if (!window.confirm(`¿${allActive ? 'Desactivar' : 'Activar'} todos los depósitos de "${p.name}"?`)) return;
+                                            await togglePlantStatus({ planta: p.name, activo: !allActive }).unwrap();
+                                            refetch();
+                                        }}
+                                    >
+                                        {allActive ? 'Desactivar planta' : 'Activar planta'}
+                                    </Btn>
+                                </div>
+                            );
+                        })}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--border-subtle, #1e2133)' }}>
+                            <Btn variant="secondary" onClick={() => setShowPlantsModal(false)}>Cerrar</Btn>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Modal: Nueva Categoría */}
             {showNewCategory && (
                 <Modal title="Nueva Categoría de Materiales" onClose={() => setShowNewCategory(false)}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <p style={{ color: 'var(--text-muted, #9ca3af)', fontSize: '13px', margin: 0 }}>Crea una nueva categoría de material en este depósito.</p>
-                        <Input label="Nombre de Categoría" value={newCategoryForm.nombre} onChange={v => setNewCategoryForm(p => ({...p, nombre: v}))} placeholder="Ej: POLIESTER" />
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                            <Input label="Alerta Stock Mínimo" type="number" value={newCategoryForm.minimo} onChange={v => setNewCategoryForm(p => ({...p, minimo: v}))} placeholder="Ej: 100" />
-                            <Input label="Alerta Stock Máximo" type="number" value={newCategoryForm.maximo} onChange={v => setNewCategoryForm(p => ({...p, maximo: v}))} placeholder="Ej: 500" />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <p style={{ color: 'var(--text-muted, #9ca3af)', fontSize: 13, margin: 0 }}>
+                            Crea una nueva categoría de material en este depósito.
+                        </p>
+                        <Input label="Nombre de Categoría" value={newCategoryForm.nombre} onChange={v => setNewCategoryForm(p => ({ ...p, nombre: v }))} placeholder="Ej: POLIESTER" />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <Input label="Alerta Stock Mínimo" type="number" value={newCategoryForm.minimo} onChange={v => setNewCategoryForm(p => ({ ...p, minimo: v }))} placeholder="Ej: 100" />
+                            <Input label="Alerta Stock Máximo" type="number" value={newCategoryForm.maximo} onChange={v => setNewCategoryForm(p => ({ ...p, maximo: v }))} placeholder="Ej: 500" />
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-subtle, #1e2133)', paddingTop: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, borderTop: '1px solid var(--border-subtle, #1e2133)', paddingTop: 16 }}>
                             <Btn variant="secondary" onClick={() => setShowNewCategory(false)} disabled={isCreatingCategory}>Cancelar</Btn>
-                            <Btn onClick={handleCreateCategory} disabled={isCreatingCategory}>
-                                {isCreatingCategory ? 'Creando...' : 'Crear Categoría'}
+                            <Btn onClick={handleCreateCategory} disabled={isCreatingCategory || !newCategoryForm.nombre.trim()}>
+                                {isCreatingCategory ? 'Creando…' : 'Crear Categoría'}
                             </Btn>
                         </div>
                     </div>

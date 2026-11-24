@@ -58,6 +58,7 @@ const DisponibilidadMaquinaV2Page = lazy(() => import('../../pages/maintenance/D
 const DashboardProduccionPage = lazy(() => import('../../pages/produccion/DashboardProduccionPage'));
 const CargaProduccionDiaPage = lazy(() => import('../../pages/produccion/CargaProduccionDiaPage'));
 const CuarentenaCalidadPage = lazy(() => import('../../pages/quality/CuarentenaCalidadPage'));
+const ChequeoLocalizadoPage = lazy(() => import('../../pages/quality/ChequeoLocalizadoPage'));
 const OrdenesProduccionPage = lazy(() => import('../../pages/quality/OrdenesProduccionPage'));
 const StockPedidosArticulosPage = lazy(() => import('../../pages/produccion/StockPedidosArticulosPage'));
 const ProgramacionGanttPage = lazy(() => import('../../pages/produccion/ProgramacionGanttPage'));
@@ -254,6 +255,7 @@ export const router = createBrowserRouter([
             element: <SectorGuard allowedSectors={['CALIDAD']} />,
             children: [
               { path: "calidad/cuarentena", element: <LazyRoute element={CuarentenaCalidadPage} /> },
+              { path: "calidad/chequeo-localizado", element: <LazyRoute element={ChequeoLocalizadoPage} /> },
               { path: "calidad/articulos", element: <Navigate to="/desarrollo/articulos" replace /> },
               { path: "calidad/ordenes-produccion", element: <Navigate to="/produccion/planificacion" replace /> },
             ]
