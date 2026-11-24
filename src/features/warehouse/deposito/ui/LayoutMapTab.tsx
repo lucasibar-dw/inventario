@@ -7,13 +7,14 @@ interface Props {
     onOpen: (v: PositionView) => void;
 }
 
-/** Extrae el prefijo/pasillo del código (ej. "A-01-02" -> "A", "R1-05" -> "R1", "ENTRADA" -> "SISTEMA"). */
+/** Extrae el prefijo/pasillo del código (ej. "P-1-1-A" -> "P-1", "P-A-1-1" -> "P-A", "A-01" -> "A"). */
 function groupPrefix(v: PositionView): string {
     if (v.isSystem) return 'SISTEMA';
     const code = (v.pos.codigo || '').trim();
     if (!code) return 'OTROS';
-    const sepMatch = code.match(/^([A-Za-z0-9]+)[-_./\s]/);
-    if (sepMatch) return sepMatch[1].toUpperCase();
+    const parts = code.split(/[-_./\s]+/).filter(Boolean);
+    if (parts.length >= 3 && parts[0].length <= 2) return `${parts[0]}-${parts[1]}`.toUpperCase();
+    if (parts.length >= 2) return parts[0].toUpperCase();
     const alphaMatch = code.match(/^([A-Za-z]+)/);
     if (alphaMatch) return alphaMatch[1].toUpperCase();
     return code.slice(0, 2).toUpperCase();
