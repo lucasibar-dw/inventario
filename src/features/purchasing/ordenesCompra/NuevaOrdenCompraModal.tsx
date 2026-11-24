@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
     Dialog,
     DialogTitle,
@@ -6,30 +6,52 @@ import {
     DialogActions,
     Box,
     Typography,
-    Button,
     TextField,
-    MenuItem,
+    Button,
     IconButton,
-    Table,
-    TableHead,
-    TableBody,
-    TableRow,
-    TableCell,
-    TableContainer,
+    Autocomplete,
     Paper,
-    Divider
+    Tooltip
 } from '@mui/material';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
-import PostAddIcon from '@mui/icons-material/PostAdd';
+import DeleteIcon from '@mui/icons-material/Delete';
+
 import type { OrdenCompra, OrdenCompraLinea } from './types';
 import { saveOrdenCompra } from './ordenesCompraStorage';
+import { useGetPartnersQuery } from '../../config/partners/api/partners.api';
+import { useGetItemsQuery } from '../../warehouse/materiales/api/items.api';
+import { CreateItemDialog } from '../../warehouse/materiales/components/CreateItemDialog';
+import { CreatePartnerDialog } from '../../config/CreatePartnerDialog';
+
+const colors = {
+    primary: '#f59e0b',
+    bg: 'var(--bg-primary, #0f1117)',
+    cardBg: 'var(--bg-hover-row, rgba(255,255,255,0.03))',
+    border: 'rgba(255, 255, 255, 0.08)',
+    text: 'var(--text-primary, #f3f4f6)',
+    textDim: 'var(--text-muted, #9ca3af)',
+    danger: '#ef4444',
+    info: '#38bdf8',
+    inputBg: 'var(--bg-action-btn, rgba(255,255,255,0.05))'
+};
+
+interface OrderLineDraft {
+    itemId: string;
+    itemCode: string;
+    itemDesc: string;
+    categoriaId: string;
+    categoriaNombre: string;
+    cantidadKg: string;
+    fechaArribo: string;
+}
 
 interface NuevaOrdenCompraModalProps {
     open: boolean;
     onClose: () => void;
-    partners: any[];
-    items: any[];
+    onSuccess?: (orden: OrdenCompra) => void;
+    partners?: any[];
+    items?: any[];
     initialPartnerId?: string;
     initialItemId?: string;
     initialQtyKg?: number;
@@ -38,390 +60,589 @@ interface NuevaOrdenCompraModalProps {
 export default function NuevaOrdenCompraModal({
     open,
     onClose,
-    partners,
-    items,
+    onSuccess,
+    partners: partnersProp,
+    items: itemsProp,
     initialPartnerId,
     initialItemId,
     initialQtyKg
 }: NuevaOrdenCompraModalProps) {
-    const today = new Date().toISOString().split('T')[0];
-    const defaultArrival = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+    const { data: fetchedSuppliers = [] } = useGetPartnersQuery({ type: 'SUPPLIER' });
+    const { data: fetchedItems = [] } = useGetItemsQuery({});
 
-    const [partnerId, setPartnerId] = useState<string>(initialPartnerId || (partners[0]?.id || ''));
-    const [numero, setNumero] = useState<string>(`OC-2026-${Math.floor(100 + Math.random() * 900)}`);
+    const suppliers = useMemo(() => {
+        if (fetchedSuppliers.length > 0) return fetchedSuppliers;
+        return (partnersProp || []).filter((p: any) => !p.type || p.type === 'SUPPLIER');
+    }, [fetchedSuppliers, partnersProp]);
+
+    const items = useMemo(() => {
+        return fetchedItems.length > 0 ? fetchedItems : (itemsProp || []);
+    }, [fetchedItems, itemsProp]);
+
+    const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+    const defaultArrival = useMemo(() => new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0], []);
+
+    // ── Cabecera ──
+    const [supplierId, setSupplierId] = useState<string>(initialPartnerId || '');
+    const [numero, setNumero] = useState<string>(() => {
+        const year = new Date().getFullYear();
+        return `OC-${year}-${Math.floor(100 + Math.random() * 900)}`;
+    });
     const [fechaEmision, setFechaEmision] = useState<string>(today);
     const [fechaArriboGlobal, setFechaArriboGlobal] = useState<string>(defaultArrival);
     const [observaciones, setObservaciones] = useState<string>('');
+    const [error, setError] = useState<string>('');
 
-    // Líneas iniciales
-    const [lines, setLines] = useState<any[]>(() => {
+    // Modales de creación rápida en caliente
+    const [isCreateItemOpen, setIsCreateItemOpen] = useState(false);
+    const [isCreatePartnerOpen, setIsCreatePartnerOpen] = useState(false);
+    const [activeLineForCreate, setActiveLineForCreate] = useState<number | null>(null);
+
+    // Filtrar estrictamente los materiales asociados al proveedor seleccionado
+    const availableItems = useMemo(() => {
+        if (!supplierId) return items;
+        return items.filter((it: any) => it.supplierId === supplierId);
+    }, [items, supplierId]);
+
+    // ── Líneas ──
+    const [lines, setLines] = useState<OrderLineDraft[]>(() => {
         if (initialItemId) {
+            const it = (itemsProp || []).find((i: any) => i.id === initialItemId);
             return [{
                 itemId: initialItemId,
-                cantidadKg: initialQtyKg || 500,
-                fechaArribo: defaultArrival,
-                precioUsd: ''
+                itemCode: it?.codigoInterno || '',
+                itemDesc: it?.descripcion || '',
+                categoriaId: it?.categoryId || it?.category?.id || '',
+                categoriaNombre: it?.category?.nombre || it?.categoria || '',
+                cantidadKg: initialQtyKg ? String(initialQtyKg) : '',
+                fechaArribo: defaultArrival
             }];
         }
         return [{
-            itemId: items[0]?.id || '',
-            cantidadKg: 1000,
-            fechaArribo: defaultArrival,
-            precioUsd: ''
+            itemId: '',
+            itemCode: '',
+            itemDesc: '',
+            categoriaId: '',
+            categoriaNombre: '',
+            cantidadKg: '',
+            fechaArribo: defaultArrival
         }];
     });
 
-    const handleAddLine = () => {
-        setLines(prev => [
-            ...prev,
-            {
-                itemId: items[0]?.id || '',
-                cantidadKg: 500,
-                fechaArribo: fechaArriboGlobal,
-                precioUsd: ''
+    const linesContainerRef = useRef<HTMLDivElement | null>(null);
+
+    const focusCell = (lineIndex: number, field: 'material' | 'fechaArribo' | 'cantidadKg') => {
+        const el = document.getElementById(`input-oc-line-${lineIndex}-${field}`) as HTMLElement | null;
+        if (el) {
+            el.focus();
+            if (typeof (el as HTMLInputElement).select === 'function') {
+                (el as HTMLInputElement).select();
             }
-        ]);
+        }
+        const rowEl = document.getElementById(`oc-line-card-${lineIndex}`);
+        if (rowEl) {
+            rowEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
     };
 
-    const handleRemoveLine = (idx: number) => {
-        setLines(prev => prev.filter((_, i) => i !== idx));
+    // Auto-foco en proveedor (o primer material si ya vino proveedor inicial)
+    useEffect(() => {
+        if (!open) return;
+        const timer = setTimeout(() => {
+            if (!supplierId) {
+                const supEl = document.getElementById('input-oc-supplier');
+                if (supEl) supEl.focus();
+            } else {
+                focusCell(0, 'material');
+            }
+        }, 150);
+        return () => clearTimeout(timer);
+    }, [open]);
+
+    const handleGlobalArrivalChange = (newDate: string) => {
+        const prevGlobal = fechaArriboGlobal;
+        setFechaArriboGlobal(newDate);
+        setLines(prev => prev.map(l => (!l.fechaArribo || l.fechaArribo === prevGlobal ? { ...l, fechaArribo: newDate } : l)));
     };
 
-    const handleLineChange = (idx: number, field: string, value: any) => {
+    const addLine = () => {
+        setLines(prev => {
+            const nextIdx = prev.length;
+            setTimeout(() => {
+                focusCell(nextIdx, 'material');
+                if (linesContainerRef.current) {
+                    linesContainerRef.current.scrollTo({
+                        top: linesContainerRef.current.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                }
+            }, 80);
+            return [
+                ...prev,
+                {
+                    itemId: '',
+                    itemCode: '',
+                    itemDesc: '',
+                    categoriaId: '',
+                    categoriaNombre: '',
+                    cantidadKg: '',
+                    fechaArribo: fechaArriboGlobal
+                }
+            ];
+        });
+    };
+
+    const removeLine = (index: number) => {
+        setLines(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleItemChange = (index: number, selectedItem: any) => {
         setLines(prev => {
             const next = [...prev];
-            next[idx] = { ...next[idx], [field]: value };
+            next[index] = {
+                ...next[index],
+                itemId: selectedItem?.id || '',
+                itemCode: selectedItem?.codigoInterno || '',
+                itemDesc: selectedItem?.descripcion || '',
+                categoriaId: selectedItem?.categoryId || selectedItem?.category?.id || '',
+                categoriaNombre: selectedItem?.category?.nombre || selectedItem?.categoria || ''
+            };
             return next;
         });
     };
 
-    const totalKg = lines.reduce((acc, l) => acc + Number(l.cantidadKg || 0), 0);
+    const updateLine = (index: number, field: keyof OrderLineDraft, val: string) => {
+        setLines(prev => {
+            const next = [...prev];
+            next[index] = { ...next[index], [field]: val };
+            return next;
+        });
+    };
 
-    const handleSave = (estado: 'EN_CAMINO' | 'BORRADOR') => {
-        if (!partnerId) {
-            alert('Por favor selecciona un proveedor');
+    // Resumen en vivo
+    const totals = useMemo(() => {
+        let kg = 0;
+        lines.forEach(l => {
+            kg += parseFloat(l.cantidadKg.replace(',', '.')) || 0;
+        });
+        return {
+            kg,
+            count: lines.filter(l => l.itemId && (parseFloat(l.cantidadKg.replace(',', '.')) || 0) > 0).length
+        };
+    }, [lines]);
+
+    const handleSave = () => {
+        setError('');
+
+        if (!supplierId) {
+            setError('Seleccioná el proveedor de la orden de compra.');
             return;
         }
-        if (lines.length === 0 || totalKg <= 0) {
-            alert('Agrega al menos una línea con cantidad en kg');
+
+        if (!fechaEmision) {
+            setError('Indicá la fecha de emisión.');
             return;
         }
 
-        const selectedPartner = partners.find(p => p.id === partnerId);
+        const validLines = lines.filter(l => l.itemId && (parseFloat(l.cantidadKg.replace(',', '.')) || 0) > 0);
+        if (validLines.length === 0) {
+            setError('Ingresá al menos una línea con material y kilos pedidos mayores a 0.');
+            return;
+        }
 
-        const ordenLineas: OrdenCompraLinea[] = lines.map((l, idx) => {
-            const it = items.find(i => i.id === l.itemId);
+        const missingArrival = validLines.some(l => !(l.fechaArribo || fechaArriboGlobal));
+        if (missingArrival) {
+            setError('Todas las líneas deben tener una fecha estimada de arribo.');
+            return;
+        }
+
+        const selectedPartner = suppliers.find((p: any) => p.id === supplierId);
+        const nowIso = new Date().toISOString();
+
+        const ordenLineas: OrdenCompraLinea[] = validLines.map((l, idx) => {
+            const it = items.find((i: any) => i.id === l.itemId);
+            const qtyKg = parseFloat(l.cantidadKg.replace(',', '.'));
             return {
                 id: `linea-${Date.now()}-${idx}`,
                 itemId: l.itemId,
-                codigoInterno: it?.codigoInterno || 'ITEM',
-                descripcion: it?.descripcion || 'Material',
-                categoriaNombre: it?.category?.nombre || it?.categoria || '',
-                cantidadPedidaKg: Number(l.cantidadKg),
+                codigoInterno: it?.codigoInterno || l.itemCode || 'ITEM',
+                descripcion: it?.descripcion || l.itemDesc || 'Material',
+                categoriaId: it?.categoryId || it?.category?.id || l.categoriaId || undefined,
+                categoriaNombre: it?.category?.nombre || it?.categoria || l.categoriaNombre || '',
+                cantidadPedidaKg: qtyKg,
                 cantidadRecibidaKg: 0,
                 fechaArriboEstimada: l.fechaArribo || fechaArriboGlobal,
                 estado: 'PENDIENTE',
-                precioUnitarioUsd: l.precioUsd ? Number(l.precioUsd) : undefined,
                 remitosAsociados: [],
                 recepcionesManuales: []
             };
         });
 
+        // Fecha estimada global: la más próxima entre las líneas o la general
+        const earliestArrival = ordenLineas
+            .map(l => l.fechaArriboEstimada)
+            .filter(Boolean)
+            .sort()[0] || fechaArriboGlobal;
+
         const nuevaOrden: OrdenCompra = {
             id: `oc-${Date.now()}`,
             numero: numero.trim() || `OC-${Date.now()}`,
-            partnerId,
+            partnerId: supplierId,
             partnerNombre: selectedPartner?.name || 'Proveedor General',
             fechaEmision,
-            fechaArriboEstimada: fechaArriboGlobal,
-            estado,
-            observaciones,
+            fechaArriboEstimada: earliestArrival,
+            estado: 'EN_CAMINO',
+            observaciones: observaciones.trim() || undefined,
             lineas: ordenLineas,
-            creadoEn: new Date().toISOString(),
-            actualizadoEn: new Date().toISOString()
+            creadoEn: nowIso,
+            actualizadoEn: nowIso
         };
 
         saveOrdenCompra(nuevaOrden);
+        if (onSuccess) onSuccess(nuevaOrden);
         onClose();
-    };
-
-    const colors = {
-        bg: '#0f172a',
-        surface: '#1e293b',
-        border: 'rgba(255, 255, 255, 0.08)',
-        primary: '#f59e0b',
-        info: '#38bdf8',
-        danger: '#ef4444',
-        text: '#f8fafc',
-        textSecondary: '#94a3b8',
-        textMuted: '#64748b'
     };
 
     return (
         <Dialog
             open={open}
             onClose={onClose}
-            maxWidth="md"
             fullWidth
+            maxWidth="lg"
             PaperProps={{
                 sx: {
-                    bgcolor: colors.surface,
+                    bgcolor: colors.bg,
                     color: colors.text,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: 2
+                    border: `1px solid ${colors.primary}`,
+                    borderRadius: 3,
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.8)'
                 }
             }}
         >
-            <DialogTitle sx={{ fontWeight: 800, fontSize: '18px', display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${colors.border}` }}>
-                <PostAddIcon sx={{ color: colors.primary }} />
-                <span>Nueva Orden de Compra (Pedido a Proveedor)</span>
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1, borderBottom: `1px solid ${colors.border}` }}>
+                <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 900, color: colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        📋 Nueva Orden de Compra
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: colors.textDim }}>
+                        Registro de pedido a proveedor para proyección de arribos (no modifica stock físico)
+                    </Typography>
+                </Box>
+                <IconButton onClick={onClose} sx={{ color: colors.textDim }}>
+                    <CloseIcon />
+                </IconButton>
             </DialogTitle>
 
-            <DialogContent sx={{ p: 2.5 }}>
-                {/* 1. Cabecera tipo Remito */}
-                <Box sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, 1fr)' },
-                    gap: 2,
-                    mb: 2.5,
-                    mt: 1
-                }}>
-                    <TextField
-                        select
-                        size="small"
-                        label="Proveedor"
-                        value={partnerId}
-                        onChange={(e) => setPartnerId(e.target.value)}
-                        sx={{
-                            gridColumn: { xs: '1 / -1', sm: 'span 2' },
-                            '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)', color: colors.text }
-                        }}
-                    >
-                        {partners.map(p => (
-                            <MenuItem key={p.id} value={p.id}>
-                                {p.name}
-                            </MenuItem>
-                        ))}
-                    </TextField>
+            <DialogContent sx={{ py: 3, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {/* Cabecera de la Orden de Compra */}
+                <Paper sx={{ p: 2.5, bgcolor: colors.cardBg, border: `1px solid ${colors.border}`, borderRadius: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                        <Box sx={{ flex: '2 1 280px', display: 'flex', gap: 1, alignItems: 'center' }}>
+                            <Autocomplete
+                                options={suppliers}
+                                getOptionLabel={(option: any) => option.name || ''}
+                                value={suppliers.find((s: any) => s.id === supplierId) || null}
+                                onChange={(_e, val: any) => setSupplierId(val?.id || '')}
+                                fullWidth
+                                size="small"
+                                renderInput={(params) => (
+                                    <TextField
+                                        {...params}
+                                        label="Proveedor *"
+                                        placeholder="Buscar o seleccionar proveedor..."
+                                        InputLabelProps={{ sx: { color: colors.textDim } }}
+                                        inputProps={{
+                                            ...params.inputProps,
+                                            id: 'input-oc-supplier',
+                                            onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+                                                if (params.inputProps.onKeyDown) {
+                                                    params.inputProps.onKeyDown(e);
+                                                }
+                                                if (e.key === 'Enter') {
+                                                    setTimeout(() => focusCell(0, 'material'), 60);
+                                                }
+                                            }
+                                        }}
+                                        InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
+                                    />
+                                )}
+                            />
+                            <Tooltip title="Crear nuevo proveedor">
+                                <Button
+                                    variant="outlined"
+                                    onClick={() => setIsCreatePartnerOpen(true)}
+                                    sx={{ minWidth: '40px', width: '40px', height: '40px', p: 0, color: colors.primary, borderColor: colors.primary, borderRadius: 2 }}
+                                >
+                                    +
+                                </Button>
+                            </Tooltip>
+                        </Box>
+
+                        <TextField
+                            label="N° de Orden (OC)"
+                            placeholder="Ej: OC-2026-001"
+                            size="small"
+                            value={numero}
+                            onChange={(e) => setNumero(e.target.value)}
+                            InputLabelProps={{ sx: { color: colors.textDim } }}
+                            sx={{ flex: '1 1 170px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2, fontWeight: 700 } }}
+                        />
+
+                        <TextField
+                            label="Fecha de Emisión *"
+                            type="date"
+                            size="small"
+                            value={fechaEmision}
+                            onChange={(e) => setFechaEmision(e.target.value)}
+                            InputLabelProps={{ shrink: true, sx: { color: colors.textDim } }}
+                            sx={{ flex: '1 1 150px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
+                        />
+
+                        <TextField
+                            label="Arribo Estimado General *"
+                            type="date"
+                            size="small"
+                            value={fechaArriboGlobal}
+                            onChange={(e) => handleGlobalArrivalChange(e.target.value)}
+                            InputLabelProps={{ shrink: true, sx: { color: colors.info } }}
+                            sx={{ flex: '1 1 170px', '& .MuiOutlinedInput-root': { bgcolor: 'rgba(56, 189, 248, 0.08)', color: colors.info, borderRadius: 2, fontWeight: 700 } }}
+                        />
+                    </Box>
 
                     <TextField
+                        label="Observaciones Generales"
+                        placeholder="Ej: Transporte, condiciones de entrega, referencia del pedido..."
                         size="small"
-                        label="N° de Orden (OC)"
-                        value={numero}
-                        onChange={(e) => setNumero(e.target.value)}
-                        sx={{
-                            '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)', color: colors.text, fontWeight: 700 }
-                        }}
-                    />
-
-                    <TextField
-                        size="small"
-                        label="Fecha Emisión"
-                        type="date"
-                        value={fechaEmision}
-                        onChange={(e) => setFechaEmision(e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        sx={{
-                            '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)', color: colors.text }
-                        }}
-                    />
-
-                    <TextField
-                        size="small"
-                        label="Estimado Arribo General"
-                        type="date"
-                        value={fechaArriboGlobal}
-                        onChange={(e) => setFechaArriboGlobal(e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        helperText="Se aplica por defecto a cada línea"
-                        sx={{
-                            gridColumn: { xs: '1 / -1', sm: 'span 2' },
-                            '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)', color: colors.text }
-                        }}
-                    />
-
-                    <TextField
-                        size="small"
-                        label="Observaciones / Transporte"
+                        fullWidth
                         value={observaciones}
                         onChange={(e) => setObservaciones(e.target.value)}
-                        placeholder="Transporte expreso, lote, condiciones de pago..."
-                        sx={{
-                            gridColumn: { xs: '1 / -1', sm: 'span 2' },
-                            '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.03)', color: colors.text }
-                        }}
+                        InputLabelProps={{ sx: { color: colors.textDim } }}
+                        sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
                     />
-                </Box>
+                </Paper>
 
-                <Divider sx={{ borderColor: colors.border, mb: 2 }} />
+                {/* Líneas de la Orden de Compra */}
+                <Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: colors.text, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.5px' }}>
+                                Materiales Solicitados ({lines.length})
+                            </Typography>
+                            {supplierId && (
+                                <Typography variant="caption" sx={{ color: colors.primary, fontSize: '0.7rem', bgcolor: 'rgba(245, 158, 11, 0.1)', px: 1, py: 0.3, borderRadius: 1, border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                                    Filtrado por proveedor
+                                </Typography>
+                            )}
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => { setActiveLineForCreate(lines.length - 1 >= 0 ? lines.length - 1 : 0); setIsCreateItemOpen(true); }}
+                                sx={{ color: colors.primary, borderColor: colors.primary, fontWeight: 700, borderRadius: 2, fontSize: '0.75rem', textTransform: 'none' }}
+                            >
+                                + Nuevo Material
+                            </Button>
+                            <Button
+                                size="small"
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={addLine}
+                                sx={{ bgcolor: colors.primary, color: '#000', fontWeight: 800, borderRadius: 2, fontSize: '0.75rem', textTransform: 'none', '&:hover': { bgcolor: '#d97706' } }}
+                            >
+                                + Agregar Línea (o Enter en Kilos)
+                            </Button>
+                        </Box>
+                    </Box>
 
-                {/* 2. Tabla Dinámica de Líneas Pedidas */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: colors.text, textTransform: 'uppercase', fontSize: '12px' }}>
-                        Hilados / Materiales Solicitados ({lines.length})
-                    </Typography>
-                    <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={handleAddLine}
-                        startIcon={<AddIcon fontSize="small" />}
-                        sx={{
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: colors.primary,
-                            borderColor: colors.border,
-                            textTransform: 'none'
-                        }}
-                    >
-                        Agregar Línea
-                    </Button>
-                </Box>
+                    <Box ref={linesContainerRef} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: '380px', overflowY: 'auto', pr: 0.5, scrollBehavior: 'smooth' }}>
+                        {lines.map((line, idx) => {
+                            const selectedItem = items.find((it: any) => it.id === line.itemId) || null;
+                            const uPrinc = selectedItem?.unidadPrincipal || 'kg';
+                            const labelPrinc = uPrinc.toLowerCase() === 'kg'
+                                ? 'Kg Pedidos *'
+                                : `${uPrinc.trim().charAt(0).toUpperCase() + uPrinc.trim().slice(1)} Pedidos *`;
 
-                <TableContainer component={Paper} sx={{ bgcolor: 'rgba(0,0,0,0.2)', border: `1px solid ${colors.border}`, borderRadius: 1.5 }}>
-                    <Table size="small">
-                        <TableHead sx={{ bgcolor: 'rgba(255,255,255,0.03)' }}>
-                            <TableRow>
-                                <TableCell sx={{ color: colors.textMuted, fontSize: '11px', fontWeight: 700, width: '40%' }}>Material / Código</TableCell>
-                                <TableCell sx={{ color: colors.textMuted, fontSize: '11px', fontWeight: 700, width: '20%' }}>Cantidad (kg)</TableCell>
-                                <TableCell sx={{ color: colors.info, fontSize: '11px', fontWeight: 700, width: '25%' }}>Estimado de Arribo</TableCell>
-                                <TableCell sx={{ color: colors.textMuted, fontSize: '11px', fontWeight: 700, width: '15%' }}>Precio USD</TableCell>
-                                <TableCell align="center" sx={{ color: colors.textMuted, fontSize: '11px', width: '40px' }}></TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {lines.map((line, idx) => (
-                                <TableRow key={idx}>
-                                    <TableCell>
-                                        <TextField
-                                            select
-                                            size="small"
-                                            fullWidth
-                                            value={line.itemId}
-                                            onChange={(e) => handleLineChange(idx, 'itemId', e.target.value)}
-                                            sx={{
-                                                '& .MuiOutlinedInput-root': {
-                                                    fontSize: '12px',
-                                                    height: 32,
-                                                    bgcolor: 'rgba(255,255,255,0.02)',
-                                                    color: colors.text
+                            return (
+                                <Paper
+                                    key={idx}
+                                    id={`oc-line-card-${idx}`}
+                                    sx={{
+                                        p: 1.5,
+                                        bgcolor: 'rgba(255,255,255,0.02)',
+                                        border: `1px solid ${colors.border}`,
+                                        borderRadius: 2.5
+                                    }}
+                                >
+                                    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+                                        {/* Selector de Material */}
+                                        <Autocomplete
+                                            options={availableItems}
+                                            noOptionsText={supplierId ? 'No hay materiales asignados a este proveedor' : 'Seleccioná un proveedor primero'}
+                                            getOptionLabel={(option: any) => `${option.codigoInterno} — ${option.descripcion}`}
+                                            value={selectedItem}
+                                            onChange={(_e, val: any) => {
+                                                handleItemChange(idx, val);
+                                                if (val) {
+                                                    setTimeout(() => focusCell(idx, 'cantidadKg'), 50);
                                                 }
                                             }}
-                                        >
-                                            {items.map(it => (
-                                                <MenuItem key={it.id} value={it.id} sx={{ fontSize: '12px' }}>
-                                                    {it.codigoInterno} - {it.descripcion}
-                                                </MenuItem>
-                                            ))}
-                                        </TextField>
-                                    </TableCell>
-
-                                    <TableCell>
-                                        <TextField
                                             size="small"
-                                            type="number"
-                                            value={line.cantidadKg}
-                                            onChange={(e) => handleLineChange(idx, 'cantidadKg', e.target.value)}
-                                            sx={{
-                                                '& .MuiOutlinedInput-root': {
-                                                    fontSize: '12px',
-                                                    height: 32,
-                                                    bgcolor: 'rgba(255,255,255,0.02)',
-                                                    color: colors.text,
-                                                    fontWeight: 800
-                                                }
-                                            }}
+                                            autoHighlight
+                                            openOnFocus
+                                            clearOnBlur={false}
+                                            sx={{ flex: '3 1 300px' }}
+                                            renderInput={(params) => (
+                                                <TextField
+                                                    {...params}
+                                                    label="Material *"
+                                                    placeholder={supplierId ? 'Buscar entre materiales del proveedor...' : 'Buscar código o descripción...'}
+                                                    InputLabelProps={{ sx: { color: colors.textDim } }}
+                                                    inputProps={{
+                                                        ...params.inputProps,
+                                                        id: `input-oc-line-${idx}-material`,
+                                                        onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+                                                            if (params.inputProps.onKeyDown) {
+                                                                params.inputProps.onKeyDown(e);
+                                                            }
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                setTimeout(() => focusCell(idx, 'cantidadKg'), 100);
+                                                            }
+                                                        }
+                                                    }}
+                                                    InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
+                                                />
+                                            )}
                                         />
-                                    </TableCell>
 
-                                    <TableCell>
+                                        {/* Fecha Estimada de Arribo */}
                                         <TextField
-                                            size="small"
+                                            label="Estimado de Arribo *"
                                             type="date"
+                                            size="small"
                                             value={line.fechaArribo}
-                                            onChange={(e) => handleLineChange(idx, 'fechaArribo', e.target.value)}
-                                            InputLabelProps={{ shrink: true }}
-                                            sx={{
-                                                '& .MuiOutlinedInput-root': {
-                                                    fontSize: '12px',
-                                                    height: 32,
-                                                    bgcolor: 'rgba(56, 189, 248, 0.05)',
-                                                    color: colors.info,
-                                                    fontWeight: 700
+                                            onChange={(e) => updateLine(idx, 'fechaArribo', e.target.value)}
+                                            InputLabelProps={{ shrink: true, sx: { color: colors.info } }}
+                                            inputProps={{
+                                                id: `input-oc-line-${idx}-fechaArribo`,
+                                                onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        focusCell(idx, 'cantidadKg');
+                                                    }
                                                 }
                                             }}
+                                            sx={{ flex: '1.2 1 160px', '& .MuiOutlinedInput-root': { bgcolor: 'rgba(56, 189, 248, 0.06)', color: colors.info, borderRadius: 2, fontWeight: 700 } }}
                                         />
-                                    </TableCell>
 
-                                    <TableCell>
+                                        {/* Kilos Pedidos */}
                                         <TextField
-                                            size="small"
+                                            label={labelPrinc}
                                             type="number"
-                                            placeholder="USD/kg"
-                                            value={line.precioUsd}
-                                            onChange={(e) => handleLineChange(idx, 'precioUsd', e.target.value)}
-                                            sx={{
-                                                '& .MuiOutlinedInput-root': {
-                                                    fontSize: '12px',
-                                                    height: 32,
-                                                    bgcolor: 'rgba(255,255,255,0.02)',
-                                                    color: colors.text
+                                            size="small"
+                                            placeholder="0.0"
+                                            value={line.cantidadKg}
+                                            onChange={(e) => updateLine(idx, 'cantidadKg', e.target.value)}
+                                            InputLabelProps={{ sx: { color: colors.textDim } }}
+                                            inputProps={{
+                                                id: `input-oc-line-${idx}-cantidadKg`,
+                                                step: 'any',
+                                                min: 0,
+                                                onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        if (idx < lines.length - 1) {
+                                                            focusCell(idx + 1, 'material');
+                                                        } else {
+                                                            addLine();
+                                                        }
+                                                    }
                                                 }
                                             }}
+                                            sx={{ flex: '1 1 130px', '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2, fontWeight: 800 } }}
                                         />
-                                    </TableCell>
 
-                                    <TableCell align="center">
-                                        <IconButton
-                                            size="small"
-                                            disabled={lines.length <= 1}
-                                            onClick={() => handleRemoveLine(idx)}
-                                            sx={{ color: colors.danger, opacity: lines.length <= 1 ? 0.3 : 0.8 }}
-                                        >
-                                            <DeleteOutlineIcon fontSize="small" />
-                                        </IconButton>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-
-                {/* Totalizador de Kilos */}
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1.5, mt: 1.5, pr: 1 }}>
-                    <Typography variant="body2" sx={{ color: colors.textSecondary }}>
-                        Total Pedido:
-                    </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 900, color: colors.primary }}>
-                        {totalKg.toLocaleString()} kg
-                    </Typography>
+                                        {/* Botón Borrar Línea */}
+                                        {lines.length > 1 && (
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => removeLine(idx)}
+                                                sx={{ color: colors.textDim, '&:hover': { color: colors.danger } }}
+                                            >
+                                                <DeleteIcon sx={{ fontSize: 18 }} />
+                                            </IconButton>
+                                        )}
+                                    </Box>
+                                </Paper>
+                            );
+                        })}
+                    </Box>
                 </Box>
+
+                {error && (
+                    <Paper sx={{ p: 1.5, bgcolor: 'rgba(239, 68, 68, 0.1)', border: `1px solid ${colors.danger}`, borderRadius: 2 }}>
+                        <Typography variant="caption" sx={{ color: colors.danger, fontWeight: 700 }}>
+                            ⚠️ {error}
+                        </Typography>
+                    </Paper>
+                )}
             </DialogContent>
 
-            <DialogActions sx={{ p: 2, borderTop: `1px solid ${colors.border}` }}>
-                <Button onClick={onClose} sx={{ color: colors.textSecondary, textTransform: 'none' }}>
-                    Cancelar
-                </Button>
-                <Button
-                    variant="outlined"
-                    onClick={() => handleSave('BORRADOR')}
-                    sx={{ borderColor: colors.border, color: colors.text, textTransform: 'none' }}
-                >
-                    Guardar Borrador
-                </Button>
-                <Button
-                    variant="contained"
-                    onClick={() => handleSave('EN_CAMINO')}
-                    sx={{
-                        bgcolor: colors.primary,
-                        color: '#000',
-                        fontWeight: 800,
-                        textTransform: 'none',
-                        '&:hover': { bgcolor: '#d97706' }
-                    }}
-                >
-                    Confirmar Orden (En Camino)
-                </Button>
+            <DialogActions sx={{ p: 2.5, px: 3, borderTop: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ color: colors.textDim, fontSize: '0.85rem' }}>
+                        Total Pedido: <strong style={{ color: colors.primary }}>{totals.kg.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg</strong>
+                        <span> &middot; {totals.count} {totals.count === 1 ? 'material' : 'materiales'}</span>
+                    </Typography>
+                </Box>
+
+                <Box sx={{ display: 'flex', gap: 1.5 }}>
+                    <Button variant="text" onClick={onClose} sx={{ color: colors.textDim }}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        variant="contained"
+                        disabled={!supplierId || totals.kg <= 0}
+                        onClick={handleSave}
+                        sx={{ bgcolor: colors.primary, color: '#000', fontWeight: 900, borderRadius: 2, px: 3, '&:hover': { bgcolor: '#d97706' } }}
+                    >
+                        ✓ Confirmar Orden de Compra
+                    </Button>
+                </Box>
             </DialogActions>
+
+            {/* Diálogo para crear nuevo material */}
+            {isCreateItemOpen && (
+                <CreateItemDialog
+                    open={isCreateItemOpen}
+                    onClose={() => setIsCreateItemOpen(false)}
+                    initialSupplierId={supplierId || undefined}
+                    initialSupplierName={suppliers.find((s: any) => s.id === supplierId)?.name}
+                    onSuccess={(newItem: any) => {
+                        if (activeLineForCreate !== null && activeLineForCreate >= 0 && activeLineForCreate < lines.length) {
+                            handleItemChange(activeLineForCreate, newItem);
+                        }
+                        setIsCreateItemOpen(false);
+                    }}
+                />
+            )}
+
+            {/* Diálogo para crear nuevo proveedor */}
+            {isCreatePartnerOpen && (
+                <CreatePartnerDialog
+                    open={isCreatePartnerOpen}
+                    onClose={() => setIsCreatePartnerOpen(false)}
+                    defaultType="SUPPLIER"
+                    onSuccess={(newPartner: any) => {
+                        setSupplierId(newPartner.id);
+                        setIsCreatePartnerOpen(false);
+                    }}
+                />
+            )}
         </Dialog>
     );
 }

@@ -44,7 +44,7 @@ export default function OrdenesCompraPage() {
     const { ordenes, remove } = useOrdenesCompra();
 
     // Consultas de datos maestros para creación
-    const { data: partners = [] } = useGetPartnersQuery({});
+    const { data: partners = [] } = useGetPartnersQuery({ type: 'SUPPLIER' });
     const { data: items = [] } = useGetItemsQuery({});
 
     // Estados de navegación y filtros

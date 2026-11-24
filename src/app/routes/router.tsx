@@ -39,6 +39,7 @@ const DashboardComprasPage = lazy(() => import('../../pages/purchasing/Dashboard
 const MaterialesCriticosPage = lazy(() => import('../../pages/purchasing/MaterialesCriticosPage'));
 const MaterialesCriticosDashboardPage = lazy(() => import('../../pages/purchasing/MaterialesCriticosDashboardPage'));
 const OrdenesCompraPage = lazy(() => import('../../pages/purchasing/OrdenesCompraPage'));
+const DienteDeSierraPage = lazy(() => import('../../pages/purchasing/DienteDeSierraPage'));
 
 // Sector: Maintenance
 const DashboardMantenimientoPage = lazy(() => import('../../pages/maintenance/DashboardMantenimientoPage'));
@@ -208,6 +209,7 @@ export const router = createBrowserRouter([
               { path: "compras/materiales-criticos", element: <LazyRoute element={MaterialesCriticosPage} /> },
               { path: "compras/materiales-criticos-dashboard", element: <LazyRoute element={MaterialesCriticosDashboardPage} /> },
               { path: "compras/ordenes-compra", element: <LazyRoute element={OrdenesCompraPage} /> },
+              { path: "compras/diente-de-sierra", element: <LazyRoute element={DienteDeSierraPage} /> },
               { path: "reporte-consumo-detallado", element: <LazyRoute element={ReporteConsumoDetalladoPage} /> },
             ]
           },
