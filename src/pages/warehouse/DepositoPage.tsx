@@ -24,8 +24,8 @@ import {
     buildPositionView,
     summarizeDepot,
     fmt,
-    PositionView,
-    OccupancyStatus,
+    type PositionView,
+    type OccupancyStatus,
 } from '../../features/warehouse/deposito/lib/depotMetrics';
 import { Kpi, OccBar, Pill, TabBar, inputStyle, labelStyle, thStyle, tdStyle } from '../../features/warehouse/deposito/ui/common';
 import PositionsTab from '../../features/warehouse/deposito/ui/PositionsTab';

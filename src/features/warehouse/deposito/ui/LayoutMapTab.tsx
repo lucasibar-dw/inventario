@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { PositionView, STATUS_INFO, OccupancyStatus, fmt } from '../lib/depotMetrics';
+import { type PositionView, STATUS_INFO, type OccupancyStatus, fmt } from '../lib/depotMetrics';
 import { inputStyle, labelStyle, Pill } from './common';
 
 interface Props {

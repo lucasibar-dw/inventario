@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Modal, Btn, Input } from '../../../../shared/ui';
 import { depotsApi, useCreatePositionSilentMutation } from '../api/deposito.api';
-import { CodeSegment, ZONAS_EDITABLES, generateCodes, runInChunks, volumeFromDims } from '../lib/depotMetrics';
+import { type CodeSegment, ZONAS_EDITABLES, generateCodes, runInChunks, volumeFromDims } from '../lib/depotMetrics';
 import { inputStyle, labelStyle, SectionTitle } from './common';
 
 interface Props {

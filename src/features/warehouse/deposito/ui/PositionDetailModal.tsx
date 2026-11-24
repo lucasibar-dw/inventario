@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Modal, Btn, Input } from '../../../../shared/ui';
 import { useUpdatePositionMutation } from '../api/deposito.api';
 import {
-    PositionView, ZONAS_EDITABLES, STATUS_INFO, volumeFromDims, fmt, zonaLabel,
+    type PositionView, ZONAS_EDITABLES, STATUS_INFO, volumeFromDims, fmt, zonaLabel,
 } from '../lib/depotMetrics';
 import { OccBar, Pill, inputStyle, labelStyle, thStyle, tdStyle, SectionTitle } from './common';
 

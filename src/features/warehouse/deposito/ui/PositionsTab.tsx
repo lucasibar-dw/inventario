@@ -1,6 +1,6 @@
 import { useMemo, useState, useDeferredValue } from 'react';
 import { Btn } from '../../../../shared/ui';
-import { PositionView, STATUS_INFO, OccupancyStatus, ZONAS, zonaLabel, zonaColor, fmt, downloadCsv } from '../lib/depotMetrics';
+import { type PositionView, STATUS_INFO, type OccupancyStatus, ZONAS, zonaLabel, zonaColor, fmt, downloadCsv } from '../lib/depotMetrics';
 import { OccBar, Pill, inputStyle, labelStyle, thStyle, tdStyle } from './common';
 
 interface Props {

@@ -3,7 +3,7 @@ import {
     ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
 import {
-    DepotSummary, PositionView, STATUS_INFO, OccupancyStatus, zonaLabel, zonaColor, fmt,
+    type DepotSummary, type PositionView, STATUS_INFO, type OccupancyStatus, zonaLabel, zonaColor, fmt,
 } from '../lib/depotMetrics';
 import { Kpi, OccBar, Pill, SectionTitle, thStyle, tdStyle } from './common';
 
@@ -68,13 +68,14 @@ export default function AnalyticsTab({ summary, views, onOpenPosition, onJumpToS
             .slice(0, 8),
         [views]);
 
-    const alerts: { label: string; count: number; color: string; status?: OccupancyStatus; desc: string }[] = [
+    const rawAlerts: { label: string; count: number; color: string; status?: OccupancyStatus; desc: string }[] = [
         { label: 'Posiciones excedidas (>100%)', count: summary.excedidas, color: '#ef4444', status: 'excedida', desc: 'Superan su capacidad de volumen o peso máximo.' },
         { label: 'Posiciones casi llenas (≥90%)', count: summary.llenas, color: '#f59e0b', status: 'llena', desc: 'Cerca del límite de capacidad.' },
         { label: 'Inactivas con stock', count: summary.inactivasConStock, color: '#f97316', status: 'inactiva', desc: 'Están desactivadas pero todavía registran mercadería.' },
         { label: 'Activas sin m³ cargado', count: summary.sinCapacidad, color: '#a855f7', status: 'sin_capacidad', desc: 'No tienen volumen definido para medir ocupación.' },
         { label: 'Líneas sin volumen calculable', count: summary.lineasSinVolumen, color: '#eab308', desc: 'Materiales sin tipo de caja o kilos por caja configurados.' },
-    ].filter(a => a.count > 0);
+    ];
+    const alerts = rawAlerts.filter(a => a.count > 0);
 
     const statusCounts: { status: OccupancyStatus; count: number }[] = [
         { status: 'vacia', count: summary.vacias },
