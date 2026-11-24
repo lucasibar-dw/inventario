@@ -8,6 +8,7 @@ import {
 } from '../../features/warehouse/materiales/api/items.api';
 import { useGetBoxTypesQuery } from '../../features/warehouse/materiales/api/box-types.api';
 import { useGetStockQuery } from '../../features/warehouse/stock/api/stock.api';
+import { useGetPendingTasksQuery } from '../../features/warehouse/tasks/api/tasks.api';
 import {
     useGetDepotsQuery,
     useCreateDepotMutation,
@@ -23,6 +24,7 @@ import {
     computePositionStats,
     buildPositionView,
     summarizeDepot,
+    computeRelocationRecommendations,
     fmt,
     type PositionView,
     type OccupancyStatus,
@@ -31,6 +33,7 @@ import { Kpi, OccBar, Pill, TabBar, inputStyle, labelStyle, thStyle, tdStyle } f
 import PositionsTab from '../../features/warehouse/deposito/ui/PositionsTab';
 import LayoutMapTab from '../../features/warehouse/deposito/ui/LayoutMapTab';
 import AnalyticsTab from '../../features/warehouse/deposito/ui/AnalyticsTab';
+import RelocationTab from '../../features/warehouse/deposito/ui/RelocationTab';
 import PositionDetailModal from '../../features/warehouse/deposito/ui/PositionDetailModal';
 import BulkCreatePositionsModal from '../../features/warehouse/deposito/ui/BulkCreatePositionsModal';
 import BulkEditPositionsModal from '../../features/warehouse/deposito/ui/BulkEditPositionsModal';
@@ -96,7 +99,7 @@ function EditableCell({ value, onSave, label, type = 'text', disabled = false }:
     );
 }
 
-type DetailTab = 'positions' | 'map' | 'analytics' | 'categories';
+type DetailTab = 'positions' | 'map' | 'analytics' | 'relocation' | 'categories';
 
 export default function DepositoPage() {
     const user = useSelector(selectCurrentUser);
@@ -138,6 +141,7 @@ export default function DepositoPage() {
 
     // Categorías del depósito seleccionado
     const { data: categories = [], refetch: refetchCategories } = useGetItemCategoriesQuery(selectedDepotId || '', { skip: !selectedDepotId });
+    const { data: pendingTasks = [], refetch: refetchPendingTasks } = useGetPendingTasksQuery(selectedDepotId || undefined, { skip: !selectedDepotId });
     const [createCategory, { isLoading: isCreatingCategory }] = useCreateItemCategoryMutation();
     const [updateItemCategory] = useUpdateItemCategoryMutation();
 
@@ -216,6 +220,18 @@ export default function DepositoPage() {
     const selectedViews = useMemo(
         () => (selectedDepotId ? viewsByDepot.get(selectedDepotId) || [] : []),
         [viewsByDepot, selectedDepotId],
+    );
+    const relocationCountByDepot = useMemo(() => {
+        const map = new Map<string, number>();
+        for (const d of depots) {
+            const views = viewsByDepot.get(d.id) || [];
+            map.set(d.id, computeRelocationRecommendations(d, views).length);
+        }
+        return map;
+    }, [depots, viewsByDepot]);
+    const selectedRecommendations = useMemo(
+        () => (selectedDepot ? computeRelocationRecommendations(selectedDepot, selectedViews, pendingTasks) : []),
+        [selectedDepot, selectedViews, pendingTasks],
     );
     const existingCodes = useMemo(
         () => new Set(selectedViews.map(v => String(v.pos.codigo || '').toUpperCase())),
@@ -463,6 +479,9 @@ export default function DepositoPage() {
                                             {s.excedidas > 0 && <Pill color="#ef4444">⚠ {s.excedidas} exced.</Pill>}
                                             {s.llenas > 0 && <Pill color="#f59e0b">{s.llenas} casi llenas</Pill>}
                                             {s.inactivasConStock > 0 && <Pill color="#f97316">{s.inactivasConStock} inact. c/stock</Pill>}
+                                            {(relocationCountByDepot.get(d.id) || 0) > 0 && (
+                                                <Pill color="#6366f1">🔄 {relocationCountByDepot.get(d.id)} reubic.</Pill>
+                                            )}
                                         </div>
 
                                         <div style={{ display: 'flex', gap: 8, borderTop: '1px solid var(--border-color, #2a2d3e)', paddingTop: 10 }}>
@@ -516,6 +535,7 @@ export default function DepositoPage() {
                                     { id: 'positions', label: `📍 Posiciones (${selectedViews.length})` },
                                     { id: 'map', label: '🗺️ Mapa visual' },
                                     { id: 'analytics', label: '📊 Análisis y Capacidad' },
+                                    { id: 'relocation', label: `🔄 Reubicación (${selectedRecommendations.filter(r => !r.alreadyInTasks).length})` },
                                     { id: 'categories', label: `🏷️ Categorías (${categories.length})` },
                                 ]}
                             />
@@ -547,6 +567,13 @@ export default function DepositoPage() {
                                     views={selectedViews}
                                     onOpenPosition={(v) => setDetailPosId(v.pos.id)}
                                     onJumpToStatus={handleJumpToStatus}
+                                />
+                            )}
+
+                            {detailTab === 'relocation' && (
+                                <RelocationTab
+                                    recommendations={selectedRecommendations}
+                                    onTaskCreated={() => refetchPendingTasks()}
                                 />
                             )}
 
@@ -615,6 +642,7 @@ export default function DepositoPage() {
                 <PositionDetailModal
                     view={activeDetailView}
                     itemCategories={itemCategories}
+                    items={items}
                     existingCodes={existingCodes}
                     canEdit={canEdit}
                     onClose={() => setDetailPosId(null)}
@@ -636,6 +664,7 @@ export default function DepositoPage() {
                 <BulkEditPositionsModal
                     views={bulkEditViews}
                     itemCategories={itemCategories}
+                    items={items}
                     onClose={() => setBulkEditViews(null)}
                     onDone={() => refetch()}
                 />

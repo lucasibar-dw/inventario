@@ -37,6 +37,8 @@ export default function PositionsTab({ depot, views, itemCategories, canEdit, on
         const q = dSearch.trim().toLowerCase();
         const list = views.filter(v => {
             if (q && !(v.pos.codigo || '').toLowerCase().includes(q) &&
+                !(v.meta.idealItemCodigo || '').toLowerCase().includes(q) &&
+                !(v.meta.idealItemDescripcion || '').toLowerCase().includes(q) &&
                 !v.stats.lineas.some(l => l.codigo.toLowerCase().includes(q) || l.descripcion.toLowerCase().includes(q))) return false;
             if (zona && (v.pos.categoria || '').toUpperCase() !== zona) return false;
             if (cat && v.pos.categoriaPrincipal !== cat && v.pos.categoriaSecundaria !== cat) return false;
@@ -85,6 +87,7 @@ export default function PositionsTab({ depot, views, itemCategories, canEdit, on
         Zona: zonaLabel(v.pos.categoria),
         Restriccion_principal: v.pos.categoriaPrincipal || '',
         Restriccion_secundaria: v.pos.categoriaSecundaria || '',
+        Material_ideal: v.meta.idealItemDescripcion ? `${v.meta.idealItemCodigo || ''} ${v.meta.idealItemDescripcion}`.trim() : '',
         Alto_m: v.meta.altoM ?? '',
         Ancho_m: v.meta.anchoM ?? '',
         Profundidad_m: v.meta.profundidadM ?? '',
@@ -165,7 +168,7 @@ export default function PositionsTab({ depot, views, itemCategories, canEdit, on
                             {canEdit && <th style={{ ...thStyle, width: 32 }}><input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} /></th>}
                             <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => toggleSort('codigo')}>Código{sortMark('codigo')}</th>
                             <th style={thStyle}>Zona</th>
-                            <th style={thStyle}>Restricción</th>
+                            <th style={thStyle}>Ideal / Categoría</th>
                             <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => toggleSort('capacidad')}>Capacidad{sortMark('capacidad')}</th>
                             <th style={{ ...thStyle, cursor: 'pointer', minWidth: 160 }} onClick={() => toggleSort('ocupacion')}>Ocupación{sortMark('ocupacion')}</th>
                             <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => toggleSort('kilos')}>Kg{sortMark('kilos')}</th>
@@ -199,8 +202,13 @@ export default function PositionsTab({ depot, views, itemCategories, canEdit, on
                                     </td>
                                     <td style={tdStyle}><Pill color={zonaColor(v.pos.categoria)}>{zonaLabel(v.pos.categoria)}</Pill></td>
                                     <td style={tdStyle}>
-                                        {v.pos.categoriaPrincipal || v.pos.categoriaSecundaria ? (
+                                        {v.meta.idealItemId || v.pos.categoriaPrincipal || v.pos.categoriaSecundaria ? (
                                             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                {v.meta.idealItemId && (
+                                                    <Pill color="#f59e0b" title={`Material ideal: ${v.meta.idealItemDescripcion || ''}`}>
+                                                        ⭐ {v.meta.idealItemCodigo || v.meta.idealItemDescripcion || 'Material ideal'}
+                                                    </Pill>
+                                                )}
                                                 {v.pos.categoriaPrincipal && <Pill color="#818cf8">{v.pos.categoriaPrincipal}</Pill>}
                                                 {v.pos.categoriaSecundaria && <Pill color="#c084fc">{v.pos.categoriaSecundaria}</Pill>}
                                             </div>

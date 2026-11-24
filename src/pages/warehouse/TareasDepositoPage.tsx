@@ -12,6 +12,7 @@ import {
     type TaskItem,
 } from '../../features/warehouse/tasks/api/tasks.api';
 import { useGetDepotsQuery } from '../../features/warehouse/deposito/api/deposito.api';
+import RelocationRecommendationsModal from '../../features/warehouse/deposito/ui/RelocationRecommendationsModal';
 import { useGetItemsQuery } from '../../features/warehouse/materiales/api/items.api';
 import { useGetEmployeesQuery } from '../../features/hr/api/hr.api';
 import { PageHeader, Card, Btn, Modal, Input, Badge, Spinner, useIsMobile } from '../../shared/ui';
@@ -193,6 +194,7 @@ export default function TareasDepositoPage() {
     const [showPedidoModal, setShowPedidoModal] = useState(false);
     const [showControlModal, setShowControlModal] = useState(false);
     const [showExtraModal, setShowExtraModal] = useState(false);
+    const [showRelocationModal, setShowRelocationModal] = useState(false);
     const [showCatalogModal, setShowCatalogModal] = useState(false);
 
     // Modal de Completar Tarea
@@ -647,6 +649,12 @@ export default function TareasDepositoPage() {
                                 style={{ background: '#db2777', color: '#fff', fontWeight: 600, fontSize: '13px' }}
                             >
                                 ⚡ + Extraordinaria
+                            </Btn>
+                            <Btn
+                                onClick={() => setShowRelocationModal(true)}
+                                style={{ background: '#059669', color: '#fff', fontWeight: 600, fontSize: '13px' }}
+                            >
+                                🔄 Reubicaciones
                             </Btn>
                             <Btn
                                 onClick={() => setShowCatalogModal(true)}
@@ -1620,6 +1628,13 @@ export default function TareasDepositoPage() {
                         </div>
                     </div>
                 </Modal>
+            )}
+
+            {showRelocationModal && (
+                <RelocationRecommendationsModal
+                    initialDepotId={selectedDepotId}
+                    onClose={() => setShowRelocationModal(false)}
+                />
             )}
         </div>
     );

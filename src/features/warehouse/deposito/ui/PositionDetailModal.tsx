@@ -9,6 +9,7 @@ import { OccBar, Pill, inputStyle, labelStyle, thStyle, tdStyle, SectionTitle } 
 interface Props {
     view: PositionView;
     itemCategories: string[];
+    items?: any[];
     existingCodes: Set<string>;
     canEdit: boolean;
     onClose: () => void;
@@ -21,16 +22,18 @@ const toNum = (v: string): number | null => {
     return Number.isFinite(n) ? n : null;
 };
 
-export default function PositionDetailModal({ view, itemCategories, existingCodes, canEdit, onClose }: Props) {
+export default function PositionDetailModal({ view, itemCategories, items = [], existingCodes, canEdit, onClose }: Props) {
     const { pos, meta, stats } = view;
     const [updatePosition, { isLoading }] = useUpdatePositionMutation();
     const [error, setError] = useState<string | null>(null);
+    const [itemFilter, setItemFilter] = useState('');
 
     const [form, setForm] = useState({
         codigo: toStr(pos.codigo),
         categoria: toStr(pos.categoria || 'STOCK').toUpperCase(),
         categoriaPrincipal: toStr(pos.categoriaPrincipal),
         categoriaSecundaria: toStr(pos.categoriaSecundaria),
+        idealItemId: toStr(meta.idealItemId),
         altoM: toStr(meta.altoM),
         anchoM: toStr(meta.anchoM),
         profundidadM: toStr(meta.profundidadM),
@@ -39,6 +42,23 @@ export default function PositionDetailModal({ view, itemCategories, existingCode
         notas: toStr(meta.notas),
     });
     const set = (k: keyof typeof form) => (v: string) => setForm(p => ({ ...p, [k]: v }));
+
+    const filteredItems = useMemo(() => {
+        const q = itemFilter.trim().toLowerCase();
+        const arr = Array.isArray(items) ? items : [];
+        const matched = q
+            ? arr.filter((i: any) =>
+                (i.codigoInterno || '').toLowerCase().includes(q) ||
+                (i.descripcion || '').toLowerCase().includes(q) ||
+                (i.category?.nombre || i.categoria || '').toLowerCase().includes(q))
+            : arr;
+        // Asegurar que el item actualmente seleccionado siempre esté visible
+        if (form.idealItemId && !matched.some((i: any) => i.id === form.idealItemId)) {
+            const cur = arr.find((i: any) => i.id === form.idealItemId);
+            if (cur) return [cur, ...matched.slice(0, 149)];
+        }
+        return matched.slice(0, 150);
+    }, [items, itemFilter, form.idealItemId]);
 
     const dimsVolume = useMemo(() => volumeFromDims({
         altoM: toNum(form.altoM), anchoM: toNum(form.anchoM), profundidadM: toNum(form.profundidadM),
@@ -55,6 +75,7 @@ export default function PositionDetailModal({ view, itemCategories, existingCode
             return;
         }
         const m3 = dimsVolume ?? toNum(form.metrosCubicos);
+        const chosenItem = form.idealItemId ? items.find((i: any) => i.id === form.idealItemId) : null;
         try {
             await updatePosition({
                 id: pos.id,
@@ -71,6 +92,9 @@ export default function PositionDetailModal({ view, itemCategories, existingCode
                         profundidadM: toNum(form.profundidadM),
                         maxKg: toNum(form.maxKg),
                         notas: form.notas.trim() || null,
+                        idealItemId: form.idealItemId || null,
+                        idealItemCodigo: chosenItem ? (chosenItem.codigoInterno || null) : (form.idealItemId ? meta.idealItemCodigo || null : null),
+                        idealItemDescripcion: chosenItem ? (chosenItem.descripcion || null) : (form.idealItemId ? meta.idealItemDescripcion || null : null),
                     },
                 } as any,
             }).unwrap();
@@ -120,18 +144,43 @@ export default function PositionDetailModal({ view, itemCategories, existingCode
                             </select>
                         </div>
                         <div>
-                            <label style={labelStyle}>Restricción material (principal)</label>
+                            <label style={labelStyle}>Categoría ideal (principal)</label>
                             <select value={form.categoriaPrincipal} onChange={e => set('categoriaPrincipal')(e.target.value)} disabled={!canEdit} style={inputStyle}>
                                 <option value="">— Libre —</option>
                                 {itemCategories.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label style={labelStyle}>Restricción material (secundaria)</label>
+                            <label style={labelStyle}>Categoría ideal (secundaria)</label>
                             <select value={form.categoriaSecundaria} onChange={e => set('categoriaSecundaria')(e.target.value)} disabled={!canEdit} style={inputStyle}>
                                 <option value="">— Libre —</option>
                                 {itemCategories.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
+                        </div>
+                    </div>
+
+                    {/* Material ideal específico (opcional, tiene prioridad sobre categoría) */}
+                    <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: 'var(--bg-primary, #0f1117)', border: '1px solid var(--border-subtle, #1e2133)' }}>
+                        <label style={labelStyle}>⭐ Material ideal específico (opcional — ej: Lycra Blanca)</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+                            <input
+                                value={itemFilter}
+                                onChange={e => setItemFilter(e.target.value)}
+                                placeholder="Filtrar material…"
+                                disabled={!canEdit}
+                                style={inputStyle}
+                            />
+                            <select value={form.idealItemId} onChange={e => set('idealItemId')(e.target.value)} disabled={!canEdit} style={inputStyle}>
+                                <option value="">— Ninguno (usar categoría) —</option>
+                                {filteredItems.map((it: any) => (
+                                    <option key={it.id} value={it.id}>
+                                        {it.codigoInterno ? `${it.codigoInterno} · ` : ''}{it.descripcion}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-subtle, #6b7280)', marginTop: 6 }}>
+                            Se usa para recomendar reubicaciones automáticas cuando esta posición se vacía o hay stock de este material fuera de lugar.
                         </div>
                     </div>
                 </div>

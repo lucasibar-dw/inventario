@@ -37,6 +37,9 @@ export interface PositionMeta {
     profundidadM?: number | null;
     maxKg?: number | null;
     notas?: string | null;
+    idealItemId?: string | null;
+    idealItemCodigo?: string | null;
+    idealItemDescripcion?: string | null;
     [k: string]: any;
 }
 
@@ -321,3 +324,186 @@ export function downloadCsv(filename: string, rows: Record<string, any>[]) {
     a.click();
     URL.revokeObjectURL(url);
 }
+
+/* ─── Motor de recomendaciones de reubicación ─── */
+
+export type RelocationMatchType = 'EXACT_ITEM' | 'PRIMARY_CAT' | 'SECONDARY_CAT';
+export type RelocationSourceReason = 'inactiva' | 'entrada' | 'conflicto' | 'libre';
+
+export interface RelocationRecommendation {
+    id: string;
+    depotId: string;
+    depotNombre: string;
+    line: StockLine;
+    batchId: string | null;
+    source: PositionView;
+    target: PositionView;
+    matchType: RelocationMatchType;
+    matchLabel: string;
+    sourceReason: RelocationSourceReason;
+    sourceReasonLabel: string;
+    targetWasEmpty: boolean;
+    score: number;
+    alreadyInTasks: boolean;
+}
+
+const SOURCE_REASON_LABEL: Record<RelocationSourceReason, string> = {
+    inactiva: 'Posición origen inactiva',
+    entrada: 'En zona de entrada / tránsito',
+    conflicto: 'Reservada para otro material',
+    libre: 'En posición libre',
+};
+
+const TRANSIT_ZONES = new Set(['ENTRADA', 'INPUT', 'PASILLO', 'DEVOLUCION_LINEA']);
+
+function isLineInIdealPlace(src: PositionView, line: StockLine): boolean {
+    if (!src.pos.activo || src.isSystem) return false;
+    const zona = (src.pos.categoria || '').toUpperCase();
+    if (TRANSIT_ZONES.has(zona)) return false;
+
+    if (src.meta.idealItemId) {
+        return src.meta.idealItemId === line.itemId;
+    }
+    if (line.categoria) {
+        if (src.pos.categoriaPrincipal === line.categoria) return true;
+        if (src.pos.categoriaSecundaria === line.categoria) return true;
+    }
+    return false;
+}
+
+function classifySourceReason(src: PositionView, line: StockLine): RelocationSourceReason {
+    if (!src.pos.activo) return 'inactiva';
+    const zona = (src.pos.categoria || '').toUpperCase();
+    if (src.isSystem || TRANSIT_ZONES.has(zona)) return 'entrada';
+    const hasSpecificIdeal = Boolean(src.meta.idealItemId && src.meta.idealItemId !== line.itemId);
+    const hasCatIdeal = Boolean(
+        (src.pos.categoriaPrincipal || src.pos.categoriaSecundaria) &&
+        line.categoria &&
+        src.pos.categoriaPrincipal !== line.categoria &&
+        src.pos.categoriaSecundaria !== line.categoria,
+    );
+    if (hasSpecificIdeal || hasCatIdeal) return 'conflicto';
+    return 'libre';
+}
+
+export function computeRelocationRecommendations(
+    depot: any,
+    views: PositionView[],
+    pendingTasks: any[] = [],
+): RelocationRecommendation[] {
+    if (!depot || !views || views.length === 0) return [];
+
+    // Posiciones destino candidatas: activas, no sistema, no pasillo/entrada, y con alguna asignación ideal
+    const candidateTargets = views.filter(v => {
+        if (!v.pos.activo || v.isSystem) return false;
+        const zona = (v.pos.categoria || '').toUpperCase();
+        if (TRANSIT_ZONES.has(zona) || zona === 'CUARENTENA') return false;
+        return Boolean(v.meta.idealItemId || v.pos.categoriaPrincipal || v.pos.categoriaSecundaria);
+    });
+    if (candidateTargets.length === 0) return [];
+
+    // Seguimiento virtual de espacio usado al asignar sugerencias
+    const virtualVol = new Map<string, number>();
+    const virtualKg = new Map<string, number>();
+    const virtualEmpty = new Map<string, boolean>();
+    for (const t of candidateTargets) {
+        virtualVol.set(t.pos.id, t.stats.volumenM3);
+        virtualKg.set(t.pos.id, t.stats.kilos);
+        virtualEmpty.set(t.pos.id, t.stats.lineas.length === 0);
+    }
+
+    // Recolectar líneas fuera de lugar y ordenarlas por urgencia
+    const misplaced: { src: PositionView; line: StockLine; reason: RelocationSourceReason; urgency: number }[] = [];
+    for (const src of views) {
+        for (const line of src.stats.lineas) {
+            if (!line.itemId || line.kilos <= 0) continue;
+            if (isLineInIdealPlace(src, line)) continue;
+            const reason = classifySourceReason(src, line);
+            const urgency = reason === 'inactiva' ? 4 : reason === 'entrada' ? 3 : reason === 'conflicto' ? 2 : 1;
+            misplaced.push({ src, line, reason, urgency });
+        }
+    }
+    misplaced.sort((a, b) => b.urgency - a.urgency || b.line.kilos - a.line.kilos);
+
+    const activeTasks = (pendingTasks || []).filter(t => t.status === 'PENDING' || t.status === 'IN_PROGRESS');
+    const recs: RelocationRecommendation[] = [];
+
+    for (const { src, line, reason, urgency } of misplaced) {
+        let best: { target: PositionView; matchType: RelocationMatchType; matchLabel: string; targetWasEmpty: boolean; score: number } | null = null;
+
+        for (const t of candidateTargets) {
+            if (t.pos.id === src.pos.id) continue;
+
+            // Verificar compatibilidad
+            let matchType: RelocationMatchType | null = null;
+            let matchLabel = '';
+            if (t.meta.idealItemId) {
+                if (t.meta.idealItemId === line.itemId) {
+                    matchType = 'EXACT_ITEM';
+                    matchLabel = `Material ideal: ${t.meta.idealItemCodigo || line.codigo}`;
+                }
+            } else if (line.categoria) {
+                if (t.pos.categoriaPrincipal === line.categoria) {
+                    matchType = 'PRIMARY_CAT';
+                    matchLabel = `Cat. principal: ${line.categoria}`;
+                } else if (t.pos.categoriaSecundaria === line.categoria) {
+                    matchType = 'SECONDARY_CAT';
+                    matchLabel = `Cat. secundaria: ${line.categoria}`;
+                }
+            }
+            if (!matchType) continue;
+
+            // Verificar espacio disponible (volumen y peso)
+            const curVol = virtualVol.get(t.pos.id) ?? 0;
+            const curKg = virtualKg.get(t.pos.id) ?? 0;
+            if (t.capacidadM3 > 0 && line.volumenConocido && curVol + line.volumenM3 > t.capacidadM3 * 1.02) continue;
+            if (t.capacidadM3 > 0 && !line.volumenConocido && curVol >= t.capacidadM3) continue;
+            if (t.meta.maxKg && t.meta.maxKg > 0 && curKg + line.kilos > t.meta.maxKg * 1.02) continue;
+
+            const isEmpty = virtualEmpty.get(t.pos.id) ?? false;
+            const matchScore = matchType === 'EXACT_ITEM' ? 300 : matchType === 'PRIMARY_CAT' ? 200 : 100;
+            const emptyBonus = isEmpty ? 60 : 0;
+            const freePct = t.capacidadM3 > 0 ? Math.max(0, 1 - curVol / t.capacidadM3) * 20 : 10;
+            const score = matchScore + emptyBonus + urgency * 15 + freePct;
+
+            if (!best || score > best.score) {
+                best = { target: t, matchType, matchLabel, targetWasEmpty: isEmpty, score };
+            }
+        }
+
+        if (!best) continue;
+
+        // Reservar espacio virtual en el destino elegido
+        virtualVol.set(best.target.pos.id, (virtualVol.get(best.target.pos.id) ?? 0) + (line.volumenConocido ? line.volumenM3 : 0));
+        virtualKg.set(best.target.pos.id, (virtualKg.get(best.target.pos.id) ?? 0) + line.kilos);
+        virtualEmpty.set(best.target.pos.id, false);
+
+        const batchId = line.raw?.lotId || line.raw?.batch?.id || null;
+        const alreadyInTasks = activeTasks.some(
+            t =>
+                t.itemId === line.itemId &&
+                t.sourcePositionId === src.pos.id &&
+                t.targetPositionId === best!.target.pos.id,
+        );
+
+        recs.push({
+            id: `${src.pos.id}->${best.target.pos.id}:${line.itemId}:${batchId || 'nolot'}`,
+            depotId: depot.id,
+            depotNombre: depot.nombre,
+            line,
+            batchId,
+            source: src,
+            target: best.target,
+            matchType: best.matchType,
+            matchLabel: best.matchLabel,
+            sourceReason: reason,
+            sourceReasonLabel: SOURCE_REASON_LABEL[reason],
+            targetWasEmpty: best.targetWasEmpty,
+            score: best.score,
+            alreadyInTasks,
+        });
+    }
+
+    return recs.sort((a, b) => Number(a.alreadyInTasks) - Number(b.alreadyInTasks) || b.score - a.score);
+}
+

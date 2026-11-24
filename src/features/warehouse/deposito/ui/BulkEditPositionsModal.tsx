@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { Modal, Btn, Input } from '../../../../shared/ui';
 import { depotsApi, useUpdatePositionSilentMutation } from '../api/deposito.api';
@@ -8,6 +8,7 @@ import { inputStyle, labelStyle, SectionTitle } from './common';
 interface Props {
     views: PositionView[];
     itemCategories: string[];
+    items?: any[];
     onClose: () => void;
     onDone: () => void;
 }
@@ -19,7 +20,7 @@ const toNum = (v: string): number | null => {
     return Number.isFinite(n) ? n : null;
 };
 
-export default function BulkEditPositionsModal({ views, itemCategories, onClose, onDone }: Props) {
+export default function BulkEditPositionsModal({ views, itemCategories, items = [], onClose, onDone }: Props) {
     const [updatePosition] = useUpdatePositionSilentMutation();
     const dispatch = useDispatch();
 
@@ -27,6 +28,8 @@ export default function BulkEditPositionsModal({ views, itemCategories, onClose,
     const [zona, setZona] = useState(KEEP);
     const [catP, setCatP] = useState(KEEP);
     const [catS, setCatS] = useState(KEEP);
+    const [idealItemId, setIdealItemId] = useState(KEEP);
+    const [itemFilter, setItemFilter] = useState('');
     const [alto, setAlto] = useState('');
     const [ancho, setAncho] = useState('');
     const [prof, setProf] = useState('');
@@ -35,11 +38,19 @@ export default function BulkEditPositionsModal({ views, itemCategories, onClose,
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
     const [errors, setErrors] = useState<string[]>([]);
 
+    const filteredItems = useMemo(() => {
+        const q = itemFilter.trim().toLowerCase();
+        const arr = Array.isArray(items) ? items : [];
+        return (q ? arr.filter((i: any) =>
+            (i.codigoInterno || '').toLowerCase().includes(q) ||
+            (i.descripcion || '').toLowerCase().includes(q)) : arr).slice(0, 150);
+    }, [items, itemFilter]);
+
     const dimsVol = volumeFromDims({ altoM: toNum(alto), anchoM: toNum(ancho), profundidadM: toNum(prof) });
     const withStock = views.filter(v => v.stats.lineas.length > 0 && v.pos.activo);
     const systemCount = views.filter(v => v.isSystem).length;
 
-    const hasChanges = estado !== KEEP || zona !== KEEP || catP !== KEEP || catS !== KEEP ||
+    const hasChanges = estado !== KEEP || zona !== KEEP || catP !== KEEP || catS !== KEEP || idealItemId !== KEEP ||
         dimsVol !== null || toNum(m3) !== null || toNum(maxKg) !== null;
 
     const handleApply = async () => {
@@ -63,6 +74,18 @@ export default function BulkEditPositionsModal({ views, itemCategories, onClose,
                 data.metrosCubicos = toNum(m3);
             }
             if (toNum(maxKg) !== null) metaPatch.maxKg = toNum(maxKg);
+            if (idealItemId !== KEEP) {
+                if (idealItemId === '') {
+                    metaPatch.idealItemId = null;
+                    metaPatch.idealItemCodigo = null;
+                    metaPatch.idealItemDescripcion = null;
+                } else {
+                    const it = items.find((x: any) => x.id === idealItemId);
+                    metaPatch.idealItemId = idealItemId;
+                    metaPatch.idealItemCodigo = it?.codigoInterno || null;
+                    metaPatch.idealItemDescripcion = it?.descripcion || null;
+                }
+            }
             if (Object.keys(metaPatch).length) data.meta = { ...v.meta, ...metaPatch };
             if (Object.keys(data).length === 0) return;
             await updatePosition({ id: v.pos.id, data }).unwrap();
@@ -112,8 +135,23 @@ export default function BulkEditPositionsModal({ views, itemCategories, onClose,
                                 {ZONAS_EDITABLES.map(z => <option key={z.value} value={z.value}>{z.label}</option>)}
                             </select>
                         </div>
-                        <div><label style={labelStyle}>Restricción principal</label>{catSelect(catP, setCatP)}</div>
-                        <div><label style={labelStyle}>Restricción secundaria</label>{catSelect(catS, setCatS)}</div>
+                        <div><label style={labelStyle}>Categoría ideal (principal)</label>{catSelect(catP, setCatP)}</div>
+                        <div><label style={labelStyle}>Categoría ideal (secundaria)</label>{catSelect(catS, setCatS)}</div>
+                    </div>
+                    <div style={{ marginTop: 12 }}>
+                        <label style={labelStyle}>⭐ Material ideal específico</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+                            <input value={itemFilter} onChange={e => setItemFilter(e.target.value)} placeholder="Filtrar material…" style={inputStyle} />
+                            <select value={idealItemId} onChange={e => setIdealItemId(e.target.value)} style={inputStyle}>
+                                <option value={KEEP}>— No cambiar —</option>
+                                <option value="">Quitar material ideal</option>
+                                {filteredItems.map((it: any) => (
+                                    <option key={it.id} value={it.id}>
+                                        {it.codigoInterno ? `${it.codigoInterno} · ` : ''}{it.descripcion}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                 </div>
                 <div>
