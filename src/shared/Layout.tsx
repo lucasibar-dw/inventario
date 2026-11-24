@@ -389,7 +389,7 @@ export default function Layout() {
 
         const sectorRoutes: Record<string, string[]> = {
             DEPOSITO: [
-                '/deposito/dashboard', '/deposito/centro-comando', '/deposito/tareas', '/stock', '/movimientos', '/deposito/picking',
+                '/deposito/dashboard', '/deposito/centro-comando', '/deposito/tareas', '/deposito/programacion', '/stock', '/movimientos', '/deposito/picking',
                 '/deposito/picking-produccion',
                 '/remitos-entrada', '/remitos-salida',
                 '/deposito/capacidad',
@@ -443,9 +443,11 @@ export default function Layout() {
             ],
         };
 
+        // Coincidencia exacta: antes con startsWith, '/deposito' habilitaba TODAS las rutas /deposito/*
+        // (por ejemplo a usuarios de Compras les aparecían ítems de Depósito en el menú).
         return userSectors.some(sec => {
             const routes = sectorRoutes[sec] || [];
-            return routes.some(r => to === r || to.startsWith(r));
+            return routes.includes(to);
         });
     };
 
@@ -472,26 +474,43 @@ export default function Layout() {
         return { ...group, items: filteredItems };
     }).filter((group): group is NonNullable<typeof group> => group !== null);
 
-    const allItems = navGroups.flatMap(g => flattenItems(g.items));
+    // Hay rutas compartidas entre sectores (ej. /items y /socios están en Depósito y en Compras).
+    // Recordamos desde qué grupo hizo click el usuario para expandir ESE grupo y no el último que coincida.
+    const NAV_GROUP_KEY = 'nav-active-group';
+    const rememberGroup = (groupId: string) => {
+        try { sessionStorage.setItem(NAV_GROUP_KEY, groupId); } catch { /* ignore */ }
+    };
+
+    const resolveActiveGroup = (pathname: string) => {
+        const candidates = filteredGroups.filter(g => flattenItems(g.items).some(i => i.to === pathname));
+        if (candidates.length === 0) return null;
+        let preferred: string | null = null;
+        try { preferred = sessionStorage.getItem(NAV_GROUP_KEY); } catch { /* ignore */ }
+        return candidates.find(g => g.id === preferred) || candidates[0];
+    };
+
+    const activeGroup = resolveActiveGroup(location.pathname);
+    const allItems = activeGroup
+        ? [...flattenItems(activeGroup.items), ...navGroups.flatMap(g => flattenItems(g.items))]
+        : navGroups.flatMap(g => flattenItems(g.items));
 
     useEffect(() => {
         let activeGroupId: string | null = null;
         let activeSubGroupId: string | null = null;
 
-        navGroups.forEach(group => {
-            const hasActive = flattenItems(group.items).some(item => location.pathname === item.to);
-            if (hasActive) {
-                activeGroupId = group.id;
-            }
+        const group = resolveActiveGroup(location.pathname);
+        if (group) {
+            activeGroupId = group.id;
+            rememberGroup(group.id);
             group.items.forEach(item => {
                 if ('isSubGroup' in item && item.isSubGroup) {
-                    const hasActiveSub = item.items.some(sub => location.pathname === sub.to);
-                    if (hasActiveSub) {
+                    if (item.items.some(sub => location.pathname === sub.to)) {
                         activeSubGroupId = item.id;
                     }
                 }
             });
-        });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
 
         if (activeGroupId) {
             setExpandedGroups([activeGroupId]);
@@ -665,7 +684,8 @@ export default function Layout() {
                     {filteredGroups.map((group) => {
                         const isExpanded = expandedGroups.includes(group.id);
                         const leafItems = flattenItems(group.items);
-                        const hasActiveChild = leafItems.some(item => location.pathname === item.to);
+                        const isActiveGroup = activeGroup?.id === group.id;
+                        const hasActiveChild = isActiveGroup;
 
                         return (
                             <div key={group.id} style={{ marginBottom: '6px' }}>
@@ -708,9 +728,11 @@ export default function Layout() {
                                                 <NavLink
                                                     key={to}
                                                     to={to}
+                                                    end
                                                     title={label}
+                                                    onClick={() => rememberGroup(group.id)}
                                                     style={({ isActive }) => ({
-                                                        ...navStyle(isActive, isMobile, theme === 'light'),
+                                                        ...navStyle(isActive && isActiveGroup, isMobile, theme === 'light'),
                                                         justifyContent: 'center',
                                                         paddingLeft: 0,
                                                         paddingRight: 0,
@@ -725,7 +747,7 @@ export default function Layout() {
                                                 if ('isSubGroup' in item && item.isSubGroup) {
                                                     const subId = item.id;
                                                     const isSubExpanded = expandedSubGroups.includes(subId);
-                                                    const hasActiveSubChild = item.items.some(sub => location.pathname === sub.to);
+                                                    const hasActiveSubChild = isActiveGroup && item.items.some(sub => location.pathname === sub.to);
 
                                                     return (
                                                         <div key={subId} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -762,8 +784,10 @@ export default function Layout() {
                                                                         <NavLink
                                                                             key={to}
                                                                             to={to}
+                                                                            end
+                                                                            onClick={() => rememberGroup(group.id)}
                                                                             style={({ isActive }) => ({
-                                                                                ...navStyle(isActive, isMobile, theme === 'light'),
+                                                                                ...navStyle(isActive && isActiveGroup, isMobile, theme === 'light'),
                                                                                 paddingLeft: '44px',
                                                                             })}
                                                                         >
@@ -781,8 +805,10 @@ export default function Layout() {
                                                         <NavLink
                                                             key={std.to}
                                                             to={std.to}
+                                                            end
+                                                            onClick={() => rememberGroup(group.id)}
                                                             style={({ isActive }) => ({
-                                                                ...navStyle(isActive, isMobile, theme === 'light'),
+                                                                ...navStyle(isActive && isActiveGroup, isMobile, theme === 'light'),
                                                                 paddingLeft: '28px',
                                                             })}
                                                         >

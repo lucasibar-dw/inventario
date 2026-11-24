@@ -68,6 +68,17 @@ export const depotsApi = api.injectEndpoints({
             query: (id) => ({ url: `positions/${id}`, method: 'DELETE' }),
             invalidatesTags: [{ type: 'Depots', id: 'LIST' }],
         }),
+        /**
+         * Variantes "silenciosas" para operaciones masivas: NO invalidan el cache en cada llamada
+         * (evita refetchear /depots cientos de veces). Después del lote se llama a
+         * depotsApi.util.invalidateTags([{ type: 'Depots', id: 'LIST' }]).
+         */
+        createPositionSilent: builder.mutation<any, { depotId: string; data: any }>({
+            query: ({ depotId, data }) => ({ url: `depots/${depotId}/positions`, method: 'POST', body: data }),
+        }),
+        updatePositionSilent: builder.mutation<any, { id: string; data: any }>({
+            query: ({ id, data }) => ({ url: `positions/${id}`, method: 'PUT', body: data }),
+        }),
         renamePlant: builder.mutation<void, { oldName: string; newName: string }>({
             query: (body) => ({ url: 'depots/plants/rename', method: 'PATCH', body }),
             invalidatesTags: [{ type: 'Depots', id: 'LIST' }],
@@ -90,6 +101,8 @@ export const {
     useCreatePositionMutation,
     useUpdatePositionMutation,
     useDeletePositionMutation,
+    useCreatePositionSilentMutation,
+    useUpdatePositionSilentMutation,
     useRenamePlantMutation,
 } = depotsApi;
 
