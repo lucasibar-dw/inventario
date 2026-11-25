@@ -18,6 +18,7 @@ import { CreateItemDialog } from '../../features/warehouse/materiales/components
 import { CreatePartnerDialog } from '../../features/config/CreatePartnerDialog';
 import { useSelector } from 'react-redux';
 import { selectCurrentUser, selectAllowedDepots, selectUserSector } from '../../entities/auth/model/authSlice';
+import { matchesSearch } from '../../shared/utils/search';
 
 interface DebouncedSearchInputProps {
     value: string;
@@ -127,8 +128,10 @@ export default function StockPage() {
         }
     }, [depots, depotId]);
 
-    const { data: items = [] } = useGetItemsQuery({});
-    const { data: partners = [] } = useGetPartnersQuery({});
+    const { data: rawItems = [] } = useGetItemsQuery({});
+    const items = useMemo(() => rawItems.filter((it: any) => it.activo !== false), [rawItems]);
+    const { data: rawPartners = [] } = useGetPartnersQuery({});
+    const partners = useMemo(() => rawPartners.filter((p: any) => p.activo !== false), [rawPartners]);
     useGetItemCategoriesQuery(depotId || '', { skip: !depotId });
     const [quickAddStock, { isLoading: isQuickAdding }] = useQuickAddStockMutation();
     const [deleteStock] = useDeleteStockMutation();
@@ -141,6 +144,13 @@ export default function StockPage() {
     const [qaLot, setQaLot] = useState('');
     const [qaPrincipal, setQaPrincipal] = useState('');
     const [qaSecundaria, setQaSecundaria] = useState('');
+
+    useEffect(() => {
+        if (quickAddModal && !qaDepot) {
+            if (depotId) setQaDepot(depotId);
+            else if (depots.length === 1) setQaDepot(depots[0].id);
+        }
+    }, [quickAddModal, qaDepot, depotId, depots]);
 
     const [createItemModal, setCreateItemModal] = useState(false);
     const [editItemTarget, setEditItemTarget] = useState<any>(null);
@@ -167,7 +177,6 @@ export default function StockPage() {
     const [despachoSaving, setDespachoSaving] = useState(false);
 
     const clientOptions = useMemo(() => [
-        { value: '', label: 'Seleccionar cliente...' },
         ...(isAdmin ? [{ value: '__new__', label: '+ Nuevo cliente' }] : []),
         ...partners.filter((p: any) => p.type === 'CLIENT' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name }))
     ], [partners, isAdmin]);
@@ -291,10 +300,9 @@ export default function StockPage() {
         return items.filter((i: any) => i.supplierId === qaSupplier);
     }, [items, qaSupplier]);
 
-    const supplierOptions = useMemo(() => [
-        { value: '', label: 'Seleccionar...' },
-        ...partners.filter((p: any) => p.type === 'SUPPLIER' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name }))
-    ], [partners]);
+    const supplierOptions = useMemo(() =>
+        partners.filter((p: any) => p.type === 'SUPPLIER' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name }))
+    , [partners]);
 
     const qaSelectedItem = useMemo(() => items.find((i: any) => i.id === qaItem), [items, qaItem]);
 
@@ -311,13 +319,14 @@ export default function StockPage() {
 
     const handleQuickAddSubmit = async () => {
         if (isQuickAdding) return;
-        if (!qaDepot || !qaPosition || !qaItem || !qaSupplier || !qaLot || !qaPrincipal) {
+        const effectiveQaDepot = qaDepot || (depots.length === 1 ? depots[0].id : '');
+        if (!effectiveQaDepot || !qaPosition || !qaItem || !qaSupplier || !qaLot || !qaPrincipal) {
             alert('Completá todos los campos obligatorios.');
             return;
         }
         try {
             await quickAddStock({
-                depositoId: qaDepot, posicionId: qaPosition, itemId: qaItem, supplierId: qaSupplier,
+                depositoId: effectiveQaDepot, posicionId: qaPosition, itemId: qaItem, supplierId: qaSupplier,
                 lotNumber: qaLot, qtyPrincipal: Number(qaPrincipal), qtySecundaria: qaSecundaria ? Number(qaSecundaria) : undefined,
                 fecha: new Date().toISOString()
             }).unwrap();
@@ -359,20 +368,21 @@ export default function StockPage() {
         const general = { kilos: 0, units: 0, positions: new Set<string>() };
         if (!rawStock.length) return { groupedData: [], generalMetrics: null };
         const groups: Record<string, any> = {};
-        const searchWords = searchTerm.toLowerCase().split(' ').filter(w => w.length > 0);
-        
-        const filteredStock = rawStock.filter((entry: any) => {
-            if (searchWords.length === 0) return true;
-            return searchWords.every(word => {
-                const itemDesc = (entry.batch?.item?.descripcion || '').toLowerCase();
-                const itemCode = (entry.batch?.item?.codigoInterno || '').toLowerCase();
-                const lotNum = (entry.batch?.lotNumber || '').toLowerCase();
-                const supplierName = (entry.batch?.supplier?.name || '').toLowerCase();
-                const posCode = (entry.posicion?.codigo || '').toLowerCase();
-                const categoryName = (entry.batch?.item?.category?.nombre || '').toLowerCase();
-                return itemDesc.includes(word) || itemCode.includes(word) || lotNum.includes(word) || supplierName.includes(word) || posCode.includes(word) || categoryName.includes(word);
-            });
-        });
+
+        const filteredStock = rawStock.filter((entry: any) =>
+            matchesSearch(
+                searchTerm,
+                entry.batch?.item?.descripcion,
+                entry.batch?.item?.codigoInterno,
+                entry.batch?.lotNumber,
+                entry.batch?.supplier?.name,
+                entry.batch?.item?.supplier?.name,
+                entry.posicion?.codigo,
+                entry.batch?.item?.category?.nombre,
+                entry.batch?.item?.categoria,
+                entry.batch?.observaciones
+            )
+        );
 
         filteredStock.forEach((entry: any) => {
             const itemId = entry.batch?.item?.id;
@@ -750,7 +760,7 @@ export default function StockPage() {
                                 label="Posición" 
                                 value={qaPosition} 
                                 onChange={(val: string) => setQaPosition(val)} 
-                                options={[{ value: '', label: 'Seleccionar...' }, ...(depots.find((d: any) => d.id === (qaDepot || (depots.length === 1 ? depots[0].id : '')))?.positions?.map((p: any) => ({ value: p.id, label: p.codigo })) || [])]} 
+                                options={(depots.find((d: any) => d.id === (qaDepot || (depots.length === 1 ? depots[0].id : '')))?.positions || []).filter((p: any) => p.activo !== false).map((p: any) => ({ value: p.id, label: p.codigo }))} 
                                 placeholder="Buscar posición..."
                                 style={{ flex: 1 }} 
                              />
@@ -760,7 +770,7 @@ export default function StockPage() {
                             <Btn small variant="secondary" onClick={() => setCreatePartnerModal(true)}>+</Btn>
                         </div>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                            <SearchSelect label="Material" value={qaItem} onChange={setQaItem} options={[{ value: '', label: 'Seleccionar...' }, ...qaFilteredItems.map((i: any) => ({ value: i.id, label: `${i.category?.nombre ? `${i.category.nombre} - ` : ''}${i.codigoInterno} - ${i.descripcion}` }))]} placeholder="Buscar material..." style={{ flex: 1 }} />
+                            <SearchSelect label="Material" value={qaItem} onChange={setQaItem} options={qaFilteredItems.map((i: any) => ({ value: i.id, label: `${i.category?.nombre ? `${i.category.nombre} - ` : ''}${i.codigoInterno} - ${i.descripcion}` }))} placeholder="Buscar material..." style={{ flex: 1 }} />
                             <Btn small variant="secondary" onClick={() => setCreateItemModal(true)}>+</Btn>
                         </div>
                         <Input label="Lote" value={qaLot} onChange={setQaLot} />

@@ -213,7 +213,7 @@ export function SearchSelect({ label, value, onChange, options, style, disabled,
     const internalInputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
 
-    const selectedLabel = options.find(o => o.value === value)?.label || '';
+    const selectedLabel = value ? (options.find(o => o.value === value)?.label || '') : '';
 
     const updatePosition = () => {
         if (!ref.current) return;
@@ -271,7 +271,8 @@ export function SearchSelect({ label, value, onChange, options, style, disabled,
 
     const filtered = options.filter(o => {
         if (searchTokens.length === 0) return true;
-        if (o.value === '__CREATE__') return true;
+        if (o.value === '') return false;
+        if (o.value === '__CREATE__' || o.value === '__new__') return true;
         const target = normalizeSearch(`${o.label} ${o.searchText || ''}`);
         return searchTokens.every(token => target.includes(token));
     });
@@ -343,6 +344,14 @@ export function SearchSelect({ label, value, onChange, options, style, disabled,
         } else if (e.key === 'Escape') {
             e.preventDefault();
             setOpen(false);
+            setSearch('');
+        } else if (e.key === 'Tab') {
+            if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
+                handleSelect(filtered[highlightedIndex].value);
+            } else {
+                setOpen(false);
+                setSearch('');
+            }
         }
     };
 
@@ -366,7 +375,19 @@ export function SearchSelect({ label, value, onChange, options, style, disabled,
                     }}
                     value={open ? search : selectedLabel}
                     onChange={e => { setSearch(e.target.value); if (!open) setOpen(true); }}
-                    onFocus={() => { setOpen(true); }}
+                    onFocus={() => { if (!disabled) setOpen(true); }}
+                    onBlur={(e) => {
+                        const next = e.relatedTarget as Node | null;
+                        if (
+                            next &&
+                            ((ref.current && ref.current.contains(next)) ||
+                                (listRef.current && listRef.current.contains(next)))
+                        ) {
+                            return;
+                        }
+                        setOpen(false);
+                        setSearch('');
+                    }}
                     onKeyDown={handleKeyDown}
                     placeholder={value ? selectedLabel : (placeholder || 'Buscar...')}
                     disabled={disabled}
@@ -376,7 +397,7 @@ export function SearchSelect({ label, value, onChange, options, style, disabled,
                         cursor: disabled ? 'not-allowed' : 'text',
                     }}
                 />
-                {value && !open && (
+                {value && !open && !disabled && (
                     <button type="button" onClick={handleClear} style={{
                         background: 'none', border: 'none', color: 'var(--text-subtle, #6b7280)', cursor: 'pointer',
                         padding: '0 8px', fontSize: '14px', lineHeight: 1, display: 'flex', alignItems: 'center'

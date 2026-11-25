@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { useGetItemsQuery, useDeleteItemMutation } from '../../features/warehouse/materiales/api/items.api';
 import { PageHeader, Card, Btn, Table, Badge, SearchBar, Spinner, Modal } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import { useGetCategoriesCostSummaryQuery, useBulkAssignCostsMutation } from '../../features/finance/api/finance.api';
 import { CreateItemDialog } from '../../features/warehouse/materiales/components/CreateItemDialog';
 
@@ -45,18 +46,20 @@ export default function MaterialesPage() {
     const [categoryPrices, setCategoryPrices] = useState<Record<string, string>>({});
 
     const filteredItems = useMemo(() => {
-        if (!q) return items;
-        const words = q.toLowerCase().split(' ').filter((w) => w.length > 0);
-        return items.filter((it: any) => {
-            return words.every((word) =>
-                it.descripcion.toLowerCase().includes(word) ||
-                it.codigoInterno.toLowerCase().includes(word) ||
-                (it.supplier?.name || '').toLowerCase().includes(word) ||
-                (it.category?.nombre || '').toLowerCase().includes(word) ||
-                (it.tono || '').toLowerCase().includes(word) ||
-                (it.depot?.nombre || '').toLowerCase().includes(word)
-            );
-        });
+        if (!q.trim()) return items;
+        return items.filter((it: any) =>
+            matchesSearch(
+                q,
+                it.descripcion,
+                it.codigoInterno,
+                it.supplier?.name,
+                it.category?.nombre,
+                it.categoria,
+                it.tono,
+                it.depot?.nombre,
+                it.category?.depot?.nombre,
+            )
+        );
     }, [items, q]);
 
     const [isCreateOpen, setIsCreateOpen] = useState(false);

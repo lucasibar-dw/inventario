@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
     Alert,
+    Autocomplete,
     Box,
     Button,
     Checkbox,
@@ -13,7 +14,6 @@ import {
     FormControlLabel,
     IconButton,
     LinearProgress,
-    MenuItem,
     Paper,
     Stack,
     TablePagination,
@@ -38,6 +38,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import CancelOutlinedIcon from '@mui/icons-material/CancelOutlined';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { PageHeader, PageLoader, useIsMobile } from '../../shared/ui';
+import { createSmartFilterOptions } from '../../shared/utils/search';
 import {
     type BatchInspectionStatus,
     type BatchQualityCheckItem,
@@ -136,6 +137,19 @@ export default function ChequeoLocalizadoPage() {
         categoryId: categoryId || undefined,
         supplierId: supplierId || undefined,
     });
+
+    const categoryFilterOptions = useMemo(
+        () => createSmartFilterOptions<any>((cat) => [cat?.nombre, cat?.depositoNombre]),
+        [],
+    );
+    const supplierFilterOptions = useMemo(
+        () => createSmartFilterOptions<any>((sup) => [sup?.name]),
+        [],
+    );
+    const itemFilterOptions = useMemo(
+        () => createSmartFilterOptions<any>((it) => [it?.codigoInterno, it?.descripcion]),
+        [],
+    );
 
     const selectedCategoryObj = useMemo(
         () => filtersQuery.data?.categories.find((c) => c.id === categoryId) ?? null,
@@ -368,19 +382,22 @@ export default function ChequeoLocalizadoPage() {
                         gap: 1.5,
                     }}
                 >
-                    <TextField
-                        select
+                    <Autocomplete
                         size="small"
-                        label="Categoría de material"
-                        value={categoryId}
-                        onChange={(e) => handleCategoryChange(e.target.value)}
+                        options={filtersQuery.data?.categories ?? []}
+                        value={selectedCategoryObj}
+                        onChange={(_, val) => handleCategoryChange(val?.id ?? '')}
+                        getOptionLabel={(cat) => cat.nombre || ''}
+                        isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                        filterOptions={categoryFilterOptions}
                         disabled={filtersQuery.isLoading}
-                    >
-                        <MenuItem value="">
-                            <em>Seleccioná una categoría...</em>
-                        </MenuItem>
-                        {(filtersQuery.data?.categories ?? []).map((cat) => (
-                            <MenuItem key={cat.id} value={cat.id}>
+                        autoHighlight
+                        openOnFocus
+                        selectOnFocus
+                        handleHomeEndKeys
+                        noOptionsText="Sin categorías disponibles"
+                        renderOption={(props, cat) => (
+                            <li {...props} key={cat.id}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%' }} spacing={1}>
                                     <Box sx={{ minWidth: 0 }}>
                                         <Typography variant="body2" fontWeight={700} noWrap>
@@ -399,51 +416,82 @@ export default function ChequeoLocalizadoPage() {
                                         variant="outlined"
                                     />
                                 </Stack>
-                            </MenuItem>
-                        ))}
-                    </TextField>
+                            </li>
+                        )}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Categoría de material"
+                                placeholder="Buscar o seleccionar categoría..."
+                            />
+                        )}
+                    />
 
-                    <TextField
-                        select
+                    <Autocomplete
                         size="small"
-                        label="Proveedor"
-                        value={supplierId}
-                        onChange={(e) => handleSupplierChange(e.target.value)}
+                        options={filtersQuery.data?.suppliers ?? []}
+                        value={(filtersQuery.data?.suppliers ?? []).find((s) => s.id === supplierId) ?? null}
+                        onChange={(_, val) => handleSupplierChange(val?.id ?? '')}
+                        getOptionLabel={(sup) => sup.name || ''}
+                        isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                        filterOptions={supplierFilterOptions}
                         disabled={!categoryId || filtersQuery.isFetching}
-                    >
-                        <MenuItem value="">Todos los proveedores</MenuItem>
-                        {(filtersQuery.data?.suppliers ?? []).map((sup) => (
-                            <MenuItem key={sup.id} value={sup.id}>
+                        autoHighlight
+                        openOnFocus
+                        selectOnFocus
+                        handleHomeEndKeys
+                        noOptionsText="Sin proveedores disponibles"
+                        renderOption={(props, sup) => (
+                            <li {...props} key={sup.id}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%' }} spacing={1}>
                                     <Typography variant="body2" noWrap>
                                         {sup.name}
                                     </Typography>
                                     <Chip size="small" label={`${sup.lotsCount} part.`} variant="outlined" />
                                 </Stack>
-                            </MenuItem>
-                        ))}
-                    </TextField>
+                            </li>
+                        )}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Proveedor"
+                                placeholder="Todos los proveedores"
+                            />
+                        )}
+                    />
 
-                    <TextField
-                        select
+                    <Autocomplete
                         size="small"
-                        label="Ítem / Material"
-                        value={itemId}
-                        onChange={(e) => handleItemChange(e.target.value)}
+                        options={filtersQuery.data?.items ?? []}
+                        value={(filtersQuery.data?.items ?? []).find((it) => it.id === itemId) ?? null}
+                        onChange={(_, val) => handleItemChange(val?.id ?? '')}
+                        getOptionLabel={(it) => `${it.codigoInterno} · ${it.descripcion}`}
+                        isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                        filterOptions={itemFilterOptions}
                         disabled={!categoryId || filtersQuery.isFetching}
-                    >
-                        <MenuItem value="">Todos los ítems</MenuItem>
-                        {(filtersQuery.data?.items ?? []).map((it) => (
-                            <MenuItem key={it.id} value={it.id}>
+                        autoHighlight
+                        openOnFocus
+                        selectOnFocus
+                        handleHomeEndKeys
+                        noOptionsText="Sin ítems disponibles"
+                        renderOption={(props, it) => (
+                            <li {...props} key={it.id}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ width: '100%' }} spacing={1}>
                                     <Typography variant="body2" noWrap>
                                         {it.codigoInterno} · {it.descripcion}
                                     </Typography>
                                     <Chip size="small" label={`${it.lotsCount}`} variant="outlined" />
                                 </Stack>
-                            </MenuItem>
-                        ))}
-                    </TextField>
+                            </li>
+                        )}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                label="Ítem / Material"
+                                placeholder="Todos los ítems"
+                            />
+                        )}
+                    />
                 </Box>
             </Paper>
 

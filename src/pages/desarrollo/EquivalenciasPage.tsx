@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     useGetEquivalenciasMaestroQuery,
     useGetArticuloEquivalenciasQuery,
@@ -27,6 +27,27 @@ export function EquivalenciasPage() {
     const [selectedItemToAdd, setSelectedItemToAdd] = useState<any | null>(null);
     const [factorConversion, setFactorConversion] = useState(1.0);
     const [observacionesInput, setObservacionesInput] = useState('');
+    const [itemDropdownOpen, setItemDropdownOpen] = useState(false);
+    const itemSearchContainerRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (itemSearchContainerRef.current && !itemSearchContainerRef.current.contains(e.target as Node)) {
+                setItemDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleSelectArticulo = (art: ArticuloMaestroEquivalencia) => {
+        setSelectedArticulo(art);
+        setItemSearchTerm('');
+        setSelectedItemToAdd(null);
+        setFactorConversion(1.0);
+        setObservacionesInput('');
+        setItemDropdownOpen(false);
+    };
 
     // Consultas RTK
     const { data: maestroData, isLoading: loadingMaestro } = useGetEquivalenciasMaestroQuery({
@@ -193,7 +214,7 @@ export function EquivalenciasPage() {
                                 return (
                                     <div
                                         key={art.id}
-                                        onClick={() => setSelectedArticulo(art)}
+                                        onClick={() => handleSelectArticulo(art)}
                                         style={{
                                             padding: '10px 12px',
                                             borderRadius: '8px',
@@ -477,18 +498,27 @@ export function EquivalenciasPage() {
                                     Busca en el catálogo del depósito de hilados/insumos por código interno o descripción (ej: A16/1RO, N70/24/2, goma, bold gold...).
                                 </p>
 
-                                <div style={{ position: 'relative', marginBottom: '12px' }}>
+                                <div ref={itemSearchContainerRef} style={{ position: 'relative', marginBottom: '12px' }}>
                                     <Input
                                         placeholder="Escribe al menos 2 letras para buscar en el depósito..."
                                         value={itemSearchTerm}
                                         onChange={(val) => {
                                             setItemSearchTerm(val);
-                                            if (!val) setSelectedItemToAdd(null);
+                                            const selectedLabel = selectedItemToAdd
+                                                ? `${selectedItemToAdd.codigoInterno} - ${selectedItemToAdd.descripcion}`
+                                                : '';
+                                            if (selectedItemToAdd && val !== selectedLabel) {
+                                                setSelectedItemToAdd(null);
+                                            }
+                                            setItemDropdownOpen(val.trim().length >= 2);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Escape') setItemDropdownOpen(false);
                                         }}
                                     />
 
                                     {/* Dropdown de resultados */}
-                                    {itemSearchTerm.trim().length >= 2 && itemsCandidatos && itemsCandidatos.length > 0 && !selectedItemToAdd && (
+                                    {itemDropdownOpen && itemSearchTerm.trim().length >= 2 && itemsCandidatos && itemsCandidatos.length > 0 && !selectedItemToAdd && (
                                         <div style={{
                                             position: 'absolute',
                                             top: '100%',
@@ -509,6 +539,7 @@ export function EquivalenciasPage() {
                                                     onClick={() => {
                                                         setSelectedItemToAdd(cand);
                                                         setItemSearchTerm(`${cand.codigoInterno} - ${cand.descripcion}`);
+                                                        setItemDropdownOpen(false);
                                                     }}
                                                     style={{
                                                         padding: '8px 12px',

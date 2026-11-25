@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Btn, Spinner, useIsMobile } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import {
     useGetUltimaPlanillaProduccionQuery,
     useListarPlanillasProduccionQuery,
@@ -134,12 +135,20 @@ export default function PickingHiladoPage() {
             }
 
             if (searchQuery.trim()) {
-                const term = searchQuery.toLowerCase();
-                const matchCod = (it.codigoMaterial || '').toLowerCase().includes(term);
-                const matchDesc = (it.descripcionMaterial || '').toLowerCase().includes(term);
-                const matchTono = (it.tono || it.colorNombre || '').toLowerCase().includes(term);
-                const matchArt = (it.articulos || []).some((a: string) => a.toLowerCase().includes(term));
-                if (!matchCod && !matchDesc && !matchTono && !matchArt) return false;
+                if (!matchesSearch(
+                    searchQuery,
+                    it.codigoMaterial,
+                    it.codigoInterno,
+                    it.descripcionMaterial,
+                    it.descripcion,
+                    it.proveedor,
+                    it.categoriaNombre,
+                    it.tono,
+                    it.colorNombre,
+                    ...(Array.isArray(it.articulos) ? it.articulos : []),
+                    ...(Array.isArray(it.posicionesPickingSugeridas) ? it.posicionesPickingSugeridas : []),
+                    ...(Array.isArray(it.posicionesStockReserva) ? it.posicionesStockReserva : []),
+                )) return false;
             }
 
             return true;

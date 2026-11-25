@@ -5,6 +5,7 @@ import {
     useGetMachineTypesQuery
 } from '../../entities/maintenance/api/maintenance.api';
 import { PageHeader, Card, Select, Spinner, Input } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import './DisponibilidadMaquinaV2Page.css';
 
 const getStatusColor = (status: string) => {
@@ -65,14 +66,9 @@ export default function DisponibilidadMaquinaV2Page() {
         let list = [...data.machines];
 
         if (searchFilter.trim()) {
-            const q = searchFilter.toLowerCase().trim();
-            const isNumeric = /^\d+$/.test(q);
-            list = list.filter((m: any) => {
-                if (isNumeric) {
-                    return m.number === parseInt(q, 10);
-                }
-                return m.nombre.toLowerCase().includes(q);
-            });
+            list = list.filter((m: any) =>
+                matchesSearch(searchFilter, m.number, `maquina ${m.number}`, m.nombre, m.codigoInterno, m.currentStatus)
+            );
         }
 
         // Sort: Machines with non-pure-active time (Reducida, Parada, Cambio) at top,

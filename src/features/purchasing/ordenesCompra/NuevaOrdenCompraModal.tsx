@@ -23,6 +23,7 @@ import { useGetPartnersQuery } from '../../config/partners/api/partners.api';
 import { useGetItemsQuery } from '../../warehouse/materiales/api/items.api';
 import { CreateItemDialog } from '../../warehouse/materiales/components/CreateItemDialog';
 import { CreatePartnerDialog } from '../../config/CreatePartnerDialog';
+import { createSmartFilterOptions, getItemSearchFields } from '../../../shared/utils/search';
 
 const colors = {
     primary: '#f59e0b',
@@ -71,13 +72,25 @@ export default function NuevaOrdenCompraModal({
     const { data: fetchedItems = [] } = useGetItemsQuery({});
 
     const suppliers = useMemo(() => {
-        if (fetchedSuppliers.length > 0) return fetchedSuppliers;
-        return (partnersProp || []).filter((p: any) => !p.type || p.type === 'SUPPLIER');
+        const base = fetchedSuppliers.length > 0
+            ? fetchedSuppliers
+            : (partnersProp || []).filter((p: any) => !p.type || p.type === 'SUPPLIER');
+        return base.filter((s: any) => s.activo !== false);
     }, [fetchedSuppliers, partnersProp]);
 
     const items = useMemo(() => {
-        return fetchedItems.length > 0 ? fetchedItems : (itemsProp || []);
+        const base = fetchedItems.length > 0 ? fetchedItems : (itemsProp || []);
+        return base.filter((it: any) => it.activo !== false);
     }, [fetchedItems, itemsProp]);
+
+    const supplierFilterOptions = useMemo(
+        () => createSmartFilterOptions<any>((s) => [s?.name, s?.taxId]),
+        []
+    );
+    const itemFilterOptions = useMemo(
+        () => createSmartFilterOptions<any>(getItemSearchFields),
+        []
+    );
 
     const today = useMemo(() => new Date().toISOString().split('T')[0], []);
     const defaultArrival = useMemo(() => new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0], []);
@@ -158,6 +171,26 @@ export default function NuevaOrdenCompraModal({
         }, 150);
         return () => clearTimeout(timer);
     }, [open]);
+
+    const handleSupplierChange = (nextSupplierId: string) => {
+        setSupplierId(nextSupplierId);
+        if (!nextSupplierId) return;
+        setLines(prev => prev.map(l => {
+            if (!l.itemId) return l;
+            const it = items.find((i: any) => i.id === l.itemId);
+            if (!it || it.supplierId !== nextSupplierId) {
+                return {
+                    ...l,
+                    itemId: '',
+                    itemCode: '',
+                    itemDesc: '',
+                    categoriaId: '',
+                    categoriaNombre: ''
+                };
+            }
+            return l;
+        }));
+    };
 
     const handleGlobalArrivalChange = (newDate: string) => {
         const prevGlobal = fechaArriboGlobal;
@@ -341,8 +374,15 @@ export default function NuevaOrdenCompraModal({
                             <Autocomplete
                                 options={suppliers}
                                 getOptionLabel={(option: any) => option.name || ''}
+                                isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                                filterOptions={supplierFilterOptions}
                                 value={suppliers.find((s: any) => s.id === supplierId) || null}
-                                onChange={(_e, val: any) => setSupplierId(val?.id || '')}
+                                onChange={(_e, val: any) => handleSupplierChange(val?.id || '')}
+                                autoHighlight
+                                autoSelect
+                                openOnFocus
+                                selectOnFocus
+                                handleHomeEndKeys
                                 fullWidth
                                 size="small"
                                 renderInput={(params) => (
@@ -457,7 +497,7 @@ export default function NuevaOrdenCompraModal({
 
                     <Box ref={linesContainerRef} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: '380px', overflowY: 'auto', pr: 0.5, scrollBehavior: 'smooth' }}>
                         {lines.map((line, idx) => {
-                            const selectedItem = items.find((it: any) => it.id === line.itemId) || null;
+                            const selectedItem = availableItems.find((it: any) => it.id === line.itemId) || null;
                             const uPrinc = selectedItem?.unidadPrincipal || 'kg';
                             const labelPrinc = uPrinc.toLowerCase() === 'kg'
                                 ? 'Kg Pedidos *'
@@ -480,6 +520,8 @@ export default function NuevaOrdenCompraModal({
                                             options={availableItems}
                                             noOptionsText={supplierId ? 'No hay materiales asignados a este proveedor' : 'Seleccioná un proveedor primero'}
                                             getOptionLabel={(option: any) => `${option.codigoInterno} — ${option.descripcion}`}
+                                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                                            filterOptions={itemFilterOptions}
                                             value={selectedItem}
                                             onChange={(_e, val: any) => {
                                                 handleItemChange(idx, val);
@@ -489,8 +531,10 @@ export default function NuevaOrdenCompraModal({
                                             }}
                                             size="small"
                                             autoHighlight
+                                            autoSelect
                                             openOnFocus
-                                            clearOnBlur={false}
+                                            selectOnFocus
+                                            handleHomeEndKeys
                                             sx={{ flex: '3 1 300px' }}
                                             renderInput={(params) => (
                                                 <TextField
@@ -506,8 +550,6 @@ export default function NuevaOrdenCompraModal({
                                                                 params.inputProps.onKeyDown(e);
                                                             }
                                                             if (e.key === 'Enter') {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
                                                                 setTimeout(() => focusCell(idx, 'cantidadKg'), 100);
                                                             }
                                                         }
@@ -638,7 +680,7 @@ export default function NuevaOrdenCompraModal({
                     onClose={() => setIsCreatePartnerOpen(false)}
                     defaultType="SUPPLIER"
                     onSuccess={(newPartner: any) => {
-                        setSupplierId(newPartner.id);
+                        handleSupplierChange(newPartner.id);
                         setIsCreatePartnerOpen(false);
                     }}
                 />

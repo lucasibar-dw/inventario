@@ -1,5 +1,6 @@
 import { useMemo, useState, useDeferredValue } from 'react';
 import { Btn } from '../../../../shared/ui';
+import { matchesSearch } from '../../../../shared/utils/search';
 import { type PositionView, STATUS_INFO, type OccupancyStatus, ZONAS, zonaLabel, zonaColor, fmt, downloadCsv } from '../lib/depotMetrics';
 import { OccBar, Pill, inputStyle, labelStyle, thStyle, tdStyle } from './common';
 
@@ -34,12 +35,31 @@ export default function PositionsTab({ depot, views, itemCategories, canEdit, on
     }, [views]);
 
     const filtered = useMemo(() => {
-        const q = dSearch.trim().toLowerCase();
         const list = views.filter(v => {
-            if (q && !(v.pos.codigo || '').toLowerCase().includes(q) &&
-                !(v.meta.idealItemCodigo || '').toLowerCase().includes(q) &&
-                !(v.meta.idealItemDescripcion || '').toLowerCase().includes(q) &&
-                !v.stats.lineas.some(l => l.codigo.toLowerCase().includes(q) || l.descripcion.toLowerCase().includes(q))) return false;
+            if (dSearch.trim()) {
+                const lineFields = v.stats.lineas.flatMap(l => [
+                    l.codigo,
+                    l.descripcion,
+                    l.lote,
+                    l.categoria,
+                    l.raw?.batch?.item?.supplier?.name,
+                    l.raw?.supplier?.name,
+                    l.raw?.proveedor,
+                ]);
+                if (!matchesSearch(
+                    dSearch,
+                    v.pos.codigo,
+                    v.pos.categoria,
+                    zonaLabel(v.pos.categoria),
+                    v.pos.pasillo,
+                    v.pos.categoriaPrincipal,
+                    v.pos.categoriaSecundaria,
+                    v.meta.notas,
+                    v.meta.idealItemCodigo,
+                    v.meta.idealItemDescripcion,
+                    ...lineFields,
+                )) return false;
+            }
             if (zona && (v.pos.categoria || '').toUpperCase() !== zona) return false;
             if (cat && v.pos.categoriaPrincipal !== cat && v.pos.categoriaSecundaria !== cat) return false;
             if (status && v.status !== status) return false;

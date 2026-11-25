@@ -348,21 +348,21 @@ export const VentasDashboardPage: React.FC = () => {
                 </Button>
             </Stack>
 
-            {/* Filtros de Pedidos */}
-            {activeTab !== 'HISTORIAL' && (
-                <Paper sx={{ p: 2.5, mb: 3, bgcolor: 'var(--bg-alt-row, rgba(255,255,255,0.02))', borderRadius: '16px' }}>
-                    <Grid container spacing={2} alignItems="center">
-                        <Grid size={{ xs: 12, md: 4 }}>
-                            <TextField
-                                fullWidth
-                                size="small"
-                                placeholder="Buscar por P.O., Artículo, Cliente..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                sx={{ bgcolor: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}
-                            />
-                        </Grid>
+            {/* Filtros de Pedidos / Historial */}
+            <Paper sx={{ p: 2.5, mb: 3, bgcolor: 'var(--bg-alt-row, rgba(255,255,255,0.02))', borderRadius: '16px' }}>
+                <Grid container spacing={2} alignItems="center">
+                    <Grid size={{ xs: 12, md: activeTab === 'HISTORIAL' ? 6 : 4 }}>
+                        <TextField
+                            fullWidth
+                            size="small"
+                            placeholder={activeTab === 'HISTORIAL' ? 'Buscar por P.O., Artículo, Remito...' : 'Buscar por P.O., Artículo, Cliente...'}
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}
+                        />
+                    </Grid>
 
+                    {activeTab !== 'HISTORIAL' && (
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Stack spacing={1}>
                                 <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
@@ -405,9 +405,9 @@ export const VentasDashboardPage: React.FC = () => {
                                 </Stack>
                             </Stack>
                         </Grid>
-                    </Grid>
-                </Paper>
-            )}
+                    )}
+                </Grid>
+            </Paper>
 
             {/* VISTA 1: TABLA PRINCIPAL DE PEDIDOS EN CURSO */}
             {activeTab !== 'HISTORIAL' && (

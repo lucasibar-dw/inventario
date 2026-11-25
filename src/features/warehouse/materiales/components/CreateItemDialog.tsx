@@ -9,6 +9,7 @@ import { useGetBoxTypesQuery } from '../api/box-types.api';
 import { useGetPartnersQuery } from '../../../config/partners/api/partners.api';
 import { useGetDepotsQuery } from '../../deposito/api/deposito.api';
 import { Autocomplete } from '@mui/material';
+import { createSmartFilterOptions, getItemSearchFields } from '../../../../shared/utils/search';
 
 const ROTACIONES = [
     { value: 'ALTA', label: '🔴 Alta' },
@@ -56,7 +57,8 @@ export const CreateItemDialog = ({ open, onClose, onSuccess, initialSupplierId, 
     const { data: categories = [], isLoading: isLoadingCats } = useGetItemCategoriesQuery(form.depositoId || '', { skip: !form.depositoId });
     const [createCategory] = useCreateItemCategoryMutation();
     const { data: boxTypes = [] } = useGetBoxTypesQuery();
-    const { data: partners = [], isLoading: isLoadingPartners } = useGetPartnersQuery({ type: 'SUPPLIER' });
+    const { data: rawPartners = [], isLoading: isLoadingPartners } = useGetPartnersQuery({ type: 'SUPPLIER' });
+    const partners = useMemo(() => rawPartners.filter((p: any) => p.activo !== false), [rawPartners]);
 
     useEffect(() => {
         if (open) {
@@ -105,7 +107,8 @@ export const CreateItemDialog = ({ open, onClose, onSuccess, initialSupplierId, 
         }
     }, [open, initialSupplierId, initialSupplierName, editTarget, depositoId, depots]);
 
-    const { data: allItems = [] } = useGetItemsQuery({});
+    const { data: rawAllItems = [] } = useGetItemsQuery({});
+    const allItems = useMemo(() => rawAllItems.filter((it: any) => it.activo !== false), [rawAllItems]);
     const [error, setError] = useState('');
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
@@ -135,7 +138,7 @@ export const CreateItemDialog = ({ open, onClose, onSuccess, initialSupplierId, 
         if (!form.codigoInterno.trim()) {
             errors.codigoInterno = 'Falta llenar el código interno';
         } else {
-            const isDuplicate = allItems.some((item: any) => 
+            const isDuplicate = rawAllItems.some((item: any) => 
                 item.codigoInterno.trim().toLowerCase() === form.codigoInterno.trim().toLowerCase() &&
                 (!editTarget || item.id !== editTarget.id)
             );
@@ -225,13 +228,21 @@ export const CreateItemDialog = ({ open, onClose, onSuccess, initialSupplierId, 
                         <Autocomplete
                             options={allItems}
                             getOptionLabel={(option: any) => `${option.codigoInterno} - ${option.descripcion}`}
+                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                            filterOptions={createSmartFilterOptions(getItemSearchFields)}
+                            autoHighlight
+                            openOnFocus
+                            selectOnFocus
+                            handleHomeEndKeys
                             onChange={(_, newValue) => {
                                 if (newValue) {
+                                    const targetDepotId = depositoId || newValue.category?.depositoId || '';
+                                    const sameDepot = !depositoId || newValue.category?.depositoId === depositoId;
                                     setForm({
                                         codigoInterno: newValue.codigoInterno || '',
                                         descripcion: newValue.descripcion || '',
-                                        categoryId: newValue.categoryId || '',
-                                        depositoId: newValue.category?.depositoId || '',
+                                        categoryId: sameDepot ? (newValue.categoryId || '') : '',
+                                        depositoId: targetDepotId,
                                         rotacion: newValue.rotacion || 'MEDIA',
                                         stockMinimo: newValue.stockMinimo != null ? String(newValue.stockMinimo) : '',
                                         stockMaximo: newValue.stockMaximo != null ? String(newValue.stockMaximo) : '',
@@ -328,6 +339,12 @@ export const CreateItemDialog = ({ open, onClose, onSuccess, initialSupplierId, 
                             id="category-autocomplete"
                             options={categories}
                             getOptionLabel={(option) => option.nombre || ''}
+                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                            filterOptions={createSmartFilterOptions((c: any) => [c.nombre])}
+                            autoHighlight
+                            openOnFocus
+                            selectOnFocus
+                            handleHomeEndKeys
                             renderOption={(props, option) => (
                                 <li {...props} key={option.id}>
                                     {option.nombre}
@@ -388,7 +405,12 @@ export const CreateItemDialog = ({ open, onClose, onSuccess, initialSupplierId, 
                         <Autocomplete
                             options={boxTypes}
                             getOptionLabel={(option) => option.nombre}
-                            isOptionEqualToValue={(option, value) => option.id === value.id}
+                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                            filterOptions={createSmartFilterOptions((bt: any) => [bt.nombre])}
+                            autoHighlight
+                            openOnFocus
+                            selectOnFocus
+                            handleHomeEndKeys
                             value={boxTypes.find((bt: any) => bt.id === form.boxTypeId) || null}
                             onChange={(_, newValue) => setForm({ ...form, boxTypeId: newValue?.id || '' })}
                             renderInput={(params) => (
@@ -508,7 +530,12 @@ export const CreateItemDialog = ({ open, onClose, onSuccess, initialSupplierId, 
                         <Autocomplete
                             options={partners}
                             getOptionLabel={(option: any) => `${option.name} ${option.taxId ? `(${option.taxId})` : ''}`}
-                            isOptionEqualToValue={(option, value) => option.id === value?.id}
+                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                            filterOptions={createSmartFilterOptions((p: any) => [p.name, p.taxId])}
+                            autoHighlight
+                            openOnFocus
+                            selectOnFocus
+                            handleHomeEndKeys
                             value={partners.find((p: any) => p.id === form.supplierId) || (editTarget?.supplier?.id === form.supplierId ? editTarget.supplier : null) || null}
                             loading={isLoadingPartners}
                             onChange={(_, newValue) => {

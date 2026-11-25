@@ -11,6 +11,7 @@ import {
     useGetInventoryChecksQuery,
 } from '../../features/warehouse/inventoryCheck/api/inventory-check.api';
 import { PageHeader, Card, Btn, Spinner, useIsMobile } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 
 /* ────────────────── Types ────────────────── */
 type Phase = 'select' | 'check' | 'report';
@@ -159,12 +160,22 @@ export default function ChequeoCategoriaPage() {
     const [updateItem] = useUpdateCheckItemMutation();
     const [completeCheck, { isLoading: completing }] = useCompleteCheckMutation();
 
-    // Set default depot if only one exists
+    const activeDepots = useMemo(() =>
+        depots.filter((d: any) => d.activo !== false).map((d: any) => ({ value: d.id, label: d.nombre })),
+        [depots]
+    );
+
+    // Set default depot if only one active depot exists
     useEffect(() => {
-        if (depots.length === 1 && !depotId) {
-            setDepotId(depots[0].id);
+        if (activeDepots.length === 1 && !depotId) {
+            setDepotId(activeDepots[0].value);
         }
-    }, [depots, depotId]);
+    }, [activeDepots, depotId]);
+
+    const handleDepotChange = useCallback((newDepotId: string) => {
+        setDepotId(newDepotId);
+        setSelectedCategoryId('');
+    }, []);
 
     // Calculate positions count and stock summary for each category
     const categoryStats = useMemo(() => {
@@ -214,11 +225,6 @@ export default function ChequeoCategoriaPage() {
     const progress = sortedItems.length > 0
         ? sortedItems.filter((i: any) => i.tag !== 'PENDIENTE').length
         : 0;
-
-    const activeDepots = useMemo(() =>
-        depots.filter((d: any) => d.activo !== false).map((d: any) => ({ value: d.id, label: d.nombre })),
-        [depots]
-    );
 
     /* ────────── Handlers ────────── */
     const handleStartCategoryCheck = useCallback(async (catId?: string) => {
@@ -304,7 +310,7 @@ export default function ChequeoCategoriaPage() {
                     isMobile={isMobile}
                     depots={activeDepots}
                     depotId={depotId}
-                    onDepotChange={setDepotId}
+                    onDepotChange={handleDepotChange}
                     categories={categories}
                     loadingCategories={loadingCategories}
                     selectedCategoryId={selectedCategoryId}
@@ -651,7 +657,20 @@ function CheckCategoryPhase({
             .map((item, originalIdx) => ({ item, originalIdx }))
             .filter(({ item }) => {
                 if (!searchQuery.trim()) return true;
-                return item.posicionCodigo.toLowerCase().includes(searchQuery.trim().toLowerCase());
+                const snapshotFields = Array.isArray(item.stockSnapshot)
+                    ? item.stockSnapshot.flatMap((s: any) => [
+                        s.itemCode,
+                        s.codigoInterno,
+                        s.itemName,
+                        s.descripcion,
+                        s.lotNumber,
+                        s.lote,
+                        s.supplierName,
+                        s.proveedor,
+                        s.categoryName,
+                    ])
+                    : [];
+                return matchesSearch(searchQuery, item.posicionCodigo, ...snapshotFields);
             });
     }, [items, searchQuery]);
 

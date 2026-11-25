@@ -20,6 +20,7 @@ import EventNoteIcon from '@mui/icons-material/EventNote';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 
 import { PageHeader, Spinner, Select } from '../../shared/ui';
+import { createSmartFilterOptions } from '../../shared/utils/search';
 import {
     useGetPlantsQuery,
     useGetMachinesQuery,
@@ -128,6 +129,15 @@ export default function HistorialCambiosPage() {
         { value: '', label: 'Todos los Responsables' },
         ...RESPONSABLES.filter(r => r !== 'Sin Asignar').map(r => ({ value: r, label: r })),
     ], []);
+
+    const filterEditMachines = useMemo(
+        () => createSmartFilterOptions<any>((opt) => [`maquina ${opt.number}`, opt.number, opt.codigoInterno, opt.nombre]),
+        []
+    );
+    const filterResponsables = useMemo(
+        () => createSmartFilterOptions<string>((opt) => [opt]),
+        []
+    );
 
     // Filter Apply / Reset
     const handleApplyFilters = () => {
@@ -281,6 +291,9 @@ export default function HistorialCambiosPage() {
 
     const handleSaveEdit = async () => {
         if (!editData) return;
+        if (!editData.machineId) {
+            return alert('Seleccioná una máquina.');
+        }
         if (editData.changeTypes.length === 0) {
             return alert('Seleccioná al menos un tipo de cambio.');
         }
@@ -551,6 +564,7 @@ export default function HistorialCambiosPage() {
                                 label="N° Máquina"
                                 value={localMachineNumber}
                                 onChange={(e) => setLocalMachineNumber(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
                                 placeholder="Ej: 104"
                                 variant="outlined"
                                 size="small"
@@ -585,6 +599,7 @@ export default function HistorialCambiosPage() {
                                 label="Buscar texto / obs."
                                 value={localSearch}
                                 onChange={(e) => setLocalSearch(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
                                 placeholder="Buscar..."
                                 variant="outlined"
                                 size="small"
@@ -955,10 +970,13 @@ export default function HistorialCambiosPage() {
                                         getOptionLabel={(opt: any) => `Máquina ${opt.number}`}
                                         value={editPlantMachines.find((m: any) => m.id === editData.machineId) || null}
                                         onChange={(_, val: any) => {
-                                            if (val) {
-                                                setEditData(prev => prev ? { ...prev, machineId: val.id, machineNumber: val.number } : null);
-                                            }
+                                            setEditData(prev => prev ? { ...prev, machineId: val?.id || '', machineNumber: val?.number ?? '' } : null);
                                         }}
+                                        filterOptions={filterEditMachines}
+                                        autoHighlight
+                                        selectOnFocus
+                                        openOnFocus
+                                        handleHomeEndKeys
                                         loading={loadingEditMachines}
                                         renderInput={(params) => (
                                             <TextField {...params} label="Máquina" variant="outlined" size="small" />
@@ -1122,6 +1140,9 @@ export default function HistorialCambiosPage() {
                                 value={editData.generatedBy}
                                 onChange={(_, val) => setEditData(prev => prev ? { ...prev, generatedBy: val || '' } : null)}
                                 onInputChange={(_, val) => setEditData(prev => prev ? { ...prev, generatedBy: val } : null)}
+                                filterOptions={filterResponsables}
+                                autoHighlight
+                                selectOnFocus
                                 renderInput={(params) => (
                                     <TextField {...params} label="Responsable / Registrado por" size="small" />
                                 )}

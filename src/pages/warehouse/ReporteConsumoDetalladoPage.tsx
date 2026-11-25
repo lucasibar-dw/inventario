@@ -37,6 +37,7 @@ import { useGetItemCategoriesQuery } from '../../features/warehouse/materiales/a
 import { useLazyGetRemitoSalidaQuery } from '../../features/warehouse/remitosSalida/api/remitos-salida.api';
 import { RemitoDetailModal } from '../../features/warehouse/remitos/ui/RemitoDetailModal';
 import { PaginationControls, useClientPagination } from '../../shared/pagination';
+import { matchesSearch, createSmartFilterOptions, getItemSearchFields } from '../../shared/utils/search';
 
 const themeColors = {
     primary: '#f59e0b',
@@ -58,12 +59,7 @@ const MONTH_NAMES = [
     'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
 ];
 
-const normalizeText = (text: string) =>
-    (text || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .trim();
+const filterMaterials = createSmartFilterOptions(getItemSearchFields);
 
 const formatDate = (dateStr: string) => {
     if (!dateStr) return '—';
@@ -258,12 +254,9 @@ export default function ReporteConsumoDetalladoPage() {
             list = list.filter(m => m.mesesCobertura > 6 && m.stockActual > 0);
         }
 
-        const q = normalizeText(searchQuery);
-        if (q) {
+        if (searchQuery.trim()) {
             list = list.filter(m =>
-                normalizeText(m.codigoInterno).includes(q) ||
-                normalizeText(m.descripcion).includes(q) ||
-                normalizeText(m.proveedor).includes(q)
+                matchesSearch(searchQuery, m.codigoInterno, m.descripcion, m.proveedor, m.categoria)
             );
         }
 
@@ -424,7 +417,11 @@ export default function ReporteConsumoDetalladoPage() {
                             size="small"
                             label="Depósito"
                             value={depositoId}
-                            onChange={(e) => setDepositoId(e.target.value)}
+                            onChange={(e) => {
+                                setDepositoId(e.target.value);
+                                setSelectedCategoryId('');
+                                setSelectedMaterialId(null);
+                            }}
                             sx={{
                                 minWidth: 160,
                                 '& .MuiOutlinedInput-root': { bgcolor: themeColors.inputBg, borderRadius: 2, fontSize: '0.85rem' }
@@ -564,6 +561,11 @@ export default function ReporteConsumoDetalladoPage() {
                             value={activeMaterial}
                             onChange={(_, val) => setSelectedMaterialId(val?.id || null)}
                             isOptionEqualToValue={(option, val) => option.id === val.id}
+                            filterOptions={filterMaterials}
+                            autoHighlight
+                            selectOnFocus
+                            openOnFocus
+                            handleHomeEndKeys
                             renderInput={(params) => (
                                 <TextField
                                     {...params}

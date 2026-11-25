@@ -20,6 +20,13 @@ export default function DashboardProduccionPage() {
     const { data: plants = [], isLoading: loadingPlants } = useGetPlantsQuery();
     const { data: machineTypes = [] } = useGetMachineTypesQuery();
 
+    const visibleMachineTypes = useMemo(() => {
+        if (selectedPlantId === 'ALL') return machineTypes;
+        const hasPlantInfo = machineTypes.some((t: any) => t.plantId || t.plant?.id);
+        if (!hasPlantInfo) return machineTypes;
+        return machineTypes.filter((t: any) => (t.plantId || t.plant?.id) === selectedPlantId);
+    }, [machineTypes, selectedPlantId]);
+
     // 2. Datos de Máquinas en Vivo (con soporte multi-planta y multi-tipo)
     const { data: allMachines = [], isLoading: loadingMachines } = useGetMachinesQuery({
         plantId: selectedPlantId,
@@ -235,7 +242,10 @@ export default function DashboardProduccionPage() {
                         <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 700 }}>Planta:</span>
                         <select
                             value={selectedPlantId}
-                            onChange={(e) => setSelectedPlantId(e.target.value)}
+                            onChange={(e) => {
+                                setSelectedPlantId(e.target.value);
+                                setSelectedTypeId('ALL');
+                            }}
                             style={{
                                 padding: '6px 12px',
                                 background: 'var(--bg-secondary, #1a1d2e)',
@@ -274,7 +284,7 @@ export default function DashboardProduccionPage() {
                             }}
                         >
                             <option value="ALL">⚙️ Todos los Tipos</option>
-                            {machineTypes.map((t: any) => (
+                            {visibleMachineTypes.map((t: any) => (
                                 <option key={t.id} value={t.id}>
                                     {t.name}
                                 </option>

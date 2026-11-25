@@ -6,8 +6,9 @@ import {
     useDeleteBoxTypeMutation 
 } from '../../features/warehouse/materiales/api/box-types.api';
 import { useGetPartnersQuery } from '../../features/config/partners/api/partners.api';
-import { useBulkAssignBoxTypeMutation, useGetItemsQuery, useUpdateItemMutation } from '../../features/warehouse/materiales/api/items.api';
-import { PageHeader, Card, Btn, Input, Spinner, Badge, Modal, Select } from '../../shared/ui';
+import { useBulkAssignBoxTypeMutation, useGetItemCategoriesQuery, useGetItemsQuery, useUpdateItemMutation } from '../../features/warehouse/materiales/api/items.api';
+import { PageHeader, Card, Btn, Input, Spinner, Badge, Modal, Select, SearchSelect } from '../../shared/ui';
+import { matchesSearch, getItemSearchFields } from '../../shared/utils/search';
 
 /* ─── Box Preview Component ─── */
 const BoxPreview = ({ l, w, h }: { l: number, w: number, h: number }) => {
@@ -81,24 +82,51 @@ const AssignedItemsModal = ({ boxId, boxName, onClose }: { boxId: string, boxNam
 
 /* ─── Bulk Assign Modal ─── */
 const BulkAssignModal = ({ onClose, boxTypes }: { onClose: () => void, boxTypes: any[] }) => {
-    const { data: suppliers = [] } = useGetPartnersQuery({ type: 'SUPPLIER' });
+    const { data: rawSuppliers = [] } = useGetPartnersQuery({ type: 'SUPPLIER' });
+    const { data: rawCategories = [] } = useGetItemCategoriesQuery(undefined);
     const [bulkAssign] = useBulkAssignBoxTypeMutation();
     const [targetBoxId, setTargetBoxId] = useState(boxTypes[0]?.id || '');
     const [supplierId, setSupplierId] = useState('');
     const [categoryId, setCategoryId] = useState('');
+    const [itemSearch, setItemSearch] = useState('');
     const [selectedItemId, setSelectedItemId] = useState('');
     const [processing, setProcessing] = useState(false);
 
     const { data: allItems = [], isLoading: loadingItems } = useGetItemsQuery({ categoryId: categoryId || undefined });
-    const filteredItems = useMemo(() => allItems.filter(it => !supplierId || it.supplierId === supplierId), [allItems, supplierId]);
-    const categories = useMemo(() => {
-        const map = new Map();
-        allItems.forEach(it => {
-            const cat = it.category || { id: '', nombre: it.categoria || 'Sin categoría' };
-            if (cat.id) map.set(cat.id, cat.nombre);
-        });
-        return Array.from(map.entries()).map(([id, name]) => ({ value: id, label: name }));
-    }, [allItems]);
+
+    const activeSuppliers = useMemo(
+        () => rawSuppliers.filter((s: any) => s.activo !== false),
+        [rawSuppliers]
+    );
+
+    const supplierOptions = useMemo(
+        () => [
+            { value: '', label: 'Todos los proveedores' },
+            ...activeSuppliers.map((s: any) => ({
+                value: s.id,
+                label: s.name,
+                searchText: [s.name, s.taxId].filter(Boolean).join(' '),
+            })),
+        ],
+        [activeSuppliers]
+    );
+
+    const categoryOptions = useMemo(() => {
+        const list = (Array.isArray(rawCategories) ? rawCategories : [])
+            .filter((c: any) => c.activo !== false)
+            .map((c: any) => ({ value: c.id, label: c.nombre }));
+        return [{ value: '', label: 'Todas las categorías' }, ...list];
+    }, [rawCategories]);
+
+    const ruleItems = useMemo(
+        () => allItems.filter((it: any) => !supplierId || it.supplierId === supplierId),
+        [allItems, supplierId]
+    );
+
+    const filteredItems = useMemo(() => {
+        if (!itemSearch.trim()) return ruleItems;
+        return ruleItems.filter((it: any) => matchesSearch(itemSearch, ...getItemSearchFields(it)));
+    }, [ruleItems, itemSearch]);
 
     const handleBulk = async (single?: boolean) => {
         if (!targetBoxId) return alert('Selecciona una caja');
@@ -126,15 +154,48 @@ const BulkAssignModal = ({ onClose, boxTypes }: { onClose: () => void, boxTypes:
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <section>
                         <h4 style={{ color: 'var(--text-primary, #f3f4f6)', fontSize: '14px', marginBottom: '8px' }}>2. Proveedor</h4>
-                        <Select value={supplierId} onChange={v => { setSupplierId(v); setSelectedItemId(''); }} options={[{ value: '', label: 'Todos' }, ...suppliers.map(s => ({ value: s.id, label: s.name }))]} />
+                        <SearchSelect
+                            value={supplierId}
+                            onChange={v => { setSupplierId(v); setSelectedItemId(''); }}
+                            options={supplierOptions}
+                            placeholder="Todos los proveedores..."
+                        />
                     </section>
                     <section>
                         <h4 style={{ color: 'var(--text-primary, #f3f4f6)', fontSize: '14px', marginBottom: '8px' }}>3. Categoría</h4>
-                        <Select value={categoryId} onChange={v => { setCategoryId(v); setSelectedItemId(''); }} options={[{ value: '', label: 'Todas' }, ...categories]} />
+                        <SearchSelect
+                            value={categoryId}
+                            onChange={v => { setCategoryId(v); setSelectedItemId(''); }}
+                            options={categoryOptions}
+                            placeholder="Todas las categorías..."
+                        />
                     </section>
                 </div>
                 <section>
-                    <h4 style={{ color: 'var(--text-primary, #f3f4f6)', fontSize: '14px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>4. Ítems <span style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>{filteredItems.length}</span></h4>
+                    <h4 style={{ color: 'var(--text-primary, #f3f4f6)', fontSize: '14px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                        4. Ítems
+                        <span style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>
+                            {filteredItems.length}{itemSearch.trim() ? ` de ${ruleItems.length}` : ''}
+                        </span>
+                    </h4>
+                    <input
+                        type="text"
+                        value={itemSearch}
+                        onChange={e => setItemSearch(e.target.value)}
+                        placeholder="🔍 Buscar ítem por código, descripción, proveedor o categoría..."
+                        style={{
+                            width: '100%',
+                            background: 'var(--bg-primary, #0f1117)',
+                            border: '1px solid var(--border-strong, #374151)',
+                            borderRadius: '8px',
+                            padding: '8px 10px',
+                            color: 'var(--text-primary, #f3f4f6)',
+                            fontSize: '13px',
+                            outline: 'none',
+                            boxSizing: 'border-box',
+                            marginBottom: '8px',
+                        }}
+                    />
                     <div style={{ background: 'var(--bg-primary, #0f1117)', borderRadius: '8px', border: '1px solid var(--border-subtle, #1e2133)', maxHeight: '180px', overflowY: 'auto' }}>
                         {loadingItems ? <Spinner /> : filteredItems.map(it => (
                             <div key={it.id} onClick={() => setSelectedItemId(it.id === selectedItemId ? '' : it.id)} style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle, #1e2133)', cursor: 'pointer', background: it.id === selectedItemId ? 'rgba(99, 102, 241, 0.2)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -149,7 +210,7 @@ const BulkAssignModal = ({ onClose, boxTypes }: { onClose: () => void, boxTypes:
                     </div>
                 </section>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    <Btn variant="secondary" style={{ flex: 1 }} onClick={() => handleBulk(false)} disabled={processing || filteredItems.length === 0}>Vincular Filtrados</Btn>
+                    <Btn variant="secondary" style={{ flex: 1 }} onClick={() => handleBulk(false)} disabled={processing || ruleItems.length === 0}>Vincular Filtrados</Btn>
                     <Btn style={{ flex: 1 }} onClick={() => handleBulk(true)} disabled={processing || !selectedItemId}>Vincular Único</Btn>
                 </div>
             </div>

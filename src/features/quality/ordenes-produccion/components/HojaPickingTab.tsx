@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { HojaPickingItem } from '../types/ordenesProduccion.types';
 import { Card, Btn } from '../../../../shared/ui';
+import { matchesSearch } from '../../../../shared/utils/search';
 import { exportHojaPickingToExcel } from '../utils/excelExport';
 
 interface HojaPickingTabProps {
@@ -21,15 +22,19 @@ export const HojaPickingTab: React.FC<HojaPickingTabProps> = ({
     const [q, setQ] = useState('');
 
     const filtered = items.filter((it) => {
-        if (!q) return true;
-        const lower = q.toLowerCase();
-        return (
-            it.codigoMaterial.toLowerCase().includes(lower) ||
-            it.descripcionMaterial.toLowerCase().includes(lower) ||
-            (it.tono && it.tono.toLowerCase().includes(lower)) ||
-            (it.colorNombre && it.colorNombre.toLowerCase().includes(lower)) ||
-            it.articulos.some((a) => a.toLowerCase().includes(lower)) ||
-            it.maquinas.some((m) => `m${m}`.includes(lower))
+        if (!q.trim()) return true;
+        return matchesSearch(
+            q,
+            it.codigoMaterial,
+            it.descripcionMaterial,
+            it.tono,
+            it.colorNombre,
+            it.proveedor,
+            it.categoriaNombre,
+            it.partidaSugerida,
+            ...(it.posicionesPickingSugeridas || []),
+            ...it.articulos,
+            ...it.maquinas.map((m) => `m${m}`),
         );
     });
 

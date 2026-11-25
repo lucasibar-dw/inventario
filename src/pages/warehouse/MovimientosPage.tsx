@@ -75,8 +75,10 @@ export default function MovimientosPage() {
     const [quickAddStock] = useQuickAddStockMutation();
     const [deleteStock] = useDeleteStockMutation();
 
-    const { data: items = [] } = useGetItemsQuery({});
-    const { data: partners = [] } = useGetPartnersQuery({});
+    const { data: rawItems = [] } = useGetItemsQuery({});
+    const items = useMemo(() => rawItems.filter((it: any) => it.activo !== false), [rawItems]);
+    const { data: rawPartners = [] } = useGetPartnersQuery({});
+    const partners = useMemo(() => rawPartners.filter((p: any) => p.activo !== false), [rawPartners]);
 
     // Quick Add Modal State
     const [quickAddModal, setQuickAddModal] = useState(false);
@@ -87,6 +89,12 @@ export default function MovimientosPage() {
     const [qaLot, setQaLot] = useState('');
     const [qaPrincipal, setQaPrincipal] = useState('');
     const [qaSecundaria, setQaSecundaria] = useState('');
+
+    useEffect(() => {
+        if (quickAddModal && !qaDepot && availableDepots.length === 1) {
+            setQaDepot(availableDepots[0].id);
+        }
+    }, [quickAddModal, qaDepot, availableDepots]);
 
     // Dialog States
     const [createItemModal, setCreateItemModal] = useState(false);
@@ -110,7 +118,6 @@ export default function MovimientosPage() {
     const [despachoSaving, setDespachoSaving] = useState(false);
 
     const clientOptions = useMemo(() => [
-        { value: '', label: 'Seleccionar cliente...' },
         ...(isAdmin ? [{ value: '__new__', label: '+ Nuevo cliente' }] : []),
         ...partners.filter((p: any) => p.type === 'CLIENT' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name }))
     ], [partners, isAdmin]);
@@ -205,10 +212,9 @@ export default function MovimientosPage() {
         return items.filter((i: any) => i.supplierId === qaSupplier);
     }, [items, qaSupplier]);
 
-    const supplierOptions = useMemo(() => [
-        { value: '', label: 'Seleccionar' },
-        ...partners.filter((p: any) => p.type === 'SUPPLIER' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name }))
-    ], [partners]);
+    const supplierOptions = useMemo(() =>
+        partners.filter((p: any) => p.type === 'SUPPLIER' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name }))
+    , [partners]);
 
 
 
@@ -497,9 +503,9 @@ export default function MovimientosPage() {
         ];
     });
 
-    const posOptionsLeft = availableDepots.find((d: any) => d.id === depositoIdLeft)?.positions?.map((p: any) => ({ value: p.id, label: p.codigo })) || [];
-    const posOptionsRight = availableDepots.find((d: any) => d.id === depositoIdRight)?.positions?.map((p: any) => ({ value: p.id, label: p.codigo })) || [];
-    const posOptionsLeftModal = availableDepots.find((d: any) => d.id === (qaDepot || (availableDepots.length === 1 ? availableDepots[0].id : '')))?.positions?.map((p: any) => ({ value: p.id, label: p.codigo })) || [];
+    const posOptionsLeft = (availableDepots.find((d: any) => d.id === depositoIdLeft)?.positions || []).filter((p: any) => p.activo !== false).map((p: any) => ({ value: p.id, label: p.codigo }));
+    const posOptionsRight = (availableDepots.find((d: any) => d.id === depositoIdRight)?.positions || []).filter((p: any) => p.activo !== false).map((p: any) => ({ value: p.id, label: p.codigo }));
+    const posOptionsLeftModal = (availableDepots.find((d: any) => d.id === (qaDepot || (availableDepots.length === 1 ? availableDepots[0].id : '')))?.positions || []).filter((p: any) => p.activo !== false).map((p: any) => ({ value: p.id, label: p.codigo }));
 
     return (
         <div style={{ 
@@ -698,7 +704,7 @@ export default function MovimientosPage() {
                             <Btn variant="secondary" onClick={() => setCreatePartnerModal(true)}>+</Btn>
                         </div>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                            <SearchSelect label="Material" value={qaItem} onChange={setQaItem} options={[{ value: '', label: 'Seleccionar' }, ...qaFilteredItems.map((i: any) => ({ value: i.id, label: `${i.categoria ? `[${i.categoria}] ` : ''}${i.codigoInterno} - ${i.descripcion}` }))]} placeholder="Buscar material..." style={{ flex: 1 }} />
+                            <SearchSelect label="Material" value={qaItem} onChange={setQaItem} options={qaFilteredItems.map((i: any) => ({ value: i.id, label: `${i.categoria ? `[${i.categoria}] ` : ''}${i.codigoInterno} - ${i.descripcion}` }))} placeholder="Buscar material..." style={{ flex: 1 }} />
                             <Btn variant="secondary" onClick={() => setCreateItemModal(true)}>+</Btn>
                         </div>
                         <Input label="Lote" value={qaLot} onChange={setQaLot} />

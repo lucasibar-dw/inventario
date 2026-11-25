@@ -19,6 +19,7 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { Spinner, Select } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import { 
     useGetPlantsQuery, 
     useGetMachineTypesQuery,
@@ -446,18 +447,20 @@ export default function DashboardMantenimientoPage() {
         }
     }, [machineTypes, selectedTypeId]);
 
+    const effectiveTypeId = selectedTypeId && selectedTypeId !== 'ALL' ? selectedTypeId : undefined;
+
     const { data: metrics, isLoading: loadingMetrics } = useGetMetricsQuery(
-        { plantId: selectedPlantId || '', typeId: selectedTypeId || '' },
+        { plantId: selectedPlantId || '', typeId: effectiveTypeId },
         { skip: !selectedPlantId }
     );
 
     const { data: kpis, isLoading: loadingKpis } = useGetPlantKPIsQuery(
-        { plantId: selectedPlantId || '', typeId: selectedTypeId || '' },
+        { plantId: selectedPlantId || '', typeId: effectiveTypeId },
         { skip: !selectedPlantId }
     );
 
     const { data: allMachines = [] } = useGetMachinesQuery(
-        { plantId: selectedPlantId || '', typeId: selectedTypeId || '' },
+        { plantId: selectedPlantId || '', typeId: effectiveTypeId },
         { skip: !selectedPlantId }
     );
 
@@ -491,8 +494,10 @@ export default function DashboardMantenimientoPage() {
             }
         }
 
-        if (searchQuery) {
-            result = result.filter(m => m.number.toString() === searchQuery);
+        if (searchQuery.trim()) {
+            result = result.filter(m =>
+                matchesSearch(searchQuery, m.number, `maquina ${m.number}`, m.codigoInterno, m.nombre, m.lastChangeBy, m.lastFailureType)
+            );
         }
         return result;
     }, [allMachines, selectedStatus, searchQuery, sortMode]);
@@ -577,8 +582,8 @@ export default function DashboardMantenimientoPage() {
                         sx={{ mb: 1.5 }}
                     />
                     <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column' }}>
-                        <Select label="Planta" value={selectedPlantId || ''} onChange={setSelectedPlantId} options={plantOptions} />
-                        <Select label="Tipo" value={selectedTypeId || 'ALL'} onChange={setSelectedTypeId} options={typeOptions} />
+                        <Select label="Planta" value={selectedPlantId || ''} onChange={(val) => { setSelectedPlantId(val); setSearchQuery(''); }} options={plantOptions} />
+                        <Select label="Tipo" value={selectedTypeId || 'ALL'} onChange={(val) => { setSelectedTypeId(val); setSearchQuery(''); }} options={typeOptions} />
                     </Box>
                 </Box>
             </Collapse>

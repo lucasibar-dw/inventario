@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Btn } from '../../../../shared/ui';
+import { matchesSearch } from '../../../../shared/utils/search';
 import { useCreateTaskMutation } from '../../tasks/api/tasks.api';
 import {
     type RelocationRecommendation,
@@ -34,18 +35,25 @@ export default function RelocationTab({ recommendations, onTaskCreated, compact 
     const [feedback, setFeedback] = useState<string | null>(null);
 
     const filtered = useMemo(() => {
-        const q = search.trim().toLowerCase();
         return recommendations.filter(r => {
             const isScheduled = r.alreadyInTasks || createdIds.has(r.id);
             if (hideScheduled && isScheduled) return false;
             if (onlyEmptyTarget && !r.targetWasEmpty) return false;
             if (matchFilter !== 'ALL' && r.matchType !== matchFilter) return false;
-            if (q &&
-                !r.line.codigo.toLowerCase().includes(q) &&
-                !r.line.descripcion.toLowerCase().includes(q) &&
-                !r.line.categoria.toLowerCase().includes(q) &&
-                !(r.source.pos.codigo || '').toLowerCase().includes(q) &&
-                !(r.target.pos.codigo || '').toLowerCase().includes(q)) return false;
+            if (search.trim() && !matchesSearch(
+                search,
+                r.line.codigo,
+                r.line.descripcion,
+                r.line.lote,
+                r.line.categoria,
+                r.line.raw?.batch?.item?.supplier?.name,
+                r.line.raw?.supplier?.name,
+                r.line.raw?.proveedor,
+                r.source.pos.codigo,
+                r.target.pos.codigo,
+                r.sourceReasonLabel,
+                r.matchLabel,
+            )) return false;
             return true;
         });
     }, [recommendations, search, matchFilter, onlyEmptyTarget, hideScheduled, createdIds]);

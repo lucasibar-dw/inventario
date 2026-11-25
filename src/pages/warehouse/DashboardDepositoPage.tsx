@@ -71,6 +71,7 @@ import { useSelector } from 'react-redux';
 import { selectCurrentUser, selectAllowedDepots } from '../../entities/auth/model/authSlice';
 import { useIsMobile } from '../../shared/ui';
 import { PaginationControls, useClientPagination } from '../../shared/pagination';
+import { createSmartFilterOptions, getItemSearchFields } from '../../shared/utils/search';
 
 // Sistema de colores consistente
 const colors = {
@@ -192,8 +193,10 @@ export default function DashboardDepositoPage() {
         }
     }, [depots, depotId]);
 
-    const { data: items = [] } = useGetItemsQuery({});
-    const { data: partners = [] } = useGetPartnersQuery({});
+    const { data: rawItems = [] } = useGetItemsQuery({});
+    const items = useMemo(() => rawItems.filter((it: any) => it.activo !== false), [rawItems]);
+    const { data: rawPartners = [] } = useGetPartnersQuery({});
+    const partners = useMemo(() => rawPartners.filter((p: any) => p.activo !== false), [rawPartners]);
     useGetItemCategoriesQuery(depotId || '', { skip: !depotId });
 
     // Modales de adición rápida
@@ -394,8 +397,8 @@ export default function DashboardDepositoPage() {
     const [despachoSaving, setDespachoSaving] = useState(false);
 
     const clientOptions = useMemo(() => [
-        ...(isAdmin ? [{ value: '__new__', label: '+ Nuevo cliente' }] : []),
-        ...partners.filter((p: any) => p.type === 'CLIENT' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name }))
+        ...(isAdmin ? [{ value: '__new__', label: '+ Nuevo cliente', taxId: '' }] : []),
+        ...partners.filter((p: any) => p.type === 'CLIENT' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name, taxId: p.taxId || '' }))
     ], [partners, isAdmin]);
 
     const openDespacho = (entry: any) => {
@@ -524,6 +527,11 @@ export default function DashboardDepositoPage() {
         if (!qaSupplier) return items;
         return items.filter((i: any) => i.supplierId === qaSupplier);
     }, [items, qaSupplier]);
+
+    const qaPositions = useMemo(() => {
+        if (!qaDepot) return [];
+        return (depots.find((d: any) => d.id === qaDepot)?.positions || []).filter((p: any) => p.activo !== false);
+    }, [depots, qaDepot]);
 
     const qaSelectedItem = useMemo(() => items.find((i: any) => i.id === qaItem), [items, qaItem]);
 
@@ -795,7 +803,7 @@ export default function DashboardDepositoPage() {
     const indexedStock = useMemo(() => {
         return rawStock.map((entry: any) => ({
             entry,
-            searchStr: normalizeText(`${entry.batch?.item?.codigoInterno} ${entry.batch?.item?.descripcion} ${entry.batch?.lotNumber} ${entry.batch?.supplier?.name} ${entry.posicion?.codigo} ${entry.batch?.item?.category?.nombre || entry.batch?.item?.categoria || ''}`)
+            searchStr: normalizeText(`${entry.batch?.item?.codigoInterno} ${entry.batch?.item?.descripcion} ${entry.batch?.lotNumber} ${entry.batch?.supplier?.name} ${entry.posicion?.codigo} ${entry.batch?.item?.category?.nombre || entry.batch?.item?.categoria || ''} ${entry.batch?.observaciones || ''}`)
         }));
     }, [rawStock]);
 
@@ -2146,14 +2154,10 @@ export default function DashboardDepositoPage() {
                                 <Autocomplete
                                     options={destPositions}
                                     getOptionLabel={(option: any) => option.codigo || ''}
-                                    filterOptions={(options, state) => {
-                                        const query = normalizeText(state.inputValue);
-                                        if (!query) return options;
-                                        return options.filter((opt: any) => 
-                                            normalizeText(opt.codigo || '').includes(query) ||
-                                            normalizeText(opt.contentsSummary || '').includes(query)
-                                        );
-                                    }}
+                                    isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                                    filterOptions={createSmartFilterOptions((opt: any) => [opt.codigo, opt.contentsSummary])}
+                                    autoHighlight
+                                    selectOnFocus
                                     renderOption={(props, option: any) => (
                                         <Box component="li" {...props} key={option.id} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', py: 1, px: 1.5, borderBottom: `1px solid ${colors.border}`, width: '100%' }}>
                                             <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
@@ -2184,22 +2188,9 @@ export default function DashboardDepositoPage() {
                                             placeholder="Escribí posición y Enter..." 
                                             autoFocus
                                             onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    const inputVal = (e.target as HTMLInputElement).value?.trim();
-                                                    if (!moveDestPos && inputVal) {
-                                                        const matched = destPositions.find((p: any) => 
-                                                            normalizeText(p.codigo) === normalizeText(inputVal)
-                                                        );
-                                                        if (matched) {
-                                                            setMoveDestPos(matched.id);
-                                                            e.preventDefault();
-                                                            return;
-                                                        }
-                                                    }
-                                                    if (moveDestPos && selectedLinesToMove.length > 0 && totalKilosToMove > 0 && !isMovingStock) {
-                                                        e.preventDefault();
-                                                        handleConfirmMove();
-                                                    }
+                                                if (e.key === 'Enter' && moveDestPos && selectedLinesToMove.length > 0 && totalKilosToMove > 0 && !isMovingStock) {
+                                                    e.preventDefault();
+                                                    handleConfirmMove();
                                                 }
                                             }}
                                         />
@@ -2386,6 +2377,7 @@ export default function DashboardDepositoPage() {
                                     options={clientOptions} 
                                     getOptionLabel={(option: any) => option.label || ''}
                                     isOptionEqualToValue={(option: any, value: any) => option?.value === value?.value}
+                                    filterOptions={createSmartFilterOptions((o: any) => [o.label, o.taxId])}
                                     value={clientOptions.find(o => o.value === (despachoNewClient ? '__new__' : despachoClient)) || null}
                                     onChange={(_e, val: any) => {
                                         if (val?.value === '__new__') {
@@ -2397,6 +2389,7 @@ export default function DashboardDepositoPage() {
                                         }
                                     }}
                                     autoHighlight
+                                    autoSelect
                                     openOnFocus
                                     selectOnFocus
                                     handleHomeEndKeys
@@ -2566,28 +2559,47 @@ export default function DashboardDepositoPage() {
                             {depots.map((d: any) => <MenuItem key={d.id} value={d.id}>{d.nombre}</MenuItem>)}
                         </TextField>
 
-                        <TextField 
-                            select 
-                            label="Posición" 
-                            fullWidth 
+                        <Autocomplete
+                            options={qaPositions}
+                            getOptionLabel={(option: any) => option.codigo || ''}
+                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                            filterOptions={createSmartFilterOptions((p: any) => [p.codigo, p.descripcion, p.zona])}
+                            value={qaPositions.find((p: any) => p.id === qaPosition) || null}
+                            disabled={!qaDepot}
+                            fullWidth
                             size="small"
-                            value={qaPosition} 
-                            disabled={!qaDepot} 
-                            onChange={(e) => setQaPosition(e.target.value)} 
-                            InputProps={{ sx: { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
-                        >
-                            <MenuItem value=""><em>Seleccionar...</em></MenuItem>
-                            {(depots.find((d: any) => d.id === qaDepot)?.positions || []).filter((p: any) => p.activo).map((p: any) => <MenuItem key={p.id} value={p.id}>{p.codigo}</MenuItem>)}
-                        </TextField>
+                            autoHighlight
+                            selectOnFocus
+                            openOnFocus
+                            handleHomeEndKeys
+                            noOptionsText="Sin posiciones"
+                            onChange={(_e, val: any) => setQaPosition(val?.id || '')}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Posición"
+                                    placeholder="Buscar posición..."
+                                    InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
+                                />
+                            )}
+                        />
                     </Box>
 
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                         <Autocomplete 
                             options={partners.filter((p: any) => p.type === 'SUPPLIER' || p.type === 'BOTH')} 
-                            getOptionLabel={(option: any) => option.name} 
-                            value={partners.find(p => p.id === qaSupplier) || null}
+                            getOptionLabel={(option: any) => option.name || ''} 
+                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                            filterOptions={createSmartFilterOptions((p: any) => [p.name, p.taxId])}
+                            value={partners.find((p: any) => p.id === qaSupplier) || null}
                             fullWidth
                             size="small"
+                            autoHighlight
+                            autoSelect
+                            openOnFocus
+                            selectOnFocus
+                            handleHomeEndKeys
+                            noOptionsText="Sin proveedores"
                             onChange={(_e, val: any) => { setQaSupplier(val?.id || ''); setQaItem(''); }}
                             renderInput={(params) => <TextField {...params} label="Proveedor" InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }} />} 
                         />
@@ -2598,9 +2610,17 @@ export default function DashboardDepositoPage() {
                         <Autocomplete 
                             options={qaFilteredItems} 
                             getOptionLabel={(option: any) => `${option.codigoInterno} - ${option.descripcion}`} 
-                            value={items.find(i => i.id === qaItem) || null}
+                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                            filterOptions={createSmartFilterOptions(getItemSearchFields)}
+                            value={qaFilteredItems.find((i: any) => i.id === qaItem) || null}
                             fullWidth
                             size="small"
+                            autoHighlight
+                            autoSelect
+                            openOnFocus
+                            selectOnFocus
+                            handleHomeEndKeys
+                            noOptionsText="Sin materiales"
                             onChange={(_e, val: any) => setQaItem(val?.id || '')}
                             renderInput={(params) => <TextField {...params} label="Material" InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }} />} 
                         />

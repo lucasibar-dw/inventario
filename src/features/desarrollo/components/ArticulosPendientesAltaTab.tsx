@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Btn, Input, Badge, Select, Spinner } from '../../../shared/ui';
+import { matchesSearch } from '../../../shared/utils/search';
 import type { PedidoVenta } from '../../ventas/api/ventas.api';
 import {
     useGetArticulosQuery,
@@ -83,17 +84,22 @@ export const ArticulosPendientesAltaTab: React.FC<ArticulosPendientesAltaTabProp
     // Filtrado de pedidos
     const filteredPedidos = useMemo(() => {
         return articulosPedidos.filter((a) => {
-            const matchesSearch =
-                searchTerm === '' ||
-                a.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                a.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                a.pedidosNumeros.some(num => num.toLowerCase().includes(searchTerm.toLowerCase()));
+            const matchesQuery =
+                !searchTerm.trim() ||
+                matchesSearch(
+                    searchTerm,
+                    a.codigo,
+                    a.descripcion,
+                    a.cliente,
+                    a.talle,
+                    ...a.pedidosNumeros,
+                );
 
             const matchesCliente =
                 clienteFiltro === 'TODOS' ||
                 a.cliente.toUpperCase() === clienteFiltro.toUpperCase();
 
-            return matchesSearch && matchesCliente;
+            return matchesQuery && matchesCliente;
         });
     }, [articulosPedidos, searchTerm, clienteFiltro]);
 
@@ -102,9 +108,8 @@ export const ArticulosPendientesAltaTab: React.FC<ArticulosPendientesAltaTabProp
         const ins = insumosSinStockData?.items || [];
         const hil = hiladosSinStockData?.items || [];
         const all = [...ins, ...hil];
-        if (!searchTerm) return all;
-        const q = searchTerm.toLowerCase();
-        return all.filter(m => m.codigo.toLowerCase().includes(q) || m.descripcion.toLowerCase().includes(q));
+        if (!searchTerm.trim()) return all;
+        return all.filter((m) => matchesSearch(searchTerm, m.codigo, m.descripcion, m.etapa));
     }, [insumosSinStockData, hiladosSinStockData, searchTerm]);
 
     const totalPacksPendientes = articulosPedidos.reduce((acc, a) => acc + a.packsTotales, 0);

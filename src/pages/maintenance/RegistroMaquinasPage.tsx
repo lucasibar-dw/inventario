@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { 
     Box, Typography, Button, TextField, MenuItem, Card as MuiCard, 
     CardContent, Divider, Autocomplete, IconButton, List, ListItem, 
@@ -8,6 +9,7 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { PageHeader, Spinner, Select } from '../../shared/ui';
+import { createSmartFilterOptions } from '../../shared/utils/search';
 import { selectCurrentUser } from '../../entities/auth/model/authSlice';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -40,6 +42,8 @@ const targetStatuses = [
 
 interface PendingEvent {
     id: string;
+    plantId: string | null;
+    typeId: string | null;
     targetStatus: string;
     failureType: string;
     observation: string;
@@ -50,14 +54,29 @@ interface PendingEvent {
 }
 
 export default function RegistroMaquinasPage() {
+    const location = useLocation();
     const user = useSelector(selectCurrentUser);
     const machineSearchRef = useRef<HTMLInputElement>(null);
+    const preselectedAppliedRef = useRef(false);
     
     // Selectors state
     const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
     const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
     const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
     const [pendingEvents, setPendingEvents] = useState<PendingEvent[]>([]);
+
+    // Read handoff state from PendientesPage if present
+    useEffect(() => {
+        if (preselectedAppliedRef.current) return;
+        const state = location.state as { preselectedMachine?: any; plantId?: string } | null;
+        if (state?.preselectedMachine || state?.plantId) {
+            preselectedAppliedRef.current = true;
+            const m = state.preselectedMachine;
+            if (state.plantId || m?.plantId) setSelectedPlantId(state.plantId || m.plantId);
+            if (m?.typeId) setSelectedTypeId(m.typeId);
+            if (m?.id) setSelectedMachineId(m.id);
+        }
+    }, [location.state]);
 
     const [enableSecondState, setEnableSecondState] = useState<boolean>(false);
 
@@ -118,7 +137,21 @@ export default function RegistroMaquinasPage() {
 
     const plantOptions = useMemo(() => plants.map((p: any) => ({ value: p.id, label: p.name })), [plants]);
     const typeOptions = useMemo(() => machineTypes.map((t: any) => ({ value: t.id, label: t.name })), [machineTypes]);
-    const machineOptions = useMemo(() => machines.map((m: any) => ({ value: m.id, label: `Máquina ${m.number} - ${m.codigoInterno || ''}`, number: m.number })), [machines]);
+    const machineOptions = useMemo(() => machines.map((m: any) => ({
+        value: m.id,
+        label: `Máquina ${m.number} - ${m.codigoInterno || ''}`,
+        number: m.number,
+        codigoInterno: m.codigoInterno,
+        nombre: m.nombre,
+    })), [machines]);
+    const filterMachineOptions = useMemo(
+        () => createSmartFilterOptions<any>((m) => [m.number, `maquina ${m.number}`, m.codigoInterno, m.nombre]),
+        []
+    );
+    const filterStrings = useMemo(
+        () => createSmartFilterOptions<string>((opt) => [opt]),
+        []
+    );
 
     const addEvent = () => {
         if (!selectedMachineId) {
@@ -133,6 +166,8 @@ export default function RegistroMaquinasPage() {
 
         const event1: PendingEvent = {
             id: Math.random().toString(36).substr(2, 9),
+            plantId: selectedPlantId,
+            typeId: selectedTypeId,
             targetStatus: values.targetStatus,
             failureType: values.failureType,
             observation: values.observation,
@@ -148,6 +183,8 @@ export default function RegistroMaquinasPage() {
             const timestamp2 = new Date(`${secondDate}T${secondHour}:${secondMinute}:00`).toISOString();
             const event2: PendingEvent = {
                 id: Math.random().toString(36).substr(2, 9),
+                plantId: selectedPlantId,
+                typeId: selectedTypeId,
                 targetStatus: secondStatus,
                 failureType: secondFailure,
                 observation: secondObservation,
@@ -185,8 +222,8 @@ export default function RegistroMaquinasPage() {
             for (const event of pendingEvents) {
                 await updateStatus({
                     id: event.machineId,
-                    plantId: selectedPlantId,
-                    typeId: selectedTypeId,
+                    plantId: event.plantId,
+                    typeId: event.typeId,
                     status: event.targetStatus,
                     failureType: event.failureType,
                     observation: event.observation,
@@ -253,19 +290,13 @@ export default function RegistroMaquinasPage() {
                                     getOptionLabel={(opt) => opt.label}
                                     value={machineOptions.find((o: any) => o.value === selectedMachineId) || null}
                                     onChange={(_e, newVal) => setSelectedMachineId(newVal?.value || null)}
+                                    isOptionEqualToValue={(opt, val) => opt.value === val.value}
                                     loading={loadingMachines}
-                                    filterOptions={(options, state) => {
-                                        const input = state.inputValue.trim();
-                                        if (!input) return options;
-                                        if (/^\d+$/.test(input)) {
-                                            const targetNum = parseInt(input, 10);
-                                            // Si es numérico, filtrar por número exacto primero
-                                            const exact = options.filter(o => o.number === targetNum);
-                                            if (exact.length > 0) return exact;
-                                        }
-                                        const lower = input.toLowerCase();
-                                        return options.filter(o => o.label.toLowerCase().includes(lower));
-                                    }}
+                                    filterOptions={filterMachineOptions}
+                                    autoHighlight
+                                    selectOnFocus
+                                    openOnFocus
+                                    handleHomeEndKeys
                                     renderInput={(params) => (
                                         <TextField
                                             {...params}
@@ -273,7 +304,6 @@ export default function RegistroMaquinasPage() {
                                             label="Buscar Máquina (N° o Código)"
                                             variant="outlined"
                                             placeholder="Escriba para filtrar..."
-                                            slotProps={{ htmlInput: { ...params.inputProps, inputMode: 'numeric' } }}
                                             sx={{
                                                 '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' },
                                                 '& .MuiInputLabel-root': { color: 'var(--text-muted, #9ca3af)' },
@@ -356,9 +386,24 @@ export default function RegistroMaquinasPage() {
                                             name="generatedBy"
                                             control={control}
                                             render={({ field }) => (
-                                                <TextField {...field} select fullWidth size="small" label="Responsable" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}>
-                                                    {responsables.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                                                </TextField>
+                                                <Autocomplete
+                                                    freeSolo
+                                                    options={responsables}
+                                                    value={field.value || ''}
+                                                    onChange={(_, val) => field.onChange(val || '')}
+                                                    onInputChange={(_, val) => field.onChange(val)}
+                                                    filterOptions={filterStrings}
+                                                    autoHighlight
+                                                    selectOnFocus
+                                                    openOnFocus
+                                                    handleHomeEndKeys
+                                                    renderInput={(params) => (
+                                                        <TextField {...params} fullWidth size="small" label="Responsable" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }} />
+                                                    )}
+                                                    slotProps={{
+                                                        paper: { sx: { bgcolor: 'var(--bg-secondary, #111827)', color: 'var(--text-white-dynamic, white)', border: '1px solid var(--border-strong, #374151)' } }
+                                                    }}
+                                                />
                                             )}
                                         />
 
@@ -366,9 +411,22 @@ export default function RegistroMaquinasPage() {
                                             name="failureType"
                                             control={control}
                                             render={({ field }) => (
-                                                <TextField {...field} select fullWidth size="small" label="Tipo de Falla" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}>
-                                                    {failureTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                                                </TextField>
+                                                <Autocomplete
+                                                    options={failureTypes}
+                                                    value={field.value || 'Ninguna'}
+                                                    onChange={(_, val) => field.onChange(val || 'Ninguna')}
+                                                    filterOptions={filterStrings}
+                                                    autoHighlight
+                                                    selectOnFocus
+                                                    openOnFocus
+                                                    handleHomeEndKeys
+                                                    renderInput={(params) => (
+                                                        <TextField {...params} fullWidth size="small" label="Tipo de Falla" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }} />
+                                                    )}
+                                                    slotProps={{
+                                                        paper: { sx: { bgcolor: 'var(--bg-secondary, #111827)', color: 'var(--text-white-dynamic, white)', border: '1px solid var(--border-strong, #374151)' } }
+                                                    }}
+                                                />
                                             )}
                                         />
 
@@ -468,17 +526,28 @@ export default function RegistroMaquinasPage() {
                                                 </TextField>
                                             </Box>
 
-                                            <TextField 
-                                                select 
-                                                fullWidth 
-                                                size="small"
-                                                label="Tipo de Falla" 
-                                                value={secondFailure} 
-                                                onChange={(e) => setSecondFailure(e.target.value)}
-                                                sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}
-                                            >
-                                                {failureTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                                            </TextField>
+                                            <Autocomplete
+                                                options={failureTypes}
+                                                value={secondFailure || 'Ninguna'}
+                                                onChange={(_, val) => setSecondFailure(val || 'Ninguna')}
+                                                filterOptions={filterStrings}
+                                                autoHighlight
+                                                selectOnFocus
+                                                openOnFocus
+                                                handleHomeEndKeys
+                                                renderInput={(params) => (
+                                                    <TextField
+                                                        {...params}
+                                                        fullWidth
+                                                        size="small"
+                                                        label="Tipo de Falla"
+                                                        sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' } }}
+                                                    />
+                                                )}
+                                                slotProps={{
+                                                    paper: { sx: { bgcolor: 'var(--bg-secondary, #111827)', color: 'var(--text-white-dynamic, white)', border: '1px solid var(--border-strong, #374151)' } }
+                                                }}
+                                            />
 
                                             <TextField 
                                                 fullWidth 

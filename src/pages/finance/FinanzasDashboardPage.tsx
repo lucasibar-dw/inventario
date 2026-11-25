@@ -174,7 +174,10 @@ export default function FinanzasDashboardPage() {
                         </label>
                         <select
                             value={selectedDepot}
-                            onChange={(e) => setSelectedDepot(e.target.value)}
+                            onChange={(e) => {
+                                setSelectedDepot(e.target.value);
+                                setSelectedCategory('');
+                            }}
                             style={{
                                 width: '100%',
                                 background: 'var(--bg-primary, #0f1117)',

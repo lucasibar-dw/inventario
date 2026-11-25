@@ -204,12 +204,25 @@ export default function OrdenesProduccionPage({ sectorMode }: OrdenesProduccionP
 
     const filteredHojaRepartidor = useMemo(() => {
         if (!result) return [];
+        const normalizeArea = (val: string) =>
+            String(val || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/^area\s*/i, '')
+                .trim()
+                .toLowerCase();
+        const validMachineNumbers = selectedFecha !== 'ALL' ? new Set(filteredMaquinas.map((m) => m.machine)) : null;
         return result.hojaRepartidor.filter((item) => {
+            const itemFecha = (item as any).date || (item as any).fecha;
+            if (selectedFecha !== 'ALL') {
+                if (itemFecha && itemFecha !== selectedFecha) return false;
+                if (!itemFecha && validMachineNumbers && item.maquinas?.length > 0 && !item.maquinas.some((m) => validMachineNumbers.has(m))) return false;
+            }
             if (selectedTurno !== 'ALL' && item.shift && item.shift !== selectedTurno) return false;
-            if (selectedArea !== 'ALL' && item.area !== `Área ${selectedArea}`) return false;
+            if (selectedArea !== 'ALL' && normalizeArea(item.area) !== normalizeArea(selectedArea)) return false;
             return true;
         });
-    }, [result, selectedTurno, selectedArea]);
+    }, [result, filteredMaquinas, selectedFecha, selectedTurno, selectedArea]);
 
     const filteredHojaPicking = useMemo(() => {
         if (!result) return [];

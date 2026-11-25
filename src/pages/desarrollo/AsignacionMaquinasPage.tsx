@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
+    Autocomplete,
     Box,
     Card,
     Typography,
@@ -45,6 +46,7 @@ import {
     type ArticuloMachineTypeDetail,
 } from '../../features/desarrollo/api/articulos.api';
 import { PageHeader, Spinner } from '../../shared/ui';
+import { createSmartFilterOptions } from '../../shared/utils/search';
 
 export function AsignacionMaquinasPage() {
     const [search, setSearch] = useState('');
@@ -337,6 +339,11 @@ function DetalleArticuloMaquinasModal({
     const [newCycleSec, setNewCycleSec] = useState<string>('95');
     const [newPreferida, setNewPreferida] = useState<boolean>(false);
 
+    const machineTypeFilterOptions = useMemo(
+        () => createSmartFilterOptions<any>((mt) => [mt?.name, mt?.cantAgujas, mt?.cilindro, mt?.puntera, mt?.marca, mt?.modelo]),
+        [],
+    );
+
     const handleSave = async (m: ArticuloMachineTypeDetail) => {
         const val = parseFloat(editSec);
         if (isNaN(val) || val <= 0) {
@@ -430,21 +437,33 @@ function DetalleArticuloMaquinasModal({
                         ➕ Habilitar nuevo Tipo de Máquina para este Tejido
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <FormControl size="small" sx={{ flex: '1 1 260px' }}>
-                            <InputLabel sx={{ color: '#94a3b8' }}>Tipo de Máquina (Tejeduría)</InputLabel>
-                            <MuiSelect
-                                value={newMachineTypeId}
-                                label="Tipo de Máquina (Tejeduría)"
-                                onChange={(e) => setNewMachineTypeId(e.target.value)}
-                                sx={{ bgcolor: '#0f172a', color: '#f8fafc' }}
-                            >
-                                {catalogoMaquinas.map((mt) => (
-                                    <MenuItem key={mt.id} value={mt.id}>
-                                        {mt.name} ({mt.cantAgujas} ag / {mt.cilindro}" / {mt.puntera})
-                                    </MenuItem>
-                                ))}
-                            </MuiSelect>
-                        </FormControl>
+                        <Autocomplete
+                            size="small"
+                            options={catalogoMaquinas}
+                            value={catalogoMaquinas.find((mt) => mt.id === newMachineTypeId) || null}
+                            onChange={(_e, val) => setNewMachineTypeId(val?.id || '')}
+                            getOptionLabel={(mt) => `${mt.name} (${mt.cantAgujas} ag / ${mt.cilindro}" / ${mt.puntera})`}
+                            isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                            filterOptions={machineTypeFilterOptions}
+                            autoHighlight
+                            selectOnFocus
+                            openOnFocus
+                            handleHomeEndKeys
+                            noOptionsText="Sin tipos de máquina"
+                            sx={{
+                                flex: '1 1 260px',
+                                '& .MuiOutlinedInput-root': { bgcolor: '#0f172a', color: '#f8fafc' },
+                                '& .MuiInputLabel-root': { color: '#94a3b8' },
+                                '& .MuiSvgIcon-root': { color: '#94a3b8' },
+                            }}
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    label="Tipo de Máquina (Tejeduría)"
+                                    placeholder="Buscar máquina, agujas, cilindro..."
+                                />
+                            )}
+                        />
 
                         <TextField
                             label="Tiempo Ciclo (seg)"

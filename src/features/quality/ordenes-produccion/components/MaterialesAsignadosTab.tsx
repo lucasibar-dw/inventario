@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { MaterialAsignadoSummary } from '../types/ordenesProduccion.types';
 import { Card, Btn, Modal } from '../../../../shared/ui';
+import { matchesSearch } from '../../../../shared/utils/search';
 import { exportMaterialesToExcel } from '../utils/excelExport';
 
 interface MaterialesAsignadosTabProps {
@@ -51,10 +52,18 @@ export const MaterialesAsignadosTab: React.FC<MaterialesAsignadosTabProps> = ({
         return materiales.filter((m) => {
             if (selectedRol !== 'ALL' && m.rol !== selectedRol) return false;
 
-            if (q) {
-                const words = q.toLowerCase().split(' ').filter(Boolean);
-                const text = `${m.codigoInterno} ${m.descripcion} ${m.tono || ''} ${m.colorNombre || ''} ${m.proveedor || ''} ${m.articulosAsignados.map((a) => a.codigoArticulo).join(' ')} ${m.maquinas.map((maq) => `M${maq}`).join(' ')}`.toLowerCase();
-                return words.every((w) => text.includes(w));
+            if (q.trim()) {
+                return matchesSearch(
+                    q,
+                    m.codigoInterno,
+                    m.descripcion,
+                    m.categoriaNombre,
+                    m.tono,
+                    m.colorNombre,
+                    m.proveedor,
+                    ...m.articulosAsignados.map((a) => a.codigoArticulo),
+                    ...m.maquinas.map((maq) => `M${maq}`),
+                );
             }
             return true;
         });

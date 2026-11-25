@@ -19,6 +19,7 @@ import {
     useIsMobile,
 } from '../../shared/ui';
 import { ALL_SECTORS } from '../../shared/types/roles';
+import { matchesSearch } from '../../shared/utils/search';
 import {
     PersonAddOutlined,
     KeyOutlined,
@@ -114,8 +115,6 @@ export default function UsersPage() {
     }, [users]);
 
     const filteredUsers = useMemo(() => {
-        const q = quickSearch.trim().toLowerCase();
-
         return users.filter((u) => {
             const uRole = (u.role || '').toUpperCase();
             const uSectors = getUserSectors(u);
@@ -132,22 +131,17 @@ export default function UsersPage() {
                 }
             }
 
-            if (q) {
+            if (quickSearch.trim()) {
                 const depotNames = (u.allowedDepotIds || [])
                     .map((id) => depots.find((d: any) => d.id === id)?.nombre || '')
-                    .join(' ')
-                    .toLowerCase();
+                    .join(' ');
                 const sectorLabels = uSectors
                     .map((sec) => ALL_SECTORS.find((s) => s.key === sec)?.label || sec)
-                    .join(' ')
-                    .toLowerCase();
+                    .join(' ');
 
-                const matchUser = u.username.toLowerCase().includes(q);
-                const matchRole = uRole.toLowerCase().includes(q);
-                const matchSector = sectorLabels.includes(q);
-                const matchDepot = depotNames.includes(q);
-
-                if (!matchUser && !matchRole && !matchSector && !matchDepot) return false;
+                if (!matchesSearch(quickSearch, u.username, uRole, sectorLabels, depotNames)) {
+                    return false;
+                }
             }
 
             return true;

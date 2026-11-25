@@ -11,10 +11,21 @@ export default function DashboardComprasPage() {
     const navigate = useNavigate();
 
     const [selectedDepotId, setSelectedDepotId] = useState<string>('');
-    const { data: depots = [] } = useGetDepotsQuery();
+    const { data: rawDepots = [] } = useGetDepotsQuery();
+    const depots = useMemo(() => rawDepots.filter((d: any) => d.activo !== false), [rawDepots]);
     const { data: alerts = [], isLoading: loadingAlerts } = useGetAlertsQuery({ all: true });
     const { data: combos = [], isLoading: loadingCombos } = useGetCombosQuery(selectedDepotId || undefined);
     const { data: items = [], isLoading: loadingItems } = useGetItemsQuery({ depositoId: selectedDepotId || undefined });
+
+    const filteredAlerts = useMemo(() => {
+        if (!selectedDepotId) return alerts;
+        const depotItemIds = new Set(items.map((it: any) => it.id));
+        return alerts.filter((a: any) => {
+            const alertDepotId = a.depositoId || a.depotId || a.category?.depotId || a.category?.depositoId;
+            if (alertDepotId) return alertDepotId === selectedDepotId;
+            return depotItemIds.has(a.itemId || a.id);
+        });
+    }, [alerts, items, selectedDepotId]);
 
     // Filtered and calculated metrics
     const stats = useMemo(() => {
@@ -23,7 +34,7 @@ export default function DashboardComprasPage() {
         let ignoredAlerts = 0;
         let totalDeficitKg = 0;
 
-        alerts.forEach(a => {
+        filteredAlerts.forEach(a => {
             const isIgnored = Boolean(a.ignorarStockMinimo || a.meta?.ignorarStockMinimo);
             const actual = Number(a.stockActual || 0);
             const min = Number(a.stockMinimo || 0);
@@ -49,13 +60,13 @@ export default function DashboardComprasPage() {
             combosWithDeficit,
             totalItems: items.length,
         };
-    }, [alerts, combos, items]);
+    }, [filteredAlerts, combos, items]);
 
     const criticalList = useMemo(() => {
-        return alerts
+        return filteredAlerts
             .filter(a => !a.ignorarStockMinimo && !a.meta?.ignorarStockMinimo && Number(a.stockActual || 0) < Number(a.stockMinimo || 0))
             .slice(0, 8);
-    }, [alerts]);
+    }, [filteredAlerts]);
 
     const isLoading = loadingAlerts || loadingCombos || loadingItems;
 

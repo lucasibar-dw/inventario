@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useGetPartnersQuery, useCreatePartnerMutation, useUpdatePartnerMutation, useDeletePartnerMutation } from '../../features/config/partners/api/partners.api';
 import { PageHeader, Card, Btn, Input, Select, Modal, Table, Badge, SearchBar } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 
 const TYPES = [
     { value: 'SUPPLIER', label: '📦 Proveedor' },
@@ -16,12 +17,16 @@ export default function SociosPage() {
     const { data: partners = [], isLoading } = useGetPartnersQuery({});
 
     const filteredPartners = useMemo(() => {
+        const queryNoHyphens = q.replace(/-/g, '');
         return partners.filter((p: any) => {
             const matchesType = !filterType || p.type === filterType || (p.type === 'BOTH' && (filterType === 'SUPPLIER' || filterType === 'CLIENT'));
-            const pName = (p.name || '').toLowerCase();
-            const pTaxId = p.taxId || '';
-            const matchesSearch = !q || pName.includes(q.toLowerCase()) || pTaxId.includes(q);
-            return matchesType && matchesSearch;
+            if (!matchesType) return false;
+            if (!q.trim()) return true;
+            const strippedTaxId = p.taxId ? String(p.taxId).replace(/[-\s]/g, '') : '';
+            return (
+                matchesSearch(q, p.name, p.taxId, strippedTaxId, p.email, p.phone, p.address) ||
+                (queryNoHyphens !== q && matchesSearch(queryNoHyphens, p.name, p.taxId, strippedTaxId, p.email, p.phone, p.address))
+            );
         });
     }, [partners, q, filterType]);
     const [createPartner] = useCreatePartnerMutation();

@@ -65,6 +65,7 @@ import {
     type ArriboProgramado
 } from '../../features/purchasing/ordenesCompra/ordenesCompraStorage';
 import { useIsMobile } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 
 const colors = {
     primary: '#f59e0b',
@@ -88,13 +89,6 @@ const colors = {
     purple: '#a855f7',
     indigo: '#818cf8'
 };
-
-const normalizeText = (text: string) =>
-    (text || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .trim();
 
 const formatDateShort = (d: Date) => {
     const day = String(d.getDate()).padStart(2, '0');
@@ -597,9 +591,8 @@ export default function DienteDeSierraPage() {
     }, [categories, items, stockTotalsByItem, consumption90dByItem, ordenes, horizonDays, includeOC]);
 
     const filteredCategories = useMemo(() => {
-        const q = normalizeText(categorySearch);
-        if (!q) return categoryStats.filter(c => c.status !== 'IDLE');
-        return categoryStats.filter(c => normalizeText(c.nombre).includes(q));
+        if (!categorySearch.trim()) return categoryStats.filter(c => c.status !== 'IDLE');
+        return categoryStats.filter(c => matchesSearch(categorySearch, c.nombre));
     }, [categoryStats, categorySearch]);
 
     // Auto-seleccionar primera categoría relevante

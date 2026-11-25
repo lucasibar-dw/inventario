@@ -33,6 +33,7 @@ import { useGetPartnersQuery } from '../../../config/partners/api/partners.api';
 import { useGetItemsQuery } from '../../materiales/api/items.api';
 import { useGetStockQuery } from '../../stock/api/stock.api';
 import { CreatePartnerDialog } from '../../../config/CreatePartnerDialog';
+import { createSmartFilterOptions, getItemSearchFields } from '../../../../shared/utils/search';
 
 const colors = {
     primary: '#f59e0b',
@@ -69,8 +70,9 @@ interface Props {
 export function NuevoRemitoSalidaModal({ onClose, onSuccess }: Props) {
     const { data: rawDepots = [] } = useGetDepotsQuery();
     const depots = useMemo(() => rawDepots.filter((d: any) => d.activo !== false), [rawDepots]);
-    const { data: clients = [] } = useGetPartnersQuery({ type: 'CLIENT' });
-    const { data: items = [] } = useGetItemsQuery({});
+    const { data: rawClients = [] } = useGetPartnersQuery({ type: 'CLIENT' });
+    const clients = useMemo(() => rawClients.filter((c: any) => c.activo !== false), [rawClients]);
+    const { data: rawItems = [] } = useGetItemsQuery({});
     const { data: stock = [] } = useGetStockQuery({});
 
     const [createRemitoSalida, { isLoading: isSaving }] = useCreateRemitoSalidaMutation();
@@ -99,10 +101,47 @@ export function NuevoRemitoSalidaModal({ onClose, onSuccess }: Props) {
         }
     }, [depots, depositoId]);
 
+    // Materiales activos que poseen stock disponible en el depósito seleccionado (o global si no hay depósito)
+    const availableItems = useMemo(() => {
+        const stockedItemIds = new Set<string>();
+        stock.forEach((s: any) => {
+            if (Number(s.qtyPrincipal) > 0 && (!depositoId || s.depositoId === depositoId)) {
+                const id = s.itemId || s.batch?.item?.id;
+                if (id) stockedItemIds.add(id);
+            }
+        });
+        return rawItems.filter((it: any) => it.activo !== false && stockedItemIds.has(it.id));
+    }, [rawItems, stock, depositoId]);
+
     // ── Líneas ──
     const [lines, setLines] = useState<Line[]>([
         { itemId: '', itemDesc: '', itemCode: '', lotId: '', lotNumber: '', posicionId: '', posicionCodigo: '', qtyPrincipal: '', qtySecundaria: '', kilosPorCaja: null }
     ]);
+
+    const handleDepotChange = (newDepotId: string) => {
+        setDepositoId(newDepotId);
+        const stockedInNewDepot = new Set<string>();
+        stock.forEach((s: any) => {
+            if (Number(s.qtyPrincipal) > 0 && (!newDepotId || s.depositoId === newDepotId)) {
+                const id = s.itemId || s.batch?.item?.id;
+                if (id) stockedInNewDepot.add(id);
+            }
+        });
+        setLines(prev => prev.map(l => {
+            const stillHasStock = l.itemId && stockedInNewDepot.has(l.itemId);
+            return {
+                ...l,
+                itemId: stillHasStock ? l.itemId : '',
+                itemDesc: stillHasStock ? l.itemDesc : '',
+                itemCode: stillHasStock ? l.itemCode : '',
+                kilosPorCaja: stillHasStock ? l.kilosPorCaja : null,
+                lotId: '',
+                lotNumber: '',
+                posicionId: '',
+                posicionCodigo: '',
+            };
+        }));
+    };
 
     const addLine = () => {
         setLines(prev => [
@@ -185,7 +224,8 @@ export function NuevoRemitoSalidaModal({ onClose, onSuccess }: Props) {
                 (!lotId || s.lotId === lotId) &&
                 Number(s.qtyPrincipal) > 0 &&
                 (!depositoId || s.depositoId === depositoId) &&
-                s.posicion
+                s.posicion &&
+                s.posicion.activo !== false
             )
             .map((s: any) => ({
                 posicionId: s.posicionId,
@@ -379,7 +419,7 @@ export function NuevoRemitoSalidaModal({ onClose, onSuccess }: Props) {
                                         label="Depósito"
                                         size="small"
                                         value={depositoId}
-                                        onChange={(e) => setDepositoId(e.target.value)}
+                                        onChange={(e) => handleDepotChange(e.target.value)}
                                         InputLabelProps={{ sx: { color: colors.textDim } }}
                                         sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
                                     >
@@ -392,21 +432,30 @@ export function NuevoRemitoSalidaModal({ onClose, onSuccess }: Props) {
 
                                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.5fr 1fr' }, gap: 2, mt: 2 }}>
                                     <Box sx={{ display: 'flex', gap: 1 }}>
-                                        <TextField
-                                            select
+                                        <Autocomplete
                                             fullWidth
-                                            label="Cliente"
                                             size="small"
-                                            value={clientId}
-                                            onChange={(e) => setClientId(e.target.value)}
-                                            InputLabelProps={{ sx: { color: colors.textDim } }}
-                                            sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
-                                        >
-                                            <MenuItem value=""><em>Consumidor Final / Sin Cliente</em></MenuItem>
-                                            {clients.map((c: any) => (
-                                                <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                                            ))}
-                                        </TextField>
+                                            options={clients}
+                                            getOptionLabel={(c: any) => c.name || ''}
+                                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                                            filterOptions={createSmartFilterOptions((c: any) => [c.name, c.taxId, c.email])}
+                                            value={clients.find((c: any) => c.id === clientId) || null}
+                                            onChange={(_, val: any) => setClientId(val?.id || '')}
+                                            autoHighlight
+                                            openOnFocus
+                                            selectOnFocus
+                                            handleHomeEndKeys
+                                            noOptionsText="Sin clientes"
+                                            renderInput={(params) => (
+                                                <TextField
+                                                    {...params}
+                                                    label="Cliente"
+                                                    placeholder="Consumidor Final / Sin Cliente"
+                                                    InputLabelProps={{ sx: { color: colors.textDim } }}
+                                                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
+                                                />
+                                            )}
+                                        />
                                         <Button
                                             variant="outlined"
                                             size="small"
@@ -455,10 +504,18 @@ export function NuevoRemitoSalidaModal({ onClose, onSuccess }: Props) {
                                                 {/* Autocomplete de Material */}
                                                 <Autocomplete
                                                     size="small"
-                                                    options={items}
+                                                    options={availableItems}
                                                     getOptionLabel={(o: any) => `${o.codigoInterno} — ${o.descripcion}`}
-                                                    value={items.find((it: any) => it.id === line.itemId) || null}
+                                                    isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                                                    filterOptions={createSmartFilterOptions(getItemSearchFields)}
+                                                    value={availableItems.find((it: any) => it.id === line.itemId) || null}
                                                     onChange={(_, val) => handleSelectItem(idx, val)}
+                                                    autoHighlight
+                                                    autoSelect
+                                                    openOnFocus
+                                                    selectOnFocus
+                                                    handleHomeEndKeys
+                                                    noOptionsText="Sin materiales con stock disponible"
                                                     renderInput={(params) => (
                                                         <TextField
                                                             {...params}
@@ -471,48 +528,73 @@ export function NuevoRemitoSalidaModal({ onClose, onSuccess }: Props) {
                                                 />
 
                                                 {/* Selector Lote / Partida */}
-                                                <TextField
-                                                    select
+                                                <Autocomplete
                                                     size="small"
-                                                    label="Partida / Lote"
-                                                    value={line.lotId}
-                                                    onChange={(e) => {
-                                                        const sel = availableLots.find(l => l.lotId === e.target.value);
-                                                        updateLine(idx, { lotId: e.target.value, lotNumber: sel?.lotNumber || '', posicionId: '' });
+                                                    options={availableLots}
+                                                    getOptionLabel={(l: any) => `${l.lotNumber} (${l.totalQty.toFixed(1)} kg disp.)`}
+                                                    isOptionEqualToValue={(option: any, value: any) => option?.lotId === value?.lotId}
+                                                    filterOptions={createSmartFilterOptions((l: any) => [l.lotNumber])}
+                                                    value={availableLots.find(l => l.lotId === line.lotId) || null}
+                                                    onChange={(_, val: any) => {
+                                                        updateLine(idx, {
+                                                            lotId: val?.lotId || '',
+                                                            lotNumber: val?.lotNumber || '',
+                                                            posicionId: '',
+                                                            posicionCodigo: ''
+                                                        });
                                                     }}
                                                     disabled={!line.itemId}
-                                                    InputLabelProps={{ sx: { color: colors.textDim } }}
-                                                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
-                                                >
-                                                    <MenuItem value=""><em>Cualquiera (FIFO automático)</em></MenuItem>
-                                                    {availableLots.map((l) => (
-                                                        <MenuItem key={l.lotId} value={l.lotId}>
-                                                            {l.lotNumber} ({l.totalQty.toFixed(1)} kg disp.)
-                                                        </MenuItem>
-                                                    ))}
-                                                </TextField>
+                                                    autoHighlight
+                                                    openOnFocus
+                                                    selectOnFocus
+                                                    handleHomeEndKeys
+                                                    noOptionsText="Sin lotes disponibles"
+                                                    renderInput={(params) => (
+                                                        <TextField
+                                                            {...params}
+                                                            label="Partida / Lote"
+                                                            placeholder="Cualquiera (FIFO automático)"
+                                                            InputLabelProps={{ sx: { color: colors.textDim } }}
+                                                            sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
+                                                        />
+                                                    )}
+                                                />
 
                                                 {/* Selector Posición Origen */}
-                                                <TextField
-                                                    select
+                                                <Autocomplete
                                                     size="small"
-                                                    label="Posición Origen"
-                                                    value={line.posicionId}
-                                                    onChange={(e) => {
-                                                        const sel = availablePositions.find(p => p.posicionId === e.target.value);
-                                                        updateLine(idx, { posicionId: e.target.value, posicionCodigo: sel?.posicionCodigo || '' });
+                                                    options={availablePositions}
+                                                    getOptionLabel={(p: any) => `${p.posicionCodigo} (${p.qtyPrincipal.toFixed(1)} kg disp.)`}
+                                                    isOptionEqualToValue={(option: any, value: any) => option?.posicionId === value?.posicionId && option?.lotNumber === value?.lotNumber}
+                                                    filterOptions={createSmartFilterOptions((p: any) => [p.posicionCodigo, p.lotNumber])}
+                                                    value={availablePositions.find(p => p.posicionId === line.posicionId) || null}
+                                                    onChange={(_, val: any) => {
+                                                        updateLine(idx, {
+                                                            posicionId: val?.posicionId || '',
+                                                            posicionCodigo: val?.posicionCodigo || ''
+                                                        });
                                                     }}
                                                     disabled={!line.itemId}
-                                                    InputLabelProps={{ sx: { color: colors.textDim } }}
-                                                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
-                                                >
-                                                    <MenuItem value=""><em>Cualquiera (FIFO automático)</em></MenuItem>
-                                                    {availablePositions.map((p, pIdx) => (
-                                                        <MenuItem key={pIdx} value={p.posicionId}>
-                                                            {p.posicionCodigo} ({p.qtyPrincipal.toFixed(1)} kg disp.)
-                                                        </MenuItem>
-                                                    ))}
-                                                </TextField>
+                                                    autoHighlight
+                                                    openOnFocus
+                                                    selectOnFocus
+                                                    handleHomeEndKeys
+                                                    noOptionsText="Sin posiciones disponibles"
+                                                    renderOption={(props, option: any) => (
+                                                        <li {...props} key={`${option.posicionId}-${option.lotNumber}`}>
+                                                            {option.posicionCodigo} ({option.qtyPrincipal.toFixed(1)} kg disp.)
+                                                        </li>
+                                                    )}
+                                                    renderInput={(params) => (
+                                                        <TextField
+                                                            {...params}
+                                                            label="Posición Origen"
+                                                            placeholder="Cualquiera (FIFO automático)"
+                                                            InputLabelProps={{ sx: { color: colors.textDim } }}
+                                                            sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
+                                                        />
+                                                    )}
+                                                />
                                             </Box>
 
                                             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr auto', md: '1fr 1fr auto' }, gap: 1.5, alignItems: 'center' }}>

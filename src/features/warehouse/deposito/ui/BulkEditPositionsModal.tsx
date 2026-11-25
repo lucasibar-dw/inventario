@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { Modal, Btn, Input } from '../../../../shared/ui';
+import { Modal, Btn, Input, SearchSelect } from '../../../../shared/ui';
+import { getItemSearchFields } from '../../../../shared/utils/search';
 import { depotsApi, useUpdatePositionSilentMutation } from '../api/deposito.api';
 import { type PositionView, ZONAS_EDITABLES, runInChunks, volumeFromDims, fmt } from '../lib/depotMetrics';
 import { inputStyle, labelStyle, SectionTitle } from './common';
@@ -14,6 +15,7 @@ interface Props {
 }
 
 const KEEP = '__keep__';
+const CLEAR = '__clear__';
 const toNum = (v: string): number | null => {
     if (v.trim() === '') return null;
     const n = parseFloat(v.replace(',', '.'));
@@ -29,7 +31,6 @@ export default function BulkEditPositionsModal({ views, itemCategories, items = 
     const [catP, setCatP] = useState(KEEP);
     const [catS, setCatS] = useState(KEEP);
     const [idealItemId, setIdealItemId] = useState(KEEP);
-    const [itemFilter, setItemFilter] = useState('');
     const [alto, setAlto] = useState('');
     const [ancho, setAncho] = useState('');
     const [prof, setProf] = useState('');
@@ -38,13 +39,20 @@ export default function BulkEditPositionsModal({ views, itemCategories, items = 
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
     const [errors, setErrors] = useState<string[]>([]);
 
-    const filteredItems = useMemo(() => {
-        const q = itemFilter.trim().toLowerCase();
+    const idealItemOptions = useMemo(() => {
         const arr = Array.isArray(items) ? items : [];
-        return (q ? arr.filter((i: any) =>
-            (i.codigoInterno || '').toLowerCase().includes(q) ||
-            (i.descripcion || '').toLowerCase().includes(q)) : arr).slice(0, 150);
-    }, [items, itemFilter]);
+        return [
+            { value: KEEP, label: '— No cambiar —' },
+            { value: CLEAR, label: '✕ Quitar material ideal' },
+            ...arr
+                .filter((it: any) => it.activo !== false)
+                .map((it: any) => ({
+                    value: it.id,
+                    label: `${it.codigoInterno ? `${it.codigoInterno} · ` : ''}${it.descripcion}`,
+                    searchText: getItemSearchFields(it).filter(Boolean).join(' '),
+                })),
+        ];
+    }, [items]);
 
     const dimsVol = volumeFromDims({ altoM: toNum(alto), anchoM: toNum(ancho), profundidadM: toNum(prof) });
     const withStock = views.filter(v => v.stats.lineas.length > 0 && v.pos.activo);
@@ -75,7 +83,7 @@ export default function BulkEditPositionsModal({ views, itemCategories, items = 
             }
             if (toNum(maxKg) !== null) metaPatch.maxKg = toNum(maxKg);
             if (idealItemId !== KEEP) {
-                if (idealItemId === '') {
+                if (idealItemId === CLEAR || idealItemId === '') {
                     metaPatch.idealItemId = null;
                     metaPatch.idealItemCodigo = null;
                     metaPatch.idealItemDescripcion = null;
@@ -140,18 +148,12 @@ export default function BulkEditPositionsModal({ views, itemCategories, items = 
                     </div>
                     <div style={{ marginTop: 12 }}>
                         <label style={labelStyle}>⭐ Material ideal específico</label>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
-                            <input value={itemFilter} onChange={e => setItemFilter(e.target.value)} placeholder="Filtrar material…" style={inputStyle} />
-                            <select value={idealItemId} onChange={e => setIdealItemId(e.target.value)} style={inputStyle}>
-                                <option value={KEEP}>— No cambiar —</option>
-                                <option value="">Quitar material ideal</option>
-                                {filteredItems.map((it: any) => (
-                                    <option key={it.id} value={it.id}>
-                                        {it.codigoInterno ? `${it.codigoInterno} · ` : ''}{it.descripcion}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <SearchSelect
+                            value={idealItemId}
+                            onChange={(v) => setIdealItemId(v || KEEP)}
+                            options={idealItemOptions}
+                            placeholder="Buscar por código, descripción, proveedor o categoría…"
+                        />
                     </div>
                 </div>
                 <div>

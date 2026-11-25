@@ -9,6 +9,7 @@ import {
     useGetInventoryChecksQuery,
 } from '../../features/warehouse/inventoryCheck/api/inventory-check.api';
 import { PageHeader, Card, Btn, Spinner, useIsMobile } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 
 /* ────────────────── Types ────────────────── */
 type Phase = 'select' | 'check' | 'report';
@@ -357,7 +358,20 @@ function CheckPhase({ isMobile, items, currentIdx, onIdxChange, onTag, progress,
             .map((item, originalIdx) => ({ item, originalIdx }))
             .filter(({ item }) => {
                 if (!searchQuery.trim()) return true;
-                return item.posicionCodigo.toLowerCase().includes(searchQuery.trim().toLowerCase());
+                const snapshotFields = Array.isArray(item.stockSnapshot)
+                    ? item.stockSnapshot.flatMap((s: any) => [
+                        s.itemCode,
+                        s.codigoInterno,
+                        s.itemName,
+                        s.descripcion,
+                        s.lotNumber,
+                        s.lote,
+                        s.supplierName,
+                        s.proveedor,
+                        s.categoryName,
+                    ])
+                    : [];
+                return matchesSearch(searchQuery, item.posicionCodigo, ...snapshotFields);
             });
     }, [items, searchQuery]);
 

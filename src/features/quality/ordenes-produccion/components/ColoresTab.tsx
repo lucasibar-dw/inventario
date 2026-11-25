@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Card } from '../../../../shared/ui';
+import { matchesSearch } from '../../../../shared/utils/search';
 
 interface ColoresTabProps {
     colores: {
@@ -25,13 +26,9 @@ export const ColoresTab: React.FC<ColoresTabProps> = ({ colores, onSelectMachine
     const [expandedColor, setExpandedColor] = useState<string | null>(null);
 
     const filtered = useMemo(() => {
-        if (!q) return colores;
-        const lower = q.toLowerCase();
-        return colores.filter(
-            (c) =>
-                c.color.toLowerCase().includes(lower) ||
-                c.articulos.some((a) => a.toLowerCase().includes(lower)) ||
-                c.maquinas.some((m) => `m${m}`.includes(lower)),
+        if (!q.trim()) return colores;
+        return colores.filter((c) =>
+            matchesSearch(q, c.color, ...c.articulos, ...c.maquinas.map((m) => `m${m}`)),
         );
     }, [colores, q]);
 

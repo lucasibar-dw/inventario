@@ -25,6 +25,7 @@ import { useGetPartnersQuery } from '../../../config/partners/api/partners.api';
 import { useGetItemsQuery } from '../../materiales/api/items.api';
 import { CreateItemDialog } from '../../materiales/components/CreateItemDialog';
 import { CreatePartnerDialog } from '../../../config/CreatePartnerDialog';
+import { createSmartFilterOptions, getItemSearchFields } from '../../../../shared/utils/search';
 
 const colors = {
     primary: '#f59e0b', // Amber
@@ -60,8 +61,10 @@ interface Props {
 export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
     const { data: rawDepots = [] } = useGetDepotsQuery();
     const depots = useMemo(() => rawDepots.filter((d: any) => d.activo !== false), [rawDepots]);
-    const { data: suppliers = [] } = useGetPartnersQuery({ type: 'SUPPLIER' });
-    const { data: items = [] } = useGetItemsQuery({});
+    const { data: rawSuppliers = [] } = useGetPartnersQuery({ type: 'SUPPLIER' });
+    const suppliers = useMemo(() => rawSuppliers.filter((s: any) => s.activo !== false), [rawSuppliers]);
+    const { data: rawItems = [] } = useGetItemsQuery({});
+    const items = useMemo(() => rawItems.filter((it: any) => it.activo !== false), [rawItems]);
 
     const [createRemitoEntrada, { isLoading: isSaving }] = useCreateRemitoEntradaMutation();
 
@@ -127,7 +130,26 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
         if (defaultPosId) {
             setLines(prev => prev.map(l => (l.posicionId ? l : { ...l, posicionId: defaultPosId })));
         }
-    }, [defaultPosId]);
+    }, [defaultPosId, depositoId]);
+
+    const handleDepotChange = (newDepotId: string) => {
+        setDepositoId(newDepotId);
+        setLines(prev => prev.map(l => ({ ...l, posicionId: '' })));
+    };
+
+    const handleSupplierChange = (newSupplierId: string) => {
+        setSupplierId(newSupplierId);
+        if (newSupplierId) {
+            setLines(prev => prev.map(l => {
+                if (!l.itemId) return l;
+                const item = items.find((it: any) => it.id === l.itemId);
+                if (!item || item.supplierId !== newSupplierId) {
+                    return { ...l, itemId: '', itemDesc: '', itemCode: '', kilosPorCaja: null };
+                }
+                return l;
+            }));
+        }
+    };
 
     const linesContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -317,7 +339,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                             label="Depósito Destino *"
                             size="small"
                             value={depositoId}
-                            onChange={(e) => setDepositoId(e.target.value)}
+                            onChange={(e) => handleDepotChange(e.target.value)}
                             sx={{ flex: '1 1 200px', '& .MuiInputLabel-root': { color: colors.textDim }, '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: 'var(--text-white-dynamic, #fff)', borderRadius: 2 } }}
                         >
                             <MenuItem value=""><em>Seleccionar depósito...</em></MenuItem>
@@ -331,9 +353,10 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                 options={suppliers}
                                 getOptionLabel={(option: any) => option.name || ''}
                                 isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                                filterOptions={createSmartFilterOptions((s: any) => [s.name, s.taxId, s.email])}
                                 value={suppliers.find((s: any) => s.id === supplierId) || null}
                                 onChange={(_e, val: any, reason) => {
-                                    setSupplierId(val?.id || '');
+                                    handleSupplierChange(val?.id || '');
                                     if (val && reason === 'selectOption') {
                                         setTimeout(() => focusCell(0, 'material'), 60);
                                     }
@@ -448,7 +471,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
 
                     <Box ref={linesContainerRef} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: '380px', overflowY: 'auto', pr: 0.5, scrollBehavior: 'smooth' }}>
                         {lines.map((line, idx) => {
-                            const selectedItem = items.find((it: any) => it.id === line.itemId);
+                            const selectedItem = availableItems.find((it: any) => it.id === line.itemId);
                             const uSec = selectedItem?.unidadSecundaria;
                             const uPrinc = selectedItem?.unidadPrincipal || 'kg';
                             const labelSec = uSec ? (uSec.trim().charAt(0).toUpperCase() + uSec.trim().slice(1)) : 'Bultos / Cajas';
@@ -477,6 +500,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                             noOptionsText={supplierId ? "No hay materiales asignados a este proveedor" : "Selecciona un proveedor primero"}
                                             getOptionLabel={(option: any) => `${option.codigoInterno} — ${option.descripcion}`}
                                             isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
+                                            filterOptions={createSmartFilterOptions(getItemSearchFields)}
                                             value={selectedItem || null}
                                             onChange={(_e, val: any, reason) => {
                                                 handleItemChange(idx, val);
@@ -546,6 +570,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                 <Autocomplete
                                                     options={positionOptions}
                                                     getOptionLabel={(option: any) => typeof option === 'string' ? option : (option?.codigo || '')}
+                                                    filterOptions={createSmartFilterOptions((p: any) => [p.codigo, p.descripcion, p.zona])}
                                                     value={selectedPos}
                                                     onChange={(_e, val: any, reason) => {
                                                         const newPosId = val ? val.id : '';
@@ -742,7 +767,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                     onClose={() => setIsCreatePartnerOpen(false)}
                     defaultType="SUPPLIER"
                     onSuccess={(newPartner: any) => {
-                        setSupplierId(newPartner.id);
+                        handleSupplierChange(newPartner.id);
                         setIsCreatePartnerOpen(false);
                     }}
                 />

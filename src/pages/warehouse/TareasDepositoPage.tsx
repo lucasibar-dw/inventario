@@ -15,7 +15,8 @@ import { useGetDepotsQuery } from '../../features/warehouse/deposito/api/deposit
 import RelocationRecommendationsModal from '../../features/warehouse/deposito/ui/RelocationRecommendationsModal';
 import { useGetItemsQuery } from '../../features/warehouse/materiales/api/items.api';
 import { useGetEmployeesQuery } from '../../features/hr/api/hr.api';
-import { PageHeader, Card, Btn, Modal, Input, Badge, Spinner, useIsMobile } from '../../shared/ui';
+import { PageHeader, Card, Btn, Modal, Input, Badge, Spinner, SearchSelect, useIsMobile } from '../../shared/ui';
+import { getItemSearchFields } from '../../shared/utils/search';
 
 // Destinos habituales de plantas/clientes
 const DESTINOS_RAPIDOS = ['Catamarca', 'José', 'San Martín', 'Depósito Central', 'Tejeduría'];
@@ -182,6 +183,18 @@ export default function TareasDepositoPage() {
 
     // Artículos
     const { data: items = [] } = useGetItemsQuery({});
+    const activeItems = useMemo(() => items.filter((it: any) => it.activo !== false), [items]);
+    const itemOptions = useMemo(() => [
+        { value: '', label: 'Seleccione el hilado...' },
+        ...activeItems.map((it: any) => {
+            const code = it.codigoInterno || it.codigo || '';
+            return {
+                value: it.id,
+                label: code ? `${code} - ${it.descripcion}` : it.descripcion,
+                searchText: getItemSearchFields(it).filter(Boolean).join(' '),
+            };
+        }),
+    ], [activeItems]);
 
     // Mutations
     const [createTask, { isLoading: isCreating }] = useCreateTaskMutation();
@@ -379,7 +392,8 @@ export default function TareasDepositoPage() {
         }
 
         const selectedItem = items.find((i: any) => i.id === pedidoForm.itemId);
-        const itemDesc = selectedItem ? `${selectedItem.codigo} - ${selectedItem.descripcion}` : 'Hilado';
+        const selectedCode = selectedItem?.codigoInterno || selectedItem?.codigo || '';
+        const itemDesc = selectedItem ? (selectedCode ? `${selectedCode} - ${selectedItem.descripcion}` : selectedItem.descripcion) : 'Hilado';
         const title = `Armar pedido para ${destination}: ${pedidoForm.qty || ''} kg ${itemDesc}`;
 
         try {
@@ -1094,26 +1108,12 @@ export default function TareasDepositoPage() {
                                 <label style={{ fontSize: '12px', color: 'var(--text-subtle, #9ca3af)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
                                     🧶 Artículo / Hilado:
                                 </label>
-                                <select
+                                <SearchSelect
                                     value={pedidoForm.itemId}
-                                    onChange={(e) => setPedidoForm({ ...pedidoForm, itemId: e.target.value })}
-                                    style={{
-                                        width: '100%',
-                                        background: 'var(--bg-primary, #0f1117)',
-                                        border: '1px solid var(--border-color, #2a2d3e)',
-                                        color: '#fff',
-                                        padding: '8px 12px',
-                                        borderRadius: '8px',
-                                        fontSize: '13px',
-                                    }}
-                                >
-                                    <option value="">Seleccione el hilado...</option>
-                                    {items.map((it: any) => (
-                                        <option key={it.id} value={it.id}>
-                                            {it.codigo} - {it.descripcion}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(v) => setPedidoForm({ ...pedidoForm, itemId: v })}
+                                    options={itemOptions}
+                                    placeholder="Buscar hilado por código, descripción, proveedor o categoría..."
+                                />
                             </div>
 
                             {/* Kilos y Prioridad */}

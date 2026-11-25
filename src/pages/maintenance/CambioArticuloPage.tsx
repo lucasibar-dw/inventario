@@ -7,6 +7,7 @@ import {
     FormGroup, FormControlLabel, Checkbox, Grid
 } from '@mui/material';
 import { PageHeader, Spinner, Select } from '../../shared/ui';
+import { createSmartFilterOptions } from '../../shared/utils/search';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SendIcon from '@mui/icons-material/Send';
@@ -98,8 +99,16 @@ export default function CambioArticuloPage() {
 
     const plantOptions = useMemo(() => plants.map((p: any) => ({ value: p.id, label: p.name })), [plants]);
     const machineOptions = useMemo(() => machines.map((m: any) => ({
-        value: m.id, label: `Máquina ${m.number}`, number: m.number
+        value: m.id,
+        label: `Máquina ${m.number}`,
+        number: m.number,
+        codigoInterno: m.codigoInterno,
+        nombre: m.nombre,
     })), [machines]);
+    const filterMachineOptions = useMemo(
+        () => createSmartFilterOptions<any>((o) => [o.label, o.number, o.codigoInterno, o.nombre]),
+        []
+    );
 
     const toggleChangeType = (value: string) => {
         setSelectedChangeTypes(prev =>
@@ -135,7 +144,7 @@ export default function CambioArticuloPage() {
 
         if (!isActuallyOngoing) {
             const eH = parseInt(endHour, 10);
-            const eM = parseInt(endMinute, 10);
+            const eM = hasEndMinute ? parseInt(endMinute, 10) : 0;
 
             if (isNaN(eH) || eH < 0 || eH > 23 || isNaN(eM) || eM < 0 || eM > 59) {
                 return alert('La hora de fin/arranque no es válida. Usá valores entre 00-23 para hora y 00-59 para minutos, o dejala vacía si el cambio sigue en curso.');
@@ -265,21 +274,14 @@ export default function CambioArticuloPage() {
                                     value={machineOptions.find((m: any) => m.value === selectedMachineId) || null}
                                     onChange={(_, val: any) => setSelectedMachineId(val?.value || null)}
                                     loading={loadingMachines}
-                                    filterOptions={(options, state) => {
-                                        const input = state.inputValue.trim();
-                                        if (!input) return options;
-                                        if (/^\d+$/.test(input)) {
-                                            const targetNum = parseInt(input, 10);
-                                            const exact = options.filter(o => o.number === targetNum);
-                                            if (exact.length > 0) return exact;
-                                        }
-                                        const lower = input.toLowerCase();
-                                        return options.filter(o => o.label.toLowerCase().includes(lower));
-                                    }}
+                                    filterOptions={filterMachineOptions}
+                                    autoHighlight
+                                    selectOnFocus
+                                    openOnFocus
+                                    handleHomeEndKeys
                                     renderInput={(params) => (
-                                        <TextField {...params} label="Buscar Máquina (por número) *" variant="outlined"
+                                        <TextField {...params} label="Buscar Máquina (por número o código) *" variant="outlined"
                                             inputRef={machineSearchRef}
-                                            inputProps={{ ...params.inputProps, inputMode: 'numeric' }}
                                         />
                                     )}
                                     isOptionEqualToValue={(opt: any, val: any) => opt.value === val.value}

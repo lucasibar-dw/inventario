@@ -4,6 +4,7 @@ import {
 } from '../../../features/warehouse/tasks/api/tasks.api';
 import { useGetDepotsQuery } from '../../../features/warehouse/deposito/api/deposito.api';
 import { Card, Table, Btn, Modal, Badge, Spinner, useIsMobile } from '../../../shared/ui';
+import { matchesSearch, normalizeSearchText } from '../../../shared/utils/search';
 
 export function ProductividadDepositoTab() {
     const isMobile = useIsMobile();
@@ -29,6 +30,20 @@ export function ProductividadDepositoTab() {
     // Carga de depósitos
     const { data: rawDepots = [] } = useGetDepotsQuery();
     const depots = useMemo(() => rawDepots.filter((d: any) => d.activo !== false), [rawDepots]);
+    const filteredDepots = useMemo(() => {
+        if (selectedSector === 'TODOS') return depots;
+        const matched = depots.filter((d: any) => {
+            const text = normalizeSearchText(`${d.sector || ''} ${d.tipo || ''} ${d.nombre || ''} ${d.planta || ''}`);
+            if (selectedSector === 'HILADO') {
+                return text.includes('hilado') || text.includes('hilo');
+            }
+            if (selectedSector === 'PACKAGING') {
+                return text.includes('packaging') || text.includes('insumo') || text.includes('empaque') || text.includes('caja');
+            }
+            return true;
+        });
+        return matched.length > 0 ? matched : depots;
+    }, [depots, selectedSector]);
 
     // Consulta de productividad en backend
     const { data: prodData, isLoading, refetch } = useGetWarehouseProductivityRRHHQuery({
@@ -64,9 +79,14 @@ export function ProductividadDepositoTab() {
     // Filtrar operarios por búsqueda
     const filteredRanking = useMemo(() => {
         if (!searchTerm.trim()) return ranking;
-        const q = searchTerm.toLowerCase();
-        return ranking.filter((r) => r.fullName.toLowerCase().includes(q) || r.legajo.toLowerCase().includes(q));
+        return ranking.filter((r) => matchesSearch(searchTerm, r.fullName, r.legajo));
     }, [ranking, searchTerm]);
+
+    // Filtrar catálogo estándar por búsqueda
+    const filteredCatalogStats = useMemo(() => {
+        if (!searchTerm.trim()) return catalogStats;
+        return catalogStats.filter((item) => matchesSearch(searchTerm, item.codigo, item.nombre, item.tipoGeneral));
+    }, [catalogStats, searchTerm]);
 
     // Promedio de ocupación
     const avgOcupacion = useMemo(() => {
@@ -75,20 +95,25 @@ export function ProductividadDepositoTab() {
         return Math.round(sum / filteredRanking.length);
     }, [filteredRanking]);
 
-    // Filtrar tareas por estado
+    // Filtrar tareas por estado y búsqueda
     const filteredTasks = useMemo(() => {
         const now = new Date();
         return tasksList.filter((t) => {
-            if (taskStatusFilter === 'ALL') return true;
-            if (taskStatusFilter === 'COMPLETED') return t.status === 'COMPLETED';
-            if (taskStatusFilter === 'PENDING') return t.status === 'PENDING';
-            if (taskStatusFilter === 'IN_PROGRESS') return t.status === 'IN_PROGRESS';
+            if (taskStatusFilter === 'COMPLETED' && t.status !== 'COMPLETED') return false;
+            if (taskStatusFilter === 'PENDING' && t.status !== 'PENDING') return false;
+            if (taskStatusFilter === 'IN_PROGRESS' && t.status !== 'IN_PROGRESS') return false;
             if (taskStatusFilter === 'OVERDUE') {
-                return t.status !== 'COMPLETED' && t.status !== 'CANCELLED' && t.dueDate && new Date(t.dueDate) < now;
+                if (!(t.status !== 'COMPLETED' && t.status !== 'CANCELLED' && t.dueDate && new Date(t.dueDate) < now)) {
+                    return false;
+                }
+            }
+            if (searchTerm.trim()) {
+                const op = t.completedByEmployee || t.assignedEmployee;
+                return matchesSearch(searchTerm, t.title, t.customerOrDestination, op?.fullName, op?.legajo, t.resultNotes);
             }
             return true;
         });
-    }, [tasksList, taskStatusFilter]);
+    }, [tasksList, taskStatusFilter, searchTerm]);
 
     // Preajustes rápidos de fecha
     const setQuickRange = (days: number) => {
@@ -209,7 +234,7 @@ export function ProductividadDepositoTab() {
                                 }}
                             >
                                 <option value="">Todos los depósitos físicos</option>
-                                {depots.map((d: any) => (
+                                {filteredDepots.map((d: any) => (
                                     <option key={d.id} value={d.id}>
                                         {d.nombre} {d.planta ? `(${d.planta})` : ''}
                                     </option>
@@ -547,7 +572,7 @@ export function ProductividadDepositoTab() {
                             'Desvío vs Estándar',
                             'Ajuste',
                         ]}
-                        rows={catalogStats.map((item) => {
+                        rows={filteredCatalogStats.map((item) => {
                             const desvio = item.desvioMinutos;
                             const isFaster = desvio <= 0;
 

@@ -68,6 +68,18 @@ export default function RRHHDashboardPage() {
         legajo: prodSearch.trim() || undefined,
     });
 
+    // Normaliza un código de sector recibido de métricas a una key válida de HR_SECTORS_LIST
+    const normalizeSectorKey = (code: string | null | undefined): string => {
+        if (!code) return '';
+        const c = code.trim().toUpperCase();
+        if (HR_SECTORS_LIST.some((s) => s.key === c)) return c;
+        if (c === '3000' || c === 'PRODUCCION' || c === 'TEJEDURIA') return 'TEJEDURIA';
+        if (c === 'HILADO' || c === 'DEPOSITO - HILADO') return 'DEPOSITO_HILADO';
+        if (c === 'PACKAGING' || c === 'DEPOSITO - PACKAGING') return 'DEPOSITO_PACKAGING';
+        const byCat = HR_SECTORS_LIST.find((s) => s.category === c);
+        return byCat ? byCat.key : '';
+    };
+
     // Sector mapping helper
     const getSectorLabel = (code: string | null, subSector?: string | null) => {
         if (!code) return { label: 'Sin Asignar', icon: '❓', color: '#6b7280' };
@@ -463,12 +475,13 @@ export default function RRHHDashboardPage() {
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                                 {metrics.bySector.map((s) => {
                                     const secInfo = getSectorLabel(s.sector);
+                                    const normalizedKey = normalizeSectorKey(s.sector);
                                     const pct = totalStaff > 0 ? Math.round((s.count / totalStaff) * 100) : 0;
-                                    const isSelected = sectorFilter === s.sector;
+                                    const isSelected = Boolean(normalizedKey) && sectorFilter === normalizedKey;
                                     return (
                                         <div
                                             key={s.sector}
-                                            onClick={() => setSectorFilter(isSelected ? '' : s.sector)}
+                                            onClick={() => setSectorFilter(isSelected ? '' : normalizedKey)}
                                             style={{
                                                 background: isSelected ? 'rgba(99,102,241,0.2)' : 'var(--bg-hover-row, rgba(255,255,255,0.03))',
                                                 border: isSelected ? '1px solid #6366f1' : '1px solid var(--border-color, rgba(255,255,255,0.06))',

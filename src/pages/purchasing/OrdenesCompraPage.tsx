@@ -38,6 +38,7 @@ import ImportarExcelModal from '../../features/purchasing/ordenesCompra/Importar
 
 import { useGetPartnersQuery } from '../../features/config/partners/api/partners.api';
 import { useGetItemsQuery } from '../../features/warehouse/materiales/api/items.api';
+import { matchesSearch } from '../../shared/utils/search';
 
 export default function OrdenesCompraPage() {
     const navigate = useNavigate();
@@ -97,18 +98,22 @@ export default function OrdenesCompraPage() {
     // 1. Los que van a venir arriba (EN_CAMINO, PARCIAL, BORRADOR) ordenados por fecha de arribo más próxima (ascendente).
     // 2. Los ya entregados abajo (COMPLETADA, CANCELADA) ordenados por fecha más reciente (descendente).
     const filteredOrdenes = useMemo(() => {
-        const q = search.trim().toLowerCase();
         const filtered = ordenes.filter(oc => {
             if (statusFilter !== 'ALL' && oc.estado !== statusFilter) return false;
-            if (!q) return true;
+            if (!search.trim()) return true;
 
-            const matchesPartner = oc.partnerNombre.toLowerCase().includes(q);
-            const matchesNumero = oc.numero.toLowerCase().includes(q);
-            const matchesLineas = oc.lineas.some(l =>
-                l.codigoInterno.toLowerCase().includes(q) || l.descripcion.toLowerCase().includes(q)
+            const lineFields = oc.lineas.flatMap(l => [
+                l.codigoInterno,
+                l.descripcion,
+                l.categoriaNombre,
+            ]);
+            return matchesSearch(
+                search,
+                oc.numero,
+                oc.partnerNombre,
+                oc.observaciones,
+                ...lineFields
             );
-
-            return matchesPartner || matchesNumero || matchesLineas;
         });
 
         const isPorVenir = (estado: string) => estado === 'EN_CAMINO' || estado === 'PARCIAL' || estado === 'BORRADOR';

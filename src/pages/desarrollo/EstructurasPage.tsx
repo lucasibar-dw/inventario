@@ -55,6 +55,7 @@ export function EstructurasPage() {
     // Edición / Alta de línea de componente en el Visualizador
     const [addCompOpen, setAddCompOpen] = useState(false);
     const [compSearch, setCompSearch] = useState('');
+    const [compDropdownOpen, setCompDropdownOpen] = useState(false);
     const [lineForm, setLineForm] = useState<{
         codigoComponente: string;
         cantidad: string;
@@ -105,6 +106,10 @@ export function EstructurasPage() {
     const selectParent = (codigo: string, addToTrail = false) => {
         setSelectedParentCode(codigo);
         setSearchParams({ codigo });
+        setAddCompOpen(false);
+        setLineForm({ codigoComponente: '', cantidad: '', cantidadSecundaria: '', observacion: '' });
+        setCompSearch('');
+        setCompDropdownOpen(false);
         if (addToTrail) {
             setBreadcrumb((prev) => (prev.includes(codigo) ? prev.slice(0, prev.indexOf(codigo) + 1) : [...prev, codigo]));
         } else {
@@ -184,6 +189,7 @@ export function EstructurasPage() {
             setAddCompOpen(false);
             setLineForm({ codigoComponente: '', cantidad: '', cantidadSecundaria: '', observacion: '' });
             setCompSearch('');
+            setCompDropdownOpen(false);
         } catch (err: any) {
             alert(err?.data?.message || 'Error al guardar componente');
         }
@@ -197,6 +203,7 @@ export function EstructurasPage() {
             observacion: c.observacion || '',
         });
         setCompSearch(c.codigoComponente);
+        setCompDropdownOpen(false);
         setAddCompOpen(true);
     };
 
@@ -516,10 +523,14 @@ export function EstructurasPage() {
                                                     onChange={(val) => {
                                                         setLineForm({ ...lineForm, codigoComponente: val.toUpperCase() });
                                                         setCompSearch(val);
+                                                        setCompDropdownOpen(val.trim().length > 0);
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Escape') setCompDropdownOpen(false);
                                                     }}
                                                     placeholder="Buscar código o escribir..."
                                                 />
-                                                {compSearch && compCatalogoData?.items && compCatalogoData.items.length > 0 && compSearch !== lineForm.codigoComponente && (
+                                                {compDropdownOpen && compSearch.trim().length > 0 && compCatalogoData?.items && compCatalogoData.items.length > 0 && (
                                                     <div style={{
                                                         position: 'absolute',
                                                         top: '100%',
@@ -538,6 +549,7 @@ export function EstructurasPage() {
                                                                 onClick={() => {
                                                                     setLineForm({ ...lineForm, codigoComponente: item.codigo });
                                                                     setCompSearch(item.codigo);
+                                                                    setCompDropdownOpen(false);
                                                                 }}
                                                                 style={{ padding: '6px 10px', cursor: 'pointer', fontSize: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                                                             >
@@ -1195,7 +1207,7 @@ export function EstructurasPage() {
                                                 value={busquedaItemAlmacen}
                                                 onChange={(v) => {
                                                     setBusquedaItemAlmacen(v);
-                                                    if (!v) setItemAlmacenSeleccionado(null);
+                                                    setItemAlmacenSeleccionado(null);
                                                 }}
                                             />
                                             {busquedaItemAlmacen && itemsAlmacenSugeridos && itemsAlmacenSugeridos.length > 0 && !itemAlmacenSeleccionado && (

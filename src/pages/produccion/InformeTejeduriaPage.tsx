@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Btn, Badge, Spinner, useIsMobile } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import {
     useGetUltimaPlanillaProduccionQuery,
     useListarPlanillasProduccionQuery,
@@ -26,11 +27,19 @@ export default function InformeTejeduriaPage() {
     const handleSelectPlanillaHistorica = async (id: string) => {
         if (!id) {
             setSelectedPlanilla(null);
+            setAreaFilter('ALL');
+            setShiftFilter('ALL');
+            setSearchTerm('');
             return;
         }
         try {
             const data = await fetchPlanillaById(id).unwrap();
-            if (data) setSelectedPlanilla(data);
+            if (data) {
+                setSelectedPlanilla(data);
+                setAreaFilter('ALL');
+                setShiftFilter('ALL');
+                setSearchTerm('');
+            }
         } catch {
             alert('Error al cargar la planilla seleccionada');
         }
@@ -51,13 +60,19 @@ export default function InformeTejeduriaPage() {
             if (shiftFilter !== 'ALL' && m.shift !== shiftFilter) return false;
 
             if (searchTerm.trim()) {
-                const term = searchTerm.toLowerCase();
-                const matchMach = String(m.machine).includes(term);
-                const matchArt = (m.articleCode || m.articleRaw || '').toLowerCase().includes(term);
-                const matchDesc = (m.descRaw || m.matchedArticle?.descripcion || '').toLowerCase().includes(term);
-                const matchSusi = (m.matchedArticle?.codigoSusi || '').toLowerCase().includes(term);
-                const matchColor = (m.colorRaw || '').toLowerCase().includes(term);
-                if (!matchMach && !matchArt && !matchDesc && !matchSusi && !matchColor) return false;
+                return matchesSearch(
+                    searchTerm,
+                    m.machine,
+                    `m${m.machine}`,
+                    m.machineTypeName,
+                    m.articleCode,
+                    m.articleRaw,
+                    m.descRaw,
+                    m.matchedArticle?.descripcion,
+                    m.matchedArticle?.codigoSusi,
+                    m.talle,
+                    m.colorRaw,
+                );
             }
 
             return true;

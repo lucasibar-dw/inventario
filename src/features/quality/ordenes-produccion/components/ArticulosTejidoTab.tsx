@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { ArticuloProduccionSummary } from '../types/ordenesProduccion.types';
 import { Card, Btn, Modal } from '../../../../shared/ui';
+import { matchesSearch } from '../../../../shared/utils/search';
 import { exportArticulosToExcel } from '../utils/excelExport';
 
 interface ArticulosTejidoTabProps {
@@ -56,10 +57,17 @@ export const ArticulosTejidoTab: React.FC<ArticulosTejidoTabProps> = ({
             if (selectedEstado === 'REVISADO' && a.isUnreviewed) return false;
             if (selectedEstado === 'NO_REVISADO' && !a.isUnreviewed) return false;
 
-            if (q) {
-                const words = q.toLowerCase().split(' ').filter(Boolean);
-                const text = `${a.codigo} ${a.descripcion} ${a.marca} ${a.talles.join(' ')} ${a.colores.join(' ')} ${a.maquinas.map((m) => `M${m}`).join(' ')}`.toLowerCase();
-                return words.every((w) => text.includes(w));
+            if (q.trim()) {
+                return matchesSearch(
+                    q,
+                    a.codigo,
+                    a.codigoOriginalPdf,
+                    a.descripcion,
+                    a.marca,
+                    ...a.talles,
+                    ...a.colores,
+                    ...a.maquinas.map((m) => `M${m}`),
+                );
             }
             return true;
         });

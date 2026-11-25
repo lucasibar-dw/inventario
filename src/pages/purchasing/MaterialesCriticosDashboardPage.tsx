@@ -113,6 +113,7 @@ export default function MaterialesCriticosDashboardPage() {
 
     useEffect(() => {
         if (depotId) sessionStorage.setItem('selectedPurchasingDepotId', depotId);
+        else sessionStorage.removeItem('selectedPurchasingDepotId');
     }, [depotId]);
 
     useEffect(() => {
@@ -640,7 +641,9 @@ export default function MaterialesCriticosDashboardPage() {
             return;
         }
 
-        const targetItem = quickOrderTarget.items.find((i: any) => i.supplierId === quickOrderSupplierId) || quickOrderTarget.items[0];
+        const targetItem = quickOrderTarget.items.find(
+            (i: any) => i.id === quickOrderSupplierId || i.supplierId === quickOrderSupplierId
+        ) || quickOrderTarget.items[0];
         if (targetItem) {
             try {
                 const nuevoPorVenir = (targetItem.porVenir || 0) + qty;
@@ -1241,7 +1244,7 @@ export default function MaterialesCriticosDashboardPage() {
                                             onClick={() => {
                                                 setQuickOrderTarget(selectedGroup);
                                                 setQuickOrderQty(String(selectedGroup.categoryDeficit));
-                                                setQuickOrderSupplierId(selectedGroup.items[0]?.supplierId || '');
+                                                setQuickOrderSupplierId(selectedGroup.items[0]?.id || '');
                                             }}
                                             startIcon={<AddShoppingCartIcon fontSize="small" />}
                                             sx={{
@@ -1763,7 +1766,7 @@ export default function MaterialesCriticosDashboardPage() {
                             }}
                         >
                             {quickOrderTarget?.items.map((i: any) => (
-                                <option key={i.id} value={i.supplierId || i.id}>
+                                <option key={i.id} value={i.id}>
                                     {i.supplier?.name || i.descripcion} ({i.codigoInterno})
                                 </option>
                             ))}

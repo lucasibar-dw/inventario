@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { matchesSearch } from '../../../../shared/utils/search';
 import { type PositionView, STATUS_INFO, type OccupancyStatus, fmt } from '../lib/depotMetrics';
 import { inputStyle, labelStyle, Pill } from './common';
 
@@ -25,12 +26,29 @@ export default function LayoutMapTab({ views, onOpen }: Props) {
     const [statusFilter, setStatusFilter] = useState<OccupancyStatus | ''>('');
 
     const groups = useMemo(() => {
-        const q = search.trim().toLowerCase();
         const filtered = views.filter(v => {
             if (statusFilter && v.status !== statusFilter) return false;
-            if (q && !(v.pos.codigo || '').toLowerCase().includes(q) &&
-                !v.stats.lineas.some(l => l.codigo.toLowerCase().includes(q) || l.descripcion.toLowerCase().includes(q))) {
-                return false;
+            if (search.trim()) {
+                const lineFields = v.stats.lineas.flatMap(l => [
+                    l.codigo,
+                    l.descripcion,
+                    l.lote,
+                    l.categoria,
+                    l.raw?.batch?.item?.supplier?.name,
+                    l.raw?.supplier?.name,
+                    l.raw?.proveedor,
+                ]);
+                if (!matchesSearch(
+                    search,
+                    v.pos.codigo,
+                    v.meta.idealItemCodigo,
+                    v.meta.idealItemDescripcion,
+                    v.pos.categoriaPrincipal,
+                    v.pos.categoriaSecundaria,
+                    ...lineFields,
+                )) {
+                    return false;
+                }
             }
             return true;
         });

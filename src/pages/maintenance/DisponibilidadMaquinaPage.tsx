@@ -5,6 +5,7 @@ import {
     useGetMachineTypesQuery
 } from '../../entities/maintenance/api/maintenance.api';
 import { PageHeader, Card, Btn, Select, Spinner, Input } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import './DisponibilidadMaquinaPage.css';
 
 const getStatusColor = (status: string) => {
@@ -166,15 +167,10 @@ export default function DisponibilidadMaquinaPage() {
     const filteredMachines = useMemo(() => {
         if (!data?.machines) return [];
         let list = [...data.machines];
-        if (detailSearch) {
-            const s = detailSearch.trim().toLowerCase();
-            const isNumeric = /^\d+$/.test(s);
-            list = list.filter((m: any) => {
-                if (isNumeric) {
-                    return m.number === parseInt(s, 10);
-                }
-                return m.nombre.toLowerCase().includes(s);
-            });
+        if (detailSearch.trim()) {
+            list = list.filter((m: any) =>
+                matchesSearch(detailSearch, m.number, `maquina ${m.number}`, m.nombre, m.codigoInterno, m.currentStatus)
+            );
         }
         list.sort((a: any, b: any) => {
             let valA = a[detailSortField];
@@ -205,11 +201,11 @@ export default function DisponibilidadMaquinaPage() {
                 <div className="disponibilidad-filters">
                     <Select
                         options={plants.map((p: any) => ({ value: p.id, label: p.name }))}
-                        value={selectedPlantId} onChange={setSelectedPlantId} style={{ width: 180 }}
+                        value={selectedPlantId} onChange={(val) => { setSelectedPlantId(val); setDetailSearch(''); }} style={{ width: 180 }}
                     />
                     <Select
                         options={types.map((t: any) => ({ value: t.id, label: t.name }))}
-                        value={selectedTypeId} onChange={setSelectedTypeId} style={{ width: 180 }}
+                        value={selectedTypeId} onChange={(val) => { setSelectedTypeId(val); setDetailSearch(''); }} style={{ width: 180 }}
                     />
                     <Select
                         options={[

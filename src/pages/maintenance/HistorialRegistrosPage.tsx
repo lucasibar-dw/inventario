@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
     Box, Typography, Card, Chip, TextField, IconButton,
-    Dialog, DialogTitle, DialogContent, DialogActions, Button, MenuItem, Tooltip, Grid
+    Dialog, DialogTitle, DialogContent, DialogActions, Button, MenuItem, Tooltip, Grid, Autocomplete
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -10,6 +10,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { PageHeader, Spinner, Select } from '../../shared/ui';
+import { createSmartFilterOptions } from '../../shared/utils/search';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
     useGetLogsQuery, 
@@ -115,6 +116,11 @@ export default function HistorialRegistrosPage() {
         { value: '', label: 'Todos los Movimientos' },
         ...Object.keys(statusLabels).map(key => ({ value: key, label: statusLabels[key] }))
     ];
+
+    const filterStrings = useMemo(
+        () => createSmartFilterOptions<string>((opt) => [opt]),
+        []
+    );
 
     // Trigger update to Redux store
     const handleApplyFilters = () => {
@@ -771,34 +777,56 @@ export default function HistorialRegistrosPage() {
                                 <MenuItem key={key} value={key}>{statusLabels[key]}</MenuItem>
                             ))}
                         </TextField>
-                        <TextField
-                            select
-                            fullWidth
-                            size="small"
-                            label="Tipo de Falla"
-                            variant="outlined"
+                        <Autocomplete
+                            freeSolo
+                            options={failureTypes}
                             value={editLogData?.failureType || ''}
-                            onChange={(e) => setEditLogData({ ...editLogData, failureType: e.target.value })}
-                            sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiInputLabel-root': { color: 'var(--text-muted, #9ca3af)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--text-dimmed, #4b5563)' } }}
-                        >
-                            {failureTypes.map((f) => (
-                                <MenuItem key={f} value={f}>{f}</MenuItem>
-                            ))}
-                        </TextField>
-                        <TextField
-                            select
-                            fullWidth
-                            size="small"
-                            label="Responsable"
-                            variant="outlined"
+                            onChange={(_, val) => setEditLogData({ ...editLogData, failureType: val || '' })}
+                            onInputChange={(_, val) => setEditLogData({ ...editLogData, failureType: val })}
+                            filterOptions={filterStrings}
+                            autoHighlight
+                            selectOnFocus
+                            openOnFocus
+                            handleHomeEndKeys
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    fullWidth
+                                    size="small"
+                                    label="Tipo de Falla"
+                                    variant="outlined"
+                                    sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiInputLabel-root': { color: 'var(--text-muted, #9ca3af)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--text-dimmed, #4b5563)' } }}
+                                />
+                            )}
+                            slotProps={{
+                                paper: { sx: { bgcolor: '#1f1f1f', color: 'var(--text-white-dynamic, white)', border: '1px solid var(--border-strong, #374151)' } }
+                            }}
+                        />
+                        <Autocomplete
+                            freeSolo
+                            options={responsables}
                             value={editLogData?.generatedBy || ''}
-                            onChange={(e) => setEditLogData({ ...editLogData, generatedBy: e.target.value })}
-                            sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiInputLabel-root': { color: 'var(--text-muted, #9ca3af)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--text-dimmed, #4b5563)' } }}
-                        >
-                            {responsables.map((r) => (
-                                <MenuItem key={r} value={r}>{r}</MenuItem>
-                            ))}
-                        </TextField>
+                            onChange={(_, val) => setEditLogData({ ...editLogData, generatedBy: val || '' })}
+                            onInputChange={(_, val) => setEditLogData({ ...editLogData, generatedBy: val })}
+                            filterOptions={filterStrings}
+                            autoHighlight
+                            selectOnFocus
+                            openOnFocus
+                            handleHomeEndKeys
+                            renderInput={(params) => (
+                                <TextField
+                                    {...params}
+                                    fullWidth
+                                    size="small"
+                                    label="Responsable"
+                                    variant="outlined"
+                                    sx={{ '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' }, '& .MuiInputLabel-root': { color: 'var(--text-muted, #9ca3af)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--text-dimmed, #4b5563)' } }}
+                                />
+                            )}
+                            slotProps={{
+                                paper: { sx: { bgcolor: '#1f1f1f', color: 'var(--text-white-dynamic, white)', border: '1px solid var(--border-strong, #374151)' } }
+                            }}
+                        />
                         <TextField
                             fullWidth
                             multiline

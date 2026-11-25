@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Box, Typography, Card, TextField, Button, Divider, Chip, Avatar, Tooltip, Drawer, IconButton, useMediaQuery, useTheme, Grid } from '@mui/material';
+import { Box, Typography, Card, TextField, Button, Divider, Chip, Avatar, Tooltip, Drawer, IconButton, useMediaQuery, useTheme, Grid, Autocomplete } from '@mui/material';
 import { PageHeader, Spinner, Select } from '../../shared/ui';
+import { matchesSearch, createSmartFilterOptions } from '../../shared/utils/search';
 import SearchIcon from '@mui/icons-material/Search';
 import BuildIcon from '@mui/icons-material/Build';
 import HistoryIcon from '@mui/icons-material/History';
@@ -132,21 +133,21 @@ export default function BuscadorMaquinaPage() {
         ...machineTypes.map((t: any) => ({ value: t.id, label: t.name }))
     ], [machineTypes]);
 
+    const filterMachines = useMemo(
+        () => createSmartFilterOptions<Machine>((m) => [m.number, `maquina ${m.number}`, m.codigoInterno, m.nombre]),
+        []
+    );
+
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!searchTerm) return;
+        const term = searchTerm.trim();
+        if (!term) return;
 
-        const term = searchTerm.trim().toLowerCase();
-        const isNumeric = /^\d+$/.test(term);
-        const found = machines.find((m: any) => {
-            if (isNumeric) {
-                return m.number === parseInt(term, 10);
-            }
-            return (
-                m.codigoInterno?.toLowerCase() === term ||
-                m.nombre?.toLowerCase().includes(term)
+        const found =
+            machines.find((m: any) => String(m.number) === term) ||
+            machines.find((m: any) =>
+                matchesSearch(term, m.number, `maquina ${m.number}`, m.codigoInterno, m.nombre)
             );
-        });
 
         setSearchedMachine(found || null);
         if (!found) {
@@ -181,7 +182,7 @@ export default function BuscadorMaquinaPage() {
                             <Select 
                                 label="Planta"
                                 value={selectedPlantId || ''}
-                                onChange={(val) => { setSelectedPlantId(val); setSearchedMachine(null); }}
+                                onChange={(val) => { setSelectedPlantId(val); setSearchedMachine(null); setSearchTerm(''); }}
                                 options={plantOptions}
                             />
                         </Grid>
@@ -189,22 +190,44 @@ export default function BuscadorMaquinaPage() {
                             <Select 
                                 label="Tipo"
                                 value={selectedTypeId || ''}
-                                onChange={(val) => { setSelectedTypeId(val || null); setSearchedMachine(null); }}
+                                onChange={(val) => { setSelectedTypeId(val || null); setSearchedMachine(null); setSearchTerm(''); }}
                                 options={typeOptions}
                             />
                         </Grid>
                         <Grid size={{ xs: 12, md: 4 }}>
-                            <TextField
-                                label="Número de Máquina o Código"
-                                variant="outlined"
-                                fullWidth
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                slotProps={{ htmlInput: { inputMode: 'numeric' } }}
-                                sx={{
-                                    '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' },
-                                    '& .MuiInputLabel-root': { color: 'var(--text-muted, #9ca3af)' },
-                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' },
+                            <Autocomplete
+                                options={machines}
+                                getOptionLabel={(m) => `Máquina ${m.number}${m.codigoInterno ? ` - ${m.codigoInterno}` : ''}${m.nombre ? ` (${m.nombre})` : ''}`}
+                                value={searchedMachine}
+                                onChange={(_e, val) => {
+                                    setSearchedMachine(val);
+                                    if (val) setSearchTerm(String(val.number));
+                                }}
+                                inputValue={searchTerm}
+                                onInputChange={(_e, newInput) => setSearchTerm(newInput)}
+                                filterOptions={filterMachines}
+                                isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                                loading={loadingMachines}
+                                autoHighlight
+                                selectOnFocus
+                                openOnFocus
+                                handleHomeEndKeys
+                                noOptionsText="Sin máquinas encontradas"
+                                renderInput={(params) => (
+                                    <TextField
+                                        {...params}
+                                        label="Número de Máquina, Código o Nombre"
+                                        variant="outlined"
+                                        fullWidth
+                                        sx={{
+                                            '& .MuiOutlinedInput-root': { color: 'var(--text-white-dynamic, white)' },
+                                            '& .MuiInputLabel-root': { color: 'var(--text-muted, #9ca3af)' },
+                                            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-strong, #374151)' },
+                                        }}
+                                    />
+                                )}
+                                slotProps={{
+                                    paper: { sx: { bgcolor: 'var(--bg-secondary, #111827)', color: 'var(--text-white-dynamic, white)', border: '1px solid var(--border-strong, #374151)' } }
                                 }}
                             />
                         </Grid>

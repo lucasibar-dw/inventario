@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Modal, Btn, Input } from '../../../../shared/ui';
+import { Modal, Btn, Input, SearchSelect } from '../../../../shared/ui';
+import { getItemSearchFields } from '../../../../shared/utils/search';
 import { useUpdatePositionMutation } from '../api/deposito.api';
 import {
     type PositionView, ZONAS_EDITABLES, STATUS_INFO, volumeFromDims, fmt, zonaLabel,
@@ -26,7 +27,6 @@ export default function PositionDetailModal({ view, itemCategories, items = [], 
     const { pos, meta, stats } = view;
     const [updatePosition, { isLoading }] = useUpdatePositionMutation();
     const [error, setError] = useState<string | null>(null);
-    const [itemFilter, setItemFilter] = useState('');
 
     const [form, setForm] = useState({
         codigo: toStr(pos.codigo),
@@ -43,22 +43,18 @@ export default function PositionDetailModal({ view, itemCategories, items = [], 
     });
     const set = (k: keyof typeof form) => (v: string) => setForm(p => ({ ...p, [k]: v }));
 
-    const filteredItems = useMemo(() => {
-        const q = itemFilter.trim().toLowerCase();
+    const idealItemOptions = useMemo(() => {
         const arr = Array.isArray(items) ? items : [];
-        const matched = q
-            ? arr.filter((i: any) =>
-                (i.codigoInterno || '').toLowerCase().includes(q) ||
-                (i.descripcion || '').toLowerCase().includes(q) ||
-                (i.category?.nombre || i.categoria || '').toLowerCase().includes(q))
-            : arr;
-        // Asegurar que el item actualmente seleccionado siempre esté visible
-        if (form.idealItemId && !matched.some((i: any) => i.id === form.idealItemId)) {
-            const cur = arr.find((i: any) => i.id === form.idealItemId);
-            if (cur) return [cur, ...matched.slice(0, 149)];
-        }
-        return matched.slice(0, 150);
-    }, [items, itemFilter, form.idealItemId]);
+        const visible = arr.filter((i: any) => i.activo !== false || i.id === form.idealItemId);
+        return [
+            { value: '', label: '— Ninguno (usar categoría) —' },
+            ...visible.map((it: any) => ({
+                value: it.id,
+                label: `${it.codigoInterno ? `${it.codigoInterno} · ` : ''}${it.descripcion}`,
+                searchText: getItemSearchFields(it).filter(Boolean).join(' '),
+            })),
+        ];
+    }, [items, form.idealItemId]);
 
     const dimsVolume = useMemo(() => volumeFromDims({
         altoM: toNum(form.altoM), anchoM: toNum(form.anchoM), profundidadM: toNum(form.profundidadM),
@@ -162,23 +158,13 @@ export default function PositionDetailModal({ view, itemCategories, items = [], 
                     {/* Material ideal específico (opcional, tiene prioridad sobre categoría) */}
                     <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: 'var(--bg-primary, #0f1117)', border: '1px solid var(--border-subtle, #1e2133)' }}>
                         <label style={labelStyle}>⭐ Material ideal específico (opcional — ej: Lycra Blanca)</label>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
-                            <input
-                                value={itemFilter}
-                                onChange={e => setItemFilter(e.target.value)}
-                                placeholder="Filtrar material…"
-                                disabled={!canEdit}
-                                style={inputStyle}
-                            />
-                            <select value={form.idealItemId} onChange={e => set('idealItemId')(e.target.value)} disabled={!canEdit} style={inputStyle}>
-                                <option value="">— Ninguno (usar categoría) —</option>
-                                {filteredItems.map((it: any) => (
-                                    <option key={it.id} value={it.id}>
-                                        {it.codigoInterno ? `${it.codigoInterno} · ` : ''}{it.descripcion}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <SearchSelect
+                            value={form.idealItemId}
+                            onChange={set('idealItemId')}
+                            options={idealItemOptions}
+                            disabled={!canEdit}
+                            placeholder="— Ninguno (usar categoría) — Buscar material…"
+                        />
                         <div style={{ fontSize: 11, color: 'var(--text-subtle, #6b7280)', marginTop: 6 }}>
                             Se usa para recomendar reubicaciones automáticas cuando esta posición se vacía o hay stock de este material fuera de lugar.
                         </div>

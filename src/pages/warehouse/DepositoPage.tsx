@@ -20,6 +20,7 @@ import {
 } from '../../features/warehouse/deposito/api/deposito.api';
 import { selectCurrentUser } from '../../entities/auth/model/authSlice';
 import { PageHeader, Card, Btn, Input, Modal, Spinner } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import {
     computePositionStats,
     buildPositionView,
@@ -185,11 +186,16 @@ export default function DepositoPage() {
 
     // Depósitos filtrados
     const filteredSummaries = useMemo(() => {
-        const q = depotSearch.trim().toLowerCase();
         return summaries.filter(s => {
             if (!showInactiveDepots && !s.depot.activo) return false;
             if (plantFilter && (s.depot.planta || '') !== plantFilter) return false;
-            if (q && !(s.depot.nombre || '').toLowerCase().includes(q) && !(s.depot.planta || '').toLowerCase().includes(q)) return false;
+            if (depotSearch.trim() && !matchesSearch(
+                depotSearch,
+                s.depot.nombre,
+                s.depot.planta,
+                s.depot.descripcion,
+                s.depot.ubicacion,
+            )) return false;
             return true;
         });
     }, [summaries, depotSearch, plantFilter, showInactiveDepots]);

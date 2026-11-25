@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Btn, Badge, Spinner, Modal, Input, useIsMobile } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import {
     useGetUltimaPlanillaProduccionQuery,
     useParseOrdenesProduccionMutation,
@@ -126,6 +127,14 @@ export default function CargaProduccionDiaPage() {
 
     const [searchCambios, setSearchCambios] = useState('');
     const [filterAreaCambio, setFilterAreaCambio] = useState<string>('TODAS');
+
+    useEffect(() => {
+        setFilterAreaCambio('TODAS');
+        setFilterTipoHilado('TODOS');
+        setSearchHilado('');
+        setSearchCambios('');
+        setExpandedHiladoId(null);
+    }, [plantaSeleccionada, sectorSeleccionado]);
 
     // Edición inline de hora de cambio
     const [editingHoraId, setEditingHoraId] = useState<string | null>(null);
@@ -262,15 +271,18 @@ export default function CargaProduccionDiaPage() {
     }, [activePlanilla]);
 
     const filteredHilado = useMemo(() => {
-        const q = searchHilado.trim().toLowerCase();
         return listadoHilado.filter((h) => {
             if (filterTipoHilado !== 'TODOS' && h.tipoMaterialCono !== filterTipoHilado) return false;
-            if (!q) return true;
-            return (
-                h.codigoHilado.toLowerCase().includes(q) ||
-                h.descripcionHilado.toLowerCase().includes(q) ||
-                h.categoria.toLowerCase().includes(q) ||
-                h.articulosDetalle.some((a) => a.codigoArticulo.toLowerCase().includes(q))
+            if (!searchHilado.trim()) return true;
+            return matchesSearch(
+                searchHilado,
+                h.codigoHilado,
+                h.codigoComponenteBom,
+                h.descripcionHilado,
+                h.categoria,
+                ...(h.posicionesPicking || []),
+                ...(h.maquinas || []).map((m) => `M${m}`),
+                ...h.articulosDetalle.flatMap((a) => [a.codigoArticulo, a.codigoSusana, a.descripcion]),
             );
         });
     }, [listadoHilado, searchHilado, filterTipoHilado]);
@@ -281,17 +293,24 @@ export default function CargaProduccionDiaPage() {
     }, [activePlanilla]);
 
     const filteredCambios = useMemo(() => {
-        const q = searchCambios.trim().toLowerCase();
         return listadoCambios.filter((c) => {
             if (filterAreaCambio !== 'TODAS' && String(c.area) !== filterAreaCambio) return false;
-            if (!q) return true;
-            return (
-                String(c.maquina).includes(q) ||
-                c.articuloSaliente.codigoSusana.toLowerCase().includes(q) ||
-                (c.articuloSaliente.codigoCatalogo || '').toLowerCase().includes(q) ||
-                c.articuloEntrante.codigoSusana.toLowerCase().includes(q) ||
-                (c.articuloEntrante.codigoCatalogo || '').toLowerCase().includes(q) ||
-                c.tipoCambio.toLowerCase().includes(q)
+            if (!searchCambios.trim()) return true;
+            return matchesSearch(
+                searchCambios,
+                c.maquina,
+                `M${c.maquina}`,
+                c.area,
+                c.tipoMaquina,
+                c.tipoCambio,
+                c.articuloSaliente.codigoSusana,
+                c.articuloSaliente.codigoCatalogo,
+                c.articuloSaliente.descripcion,
+                c.articuloSaliente.color,
+                c.articuloEntrante.codigoSusana,
+                c.articuloEntrante.codigoCatalogo,
+                c.articuloEntrante.descripcion,
+                c.articuloEntrante.color,
             );
         });
     }, [listadoCambios, searchCambios, filterAreaCambio]);

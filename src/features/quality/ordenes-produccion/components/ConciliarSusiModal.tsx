@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ArticuloProduccionSummary } from '../types/ordenesProduccion.types';
 import { useGetArticulosQuery, useUpdateArticuloMutation } from '../../../desarrollo/api/articulos.api';
 import { Modal, Btn, Input, Badge, Spinner } from '../../../../shared/ui';
@@ -19,6 +19,12 @@ export const ConciliarSusiModal: React.FC<ConciliarSusiModalProps> = ({
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedArticuloId, setSelectedArticuloId] = useState<string>('');
     const [selectedArticuloCodigo, setSelectedArticuloCodigo] = useState<string>('');
+
+    useEffect(() => {
+        setSearchTerm('');
+        setSelectedArticuloId('');
+        setSelectedArticuloCodigo('');
+    }, [isOpen, articuloSusi]);
 
     const codigoSusiRaw = articuloSusi?.codigoOriginalPdf || articuloSusi?.codigoSusi || articuloSusi?.codigo || '';
 

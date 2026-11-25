@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Modal, Btn } from '../../../../shared/ui';
+import { matchesSearch, getItemSearchFields } from '../../../../shared/utils/search';
 
 export function EditComboModal({ combo, items, onClose, onSave }: any) {
     const [selectedIds, setSelectedIds] = useState<string[]>(combo?.itemIds || []);
@@ -8,17 +9,7 @@ export function EditComboModal({ combo, items, onClose, onSave }: any) {
     if (!combo) return null;
 
     const filtered = useMemo(() => {
-        const searchWords = search.toLowerCase().split(' ').filter(w => w.length > 0);
-        return items.filter((i: any) => {
-            if (searchWords.length === 0) return true;
-            return searchWords.every(word => {
-                const desc = (i.descripcion || '').toLowerCase();
-                const code = (i.codigoInterno || '').toLowerCase();
-                const supplier = (i.supplier?.name || i.supplierName || '').toLowerCase();
-                const category = (i.category?.nombre || i.categoria || '').toLowerCase();
-                return desc.includes(word) || code.includes(word) || supplier.includes(word) || category.includes(word);
-            });
-        });
+        return items.filter((i: any) => matchesSearch(search, ...getItemSearchFields(i)));
     }, [items, search]);
 
     return (

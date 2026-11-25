@@ -156,8 +156,22 @@ export function ArticulosPage() {
     const [desasociarItem, { isLoading: isDeletingItem }] = useDesasociarItemMutation();
     const [reordenarPrioridades, { isLoading: isReordenandoPrioridad }] = useReordenarPrioridadesMutation();
 
+    const resetSubTabDrafts = () => {
+        setNuevoCompCodigo('');
+        setNuevoCompCantidad(1);
+        setNuevoCompObs('');
+        setNuevaMaquinaId('');
+        setNuevoCycleTime('');
+        setNuevaPreferida(false);
+        setNuevoItemId('');
+        setNuevoItemPrioridad(1);
+        setNuevoItemFactor(1.0);
+        setItemSearchTerm('');
+    };
+
     const handleOpenNew = () => {
         setEditingArticulo(null);
+        resetSubTabDrafts();
         setForm({
             codigo: '',
             descripcion: '',
@@ -180,6 +194,7 @@ export function ArticulosPage() {
 
     const handleOpenEdit = (art: Articulo, tab: ModalTab = 'DATOS') => {
         setEditingArticulo(art);
+        resetSubTabDrafts();
         setForm({
             codigo: art.codigo || '',
             descripcion: art.descripcion || '',
@@ -1761,7 +1776,10 @@ export function ArticulosPage() {
                                                 type="text"
                                                 placeholder="Filtrar por nombre o código..."
                                                 value={itemSearchTerm}
-                                                onChange={(e) => setItemSearchTerm(e.target.value)}
+                                                onChange={(e) => {
+                                                    setItemSearchTerm(e.target.value);
+                                                    setNuevoItemId('');
+                                                }}
                                                 style={{
                                                     width: '100%',
                                                     padding: '7px 10px',

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Btn, Badge, Spinner, useIsMobile } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import {
     useGetUltimaPlanillaProduccionQuery,
     useListarPlanillasProduccionQuery,
@@ -82,11 +83,17 @@ export default function InformeProduccionDepositoPage() {
             if (tipo === 'INSUMO' && isHilado) return false;
 
             if (searchTerm.trim()) {
-                const term = searchTerm.toLowerCase();
-                const matchDesc = mat.descripcion.toLowerCase().includes(term);
-                const matchCod = mat.codigoInterno.toLowerCase().includes(term);
-                const matchProv = (mat.proveedor || '').toLowerCase().includes(term);
-                if (!matchDesc && !matchCod && !matchProv) return false;
+                if (!matchesSearch(
+                    searchTerm,
+                    mat.codigoInterno,
+                    mat.descripcion,
+                    mat.proveedor,
+                    mat.categoriaNombre,
+                    mat.tono,
+                    mat.colorNombre,
+                    ...(Array.isArray(mat.posicionesPickingSugeridas) ? mat.posicionesPickingSugeridas : []),
+                    ...(Array.isArray(mat.articulosAsignados) ? mat.articulosAsignados.map((a: any) => a.codigoArticulo) : []),
+                )) return false;
             }
 
             if (soloAlertasMinimo) {

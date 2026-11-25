@@ -62,6 +62,7 @@ import { useGetPartnersQuery } from '../../features/config/partners/api/partners
 import { EditComboModal } from '../../features/warehouse/stock/ui/EditComboModal';
 import { CreateItemDialog } from '../../features/warehouse/materiales/components/CreateItemDialog';
 import { useIsMobile } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 
 // Paleta visual moderna y consistente con el Centro de Comando
 const colors = {
@@ -103,6 +104,8 @@ export default function MaterialesCriticosPage() {
 
     useEffect(() => {
         if (depotId) sessionStorage.setItem('selectedPurchasingDepotId', depotId);
+        else sessionStorage.removeItem('selectedPurchasingDepotId');
+        setSelectedCategoryIds([]);
     }, [depotId]);
 
     useEffect(() => {
@@ -176,11 +179,17 @@ export default function MaterialesCriticosPage() {
     const [newComboTitle, setNewComboTitle] = useState('');
     const [newComboSupplier, setNewComboSupplier] = useState('');
     const [newComboItems, setNewComboItems] = useState<string[]>([]);
+    const [newComboItemSearch, setNewComboItemSearch] = useState('');
 
     // Inicializar categorías seleccionadas cuando carguen
     useEffect(() => {
-        if (categories.length > 0 && selectedCategoryIds.length === 0) {
-            setSelectedCategoryIds(categories.map((c: any) => c.id));
+        if (categories.length > 0) {
+            setSelectedCategoryIds(prev => {
+                if (prev.length === 0) return categories.map((c: any) => c.id);
+                const catIds = new Set(categories.map((c: any) => c.id));
+                const valid = prev.filter(id => catIds.has(id));
+                return valid.length > 0 ? valid : categories.map((c: any) => c.id);
+            });
         }
     }, [categories]);
 
@@ -708,6 +717,7 @@ export default function MaterialesCriticosPage() {
             setNewComboTitle('');
             setNewComboSupplier('');
             setNewComboItems([]);
+            setNewComboItemSearch('');
         } catch (e: any) {
             alert(e?.data?.message || 'Error al crear combo');
         }
@@ -1941,21 +1951,43 @@ export default function MaterialesCriticosPage() {
                             label="Proveedor *"
                             size="small"
                             value={newComboSupplier}
-                            onChange={(e) => setNewComboSupplier(e.target.value)}
+                            onChange={(e) => {
+                                setNewComboSupplier(e.target.value);
+                                setNewComboItems([]);
+                            }}
                             sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
                         >
-                            {partners.map((p: any) => (
-                                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-                            ))}
+                            {partners
+                                .filter((p: any) => p.activo !== false)
+                                .map((p: any) => (
+                                    <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                                ))}
                         </TextField>
 
                         <Typography variant="caption" sx={{ color: colors.textDim, fontWeight: 700, mt: 1 }}>
                             Seleccioná los materiales que componen este combo:
                         </Typography>
 
+                        <TextField
+                            size="small"
+                            placeholder="Buscar material por código, descripción o categoría..."
+                            value={newComboItemSearch}
+                            onChange={(e) => setNewComboItemSearch(e.target.value)}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon fontSize="small" sx={{ color: colors.textDim }} />
+                                    </InputAdornment>
+                                )
+                            }}
+                            sx={{ '& .MuiOutlinedInput-root': { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }}
+                        />
+
                         <Box sx={{ maxHeight: 200, overflowY: 'auto', border: `1px solid ${colors.border}`, borderRadius: 2, p: 1 }}>
                             {items
+                                .filter((i: any) => i.activo !== false)
                                 .filter((i: any) => !newComboSupplier || i.supplierId === newComboSupplier)
+                                .filter((i: any) => matchesSearch(newComboItemSearch, i.codigoInterno, i.descripcion, i.supplier?.name, i.category?.nombre))
                                 .map((i: any) => {
                                     const checked = newComboItems.includes(i.id);
                                     return (

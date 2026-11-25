@@ -24,6 +24,9 @@ import {
     useGetMaterialAnalysisQuery,
     useUpdateMaterialReviewMutation,
 } from '../../features/warehouse/materialAnalysis/api/material-analysis.api';
+import { matchesSearch, createSmartFilterOptions, getItemSearchFields } from '../../shared/utils/search';
+
+const filterArticles = createSmartFilterOptions(getItemSearchFields);
 
 const materialRoles = [
     ['COLOR_BASE', 'Base'], ['LOGO', 'Logo'], ['DETALLE_MEDIA', 'Detalle'], ['COLOR_TALLE', 'Color talle'],
@@ -52,9 +55,22 @@ export default function MaterialesEstancadosPage() {
 
     const source = tab === 0 ? data?.withoutArticleMatch ?? [] : data?.stagnant ?? [];
     const rows = useMemo(() => {
-        const query = search.trim().toUpperCase();
-        if (!query) return source;
-        return source.filter((row) => `${row.codigoInterno} ${row.descripcion} ${row.categoryName ?? ''}`.toUpperCase().includes(query));
+        if (!search.trim()) return source;
+        return source.filter((row: any) =>
+            matchesSearch(
+                search,
+                row.codigoInterno,
+                row.descripcion,
+                row.categoryName,
+                row.supplierName,
+                row.proveedor,
+                row.lotNumber,
+                row.lote,
+                row.posicionCodigo,
+                row.reviewNotes,
+                reviewLabels[row.reviewStatus as MaterialReviewStatus],
+            )
+        );
     }, [source, search]);
 
     const changeStatus = async (row: MaterialAnalysisRow, status: MaterialReviewStatus) => {
@@ -171,6 +187,11 @@ export default function MaterialesEstancadosPage() {
                         onChange={(_event, value: any) => setArticleId(value?.id ?? '')}
                         getOptionLabel={(article: any) => `${article.codigo} — ${article.descripcion}`}
                         isOptionEqualToValue={(option: any, value: any) => option.id === value.id}
+                        filterOptions={filterArticles}
+                        autoHighlight
+                        selectOnFocus
+                        openOnFocus
+                        handleHomeEndKeys
                         renderInput={(params) => <TextField {...params} label="Artículo" margin="normal" />}
                     />
                     <Grid container spacing={2} sx={{ mt: 0.5 }}>

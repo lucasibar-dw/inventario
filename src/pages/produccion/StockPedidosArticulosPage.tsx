@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { PageHeader, Card, Btn, Modal, Input } from '../../shared/ui';
+import { PageHeader, Card, Btn, Modal, Input, SearchSelect } from '../../shared/ui';
+import { matchesSearch } from '../../shared/utils/search';
 import {
     useGetDepositosArticulosQuery,
     useCrearPosicionArticuloMutation,
@@ -60,16 +61,38 @@ export default function StockPedidosArticulosPage() {
 
     const filteredPedidos = useMemo(() => {
         if (!q.trim()) return pedidos;
-        const lower = q.toLowerCase();
-        return pedidos.filter(
-            (p: any) =>
-                (p.numero_pedido || '').toLowerCase().includes(lower) ||
-                (p.articulo_codigo || '').toLowerCase().includes(lower) ||
-                (p.codigo_susi || '').toLowerCase().includes(lower) ||
-                (p.cliente_marca || '').toLowerCase().includes(lower) ||
-                (p.posicion_actual || '').toLowerCase().includes(lower),
+        return pedidos.filter((p: any) =>
+            matchesSearch(
+                q,
+                p.numero_pedido,
+                p.articulo_codigo,
+                p.codigo_susi,
+                p.cliente_marca,
+                p.posicion_actual,
+                p.color_descripcion,
+                p.talle,
+            ),
         );
     }, [pedidos, q]);
+
+    const posicionOptions = useMemo(() => {
+        const opts = allPosiciones.map((pos) => ({
+            value: pos.codigo,
+            label: `${pos.codigo} (${pos.depositoNombre})`,
+            searchText: `${pos.codigo} ${pos.depositoNombre}`,
+        }));
+        if (
+            editingPedido?.posicion_actual &&
+            !opts.some((o) => o.value === editingPedido.posicion_actual)
+        ) {
+            opts.unshift({
+                value: editingPedido.posicion_actual,
+                label: `${editingPedido.posicion_actual} (actual)`,
+                searchText: editingPedido.posicion_actual,
+            });
+        }
+        return opts;
+    }, [allPosiciones, editingPedido?.posicion_actual]);
 
     const kpis = useMemo(() => {
         let pedidas = 0;
@@ -465,29 +488,13 @@ export default function StockPedidosArticulosPage() {
                             value={String(editingPedido.docenas_empaquetadas ?? 0)}
                             onChange={(v: string) => setEditingPedido({ ...editingPedido, docenas_empaquetadas: v })}
                         />
-                        <div>
-                            <label style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', display: 'block', marginBottom: '4px' }}>
-                                Posición Actual en Depósito de Artículos
-                            </label>
-                            <select
-                                value={editingPedido.posicion_actual || ''}
-                                onChange={(e) => setEditingPedido({ ...editingPedido, posicion_actual: e.target.value })}
-                                style={{
-                                    width: '100%',
-                                    padding: '8px 12px',
-                                    background: 'var(--bg-secondary, #1a1d2e)',
-                                    border: '1px solid var(--border-color, #2a2d3e)',
-                                    borderRadius: '8px',
-                                    color: 'var(--text-primary, #f3f4f6)',
-                                }}
-                            >
-                                {allPosiciones.map((pos) => (
-                                    <option key={pos.codigo} value={pos.codigo}>
-                                        {pos.codigo} ({pos.depositoNombre})
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <SearchSelect
+                            label="Posición Actual en Depósito de Artículos"
+                            value={editingPedido.posicion_actual || ''}
+                            onChange={(v) => setEditingPedido({ ...editingPedido, posicion_actual: v })}
+                            options={posicionOptions}
+                            placeholder="Buscar posición o depósito..."
+                        />
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
                             <Btn variant="secondary" onClick={() => setEditingPedido(null)}>
                                 Cancelar

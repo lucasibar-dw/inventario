@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
+    Autocomplete,
     Box,
     Paper,
     Typography,
@@ -57,6 +58,7 @@ import type {
     BacklogPedidoItem,
     MaquinaTimeline,
 } from '../../features/produccion/api/programacion.api';
+import { matchesSearch, createSmartFilterOptions } from '../../shared/utils/search';
 
 // Paleta de colores para clientes/marcas
 const CLIENT_COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -137,6 +139,8 @@ export default function ProgramacionGanttPage() {
         refetch: refetchTimeline,
     } = useGetTimelineQuery({ desde: desdeStr, hasta: hastaStr, tipoPlan: tipoPlanActive });
 
+    const { data: unfilteredBacklog = [] } = useGetBacklogQuery({});
+
     const {
         data: backlog = [],
         isLoading: loadingBacklog,
@@ -160,25 +164,48 @@ export default function ProgramacionGanttPage() {
         if (!timelineData?.maquinas) return [];
         return timelineData.maquinas.filter((m) => {
             if (!searchMachine.trim()) return true;
-            const term = searchMachine.toLowerCase();
-            return (
-                String(m.number).includes(term) ||
-                m.nombre.toLowerCase().includes(term) ||
-                (m.codigoInterno || '').toLowerCase().includes(term)
+            return matchesSearch(
+                searchMachine,
+                m.number,
+                `M${m.number}`,
+                `M#${m.number}`,
+                m.nombre,
+                m.codigoInterno,
+                m.status,
             );
         });
     }, [timelineData, searchMachine]);
 
+    const splitMachineOptions = useMemo(() => {
+        const all = timelineData?.maquinas || [];
+        const active = all.filter((m) => m.status !== 'PARADA' || m.id === splitMaquinaDestino);
+        return active.length > 0 ? active : all;
+    }, [timelineData, splitMaquinaDestino]);
+
+    const splitMachineFilterOptions = useMemo(
+        () =>
+            createSmartFilterOptions<MaquinaTimeline>((m) => [
+                m.number,
+                `M${m.number}`,
+                `M#${m.number}`,
+                m.nombre,
+                m.codigoInterno,
+                m.status,
+            ]),
+        [],
+    );
+
     const bloques = timelineData?.bloques || [];
 
-    // Clientes únicos para filtro
+    // Clientes únicos para filtro (desde backlog sin filtrar)
     const clientesList = useMemo(() => {
+        const source = unfilteredBacklog.length > 0 ? unfilteredBacklog : backlog;
         const set = new Set<string>();
-        backlog.forEach((b) => {
+        source.forEach((b) => {
             if (b.cliente) set.add(b.cliente.toUpperCase());
         });
         return Array.from(set).sort();
-    }, [backlog]);
+    }, [unfilteredBacklog, backlog]);
 
     // Navegación de fechas
     const handleShiftDate = (offsetDays: number) => {
@@ -1115,20 +1142,27 @@ export default function ProgramacionGanttPage() {
                                 />
                             </Stack>
 
-                            <FormControl fullWidth>
-                                <InputLabel>Máquina Destino para Lote 2</InputLabel>
-                                <Select
-                                    value={splitMaquinaDestino}
-                                    label="Máquina Destino para Lote 2"
-                                    onChange={(e) => setSplitMaquinaDestino(e.target.value)}
-                                >
-                                    {maquinas.map((m) => (
-                                        <MenuItem key={m.id} value={m.id}>
-                                            M#{m.number} - {m.nombre} ({m.status})
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
+                            <Autocomplete
+                                options={splitMachineOptions}
+                                value={splitMachineOptions.find((m) => m.id === splitMaquinaDestino) || null}
+                                onChange={(_, val) => setSplitMaquinaDestino(val?.id || '')}
+                                getOptionLabel={(m) => `M#${m.number} - ${m.nombre} (${m.status})`}
+                                isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                                filterOptions={splitMachineFilterOptions}
+                                autoHighlight
+                                openOnFocus
+                                selectOnFocus
+                                handleHomeEndKeys
+                                fullWidth
+                                noOptionsText="Sin máquinas disponibles"
+                                renderInput={(params) => (
+                                    <TextField
+                                        {...params}
+                                        label="Máquina Destino para Lote 2"
+                                        placeholder="Buscar máquina por número o nombre..."
+                                    />
+                                )}
+                            />
                         </Stack>
                     )}
                 </DialogContent>
