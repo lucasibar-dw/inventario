@@ -95,9 +95,13 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
     }, [availablePositions]);
 
     const positionOptions = useMemo(() => {
-        const hasEntrada = availablePositions.some((p: any) => p.codigo?.trim().toUpperCase() === 'ENTRADA');
-        if (!hasEntrada && depositoId) {
+        const entradaIdx = availablePositions.findIndex((p: any) => p.codigo?.trim().toUpperCase() === 'ENTRADA');
+        if (entradaIdx === -1 && depositoId) {
             return [{ id: 'ENTRADA', codigo: 'ENTRADA' }, ...availablePositions];
+        }
+        if (entradaIdx > 0) {
+            const entrada = availablePositions[entradaIdx];
+            return [entrada, ...availablePositions.slice(0, entradaIdx), ...availablePositions.slice(entradaIdx + 1)];
         }
         return availablePositions;
     }, [availablePositions, depositoId]);
@@ -326,10 +330,22 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                             <Autocomplete
                                 options={suppliers}
                                 getOptionLabel={(option: any) => option.name || ''}
+                                isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
                                 value={suppliers.find((s: any) => s.id === supplierId) || null}
-                                onChange={(_e, val: any) => setSupplierId(val?.id || '')}
+                                onChange={(_e, val: any, reason) => {
+                                    setSupplierId(val?.id || '');
+                                    if (val && reason === 'selectOption') {
+                                        setTimeout(() => focusCell(0, 'material'), 60);
+                                    }
+                                }}
                                 fullWidth
                                 size="small"
+                                autoHighlight
+                                autoSelect
+                                openOnFocus
+                                selectOnFocus
+                                handleHomeEndKeys
+                                noOptionsText="Sin proveedores"
                                 renderInput={(params) => (
                                     <TextField 
                                         {...params} 
@@ -343,7 +359,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                 if (params.inputProps.onKeyDown) {
                                                     params.inputProps.onKeyDown(e);
                                                 }
-                                                if (e.key === 'Enter') {
+                                                if (e.key === 'Enter' && supplierId) {
                                                     setTimeout(() => focusCell(0, 'material'), 60);
                                                 }
                                             }
@@ -460,17 +476,21 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                             options={lineOptions}
                                             noOptionsText={supplierId ? "No hay materiales asignados a este proveedor" : "Selecciona un proveedor primero"}
                                             getOptionLabel={(option: any) => `${option.codigoInterno} — ${option.descripcion}`}
+                                            isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id}
                                             value={selectedItem || null}
-                                            onChange={(_e, val: any) => {
+                                            onChange={(_e, val: any, reason) => {
                                                 handleItemChange(idx, val);
-                                                if (val) {
+                                                if (val && reason === 'selectOption') {
                                                     setTimeout(() => focusCell(idx, 'lotNumber'), 50);
                                                 }
                                             }}
                                             size="small"
                                             autoHighlight
+                                            autoSelect
                                             openOnFocus
-                                            clearOnBlur={false}
+                                            selectOnFocus
+                                            handleHomeEndKeys
+                                            clearOnBlur
                                             sx={{ flex: '3 1 260px' }}
                                             renderInput={(params) => (
                                                 <TextField
@@ -485,10 +505,8 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                             if (params.inputProps.onKeyDown) {
                                                                 params.inputProps.onKeyDown(e);
                                                             }
-                                                            if (e.key === 'Enter') {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                setTimeout(() => focusCell(idx, 'lotNumber'), 100);
+                                                            if (e.key === 'Enter' && selectedItem) {
+                                                                setTimeout(() => focusCell(idx, 'lotNumber'), 60);
                                                             }
                                                         }
                                                     }}
@@ -520,26 +538,29 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
 
                                         {/* Posición Destino Directa (Autocompletable / Escribible) */}
                                         {(() => {
-                                            const currentPosId = line.posicionId || defaultPosId;
-                                            const selectedPos = positionOptions.find((p: any) => p.id === currentPosId || p.codigo?.toUpperCase() === currentPosId?.toUpperCase()) || null;
+                                            const selectedPos = line.posicionId
+                                                ? positionOptions.find((p: any) => p.id === line.posicionId || p.codigo?.toUpperCase() === line.posicionId?.toUpperCase()) || null
+                                                : null;
 
                                             return (
                                                 <Autocomplete
                                                     options={positionOptions}
                                                     getOptionLabel={(option: any) => typeof option === 'string' ? option : (option?.codigo || '')}
                                                     value={selectedPos}
-                                                    onChange={(_e, val: any) => {
+                                                    onChange={(_e, val: any, reason) => {
                                                         const newPosId = val ? val.id : '';
                                                         updateLine(idx, 'posicionId', newPosId);
-                                                        if (val) {
+                                                        if (val && reason === 'selectOption') {
                                                             setTimeout(() => focusCell(idx, 'qtySecundaria'), 50);
                                                         }
                                                     }}
                                                     isOptionEqualToValue={(option: any, value: any) => option?.id === value?.id || option?.codigo === value?.codigo}
                                                     size="small"
                                                     autoHighlight
+                                                    autoSelect
                                                     openOnFocus
-                                                    clearOnBlur={false}
+                                                    selectOnFocus
+                                                    handleHomeEndKeys
                                                     disabled={!depositoId}
                                                     sx={{ flex: '2 1 180px' }}
                                                     renderOption={(props, option: any) => (
@@ -561,9 +582,7 @@ export function NuevoRemitoEntradaModal({ onClose, onSuccess }: Props) {
                                                                         params.inputProps.onKeyDown(e);
                                                                     }
                                                                     if (e.key === 'Enter') {
-                                                                        e.preventDefault();
-                                                                        e.stopPropagation();
-                                                                        focusCell(idx, 'qtySecundaria');
+                                                                        setTimeout(() => focusCell(idx, 'qtySecundaria'), 60);
                                                                     }
                                                                 }
                                                             }}

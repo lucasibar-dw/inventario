@@ -394,7 +394,6 @@ export default function DashboardDepositoPage() {
     const [despachoSaving, setDespachoSaving] = useState(false);
 
     const clientOptions = useMemo(() => [
-        { value: '', label: 'Seleccionar cliente...' },
         ...(isAdmin ? [{ value: '__new__', label: '+ Nuevo cliente' }] : []),
         ...partners.filter((p: any) => p.type === 'CLIENT' || p.type === 'BOTH').map((p: any) => ({ value: p.id, label: p.name }))
     ], [partners, isAdmin]);
@@ -2385,8 +2384,9 @@ export default function DashboardDepositoPage() {
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.8 }}>
                                 <Autocomplete 
                                     options={clientOptions} 
-                                    getOptionLabel={(option: any) => option.label}
-                                    value={clientOptions.find(o => o.value === despachoClient) || null}
+                                    getOptionLabel={(option: any) => option.label || ''}
+                                    isOptionEqualToValue={(option: any, value: any) => option?.value === value?.value}
+                                    value={clientOptions.find(o => o.value === (despachoNewClient ? '__new__' : despachoClient)) || null}
                                     onChange={(_e, val: any) => {
                                         if (val?.value === '__new__') {
                                             setDespachoNewClient(true);
@@ -2396,7 +2396,12 @@ export default function DashboardDepositoPage() {
                                             setDespachoClient(val?.value || '');
                                         }
                                     }}
-                                    renderInput={(params) => <TextField {...params} label="Cliente" InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }} />}
+                                    autoHighlight
+                                    openOnFocus
+                                    selectOnFocus
+                                    handleHomeEndKeys
+                                    noOptionsText="Sin resultados"
+                                    renderInput={(params) => <TextField {...params} label="Cliente" placeholder="Buscar cliente..." InputProps={{ ...params.InputProps, sx: { bgcolor: colors.inputBg, color: '#fff', borderRadius: 2 } }} />}
                                 />
 
                                 {despachoNewClient && isAdmin && (
