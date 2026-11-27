@@ -12,6 +12,7 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip as RechartsTooltip,
+    Legend,
 } from 'recharts';
 import {
     useGetRecentMovementsQuery,
@@ -113,6 +114,7 @@ export default function AdminMovementsPage() {
     const [itemId, setItemId] = useState<string>(initialItemId);
     const [quickSearch, setQuickSearch] = useState<string>('');
     const [flowFilter, setFlowFilter] = useState<FlowFilter>('ALL');
+    const [chartMetric, setChartMetric] = useState<'count' | 'volume'>('count');
 
     // Modals
     const [selectedMovement, setSelectedMovement] = useState<any | null>(null);
@@ -431,29 +433,157 @@ export default function AdminMovementsPage() {
         return rows;
     }, [movements, itemId, currentStockTotal, hasta]);
 
-    // Métricas exclusivas de AJUSTES REALES (sin contrapartida) para el Panel de Control
-    const realAdjustAnalytics = useMemo(() => {
-        const realAdjusts = processedData.filter((r) => r._isRealAdjust && r.status !== 'ANULADO');
+    const normalizeText = (str: string) =>
+        (str || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
 
+    const searchTokens = useMemo(
+        () =>
+            normalizeText(quickSearch)
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean),
+        [quickSearch]
+    );
+
+    // 1) Filtro multi-palabra aplicado ANTES de los contadores, gráficos y tabla:
+    // Cada palabra ingresada debe estar contenida en alguno de los campos del movimiento
+    // (lote, proveedor, categoría de material, descripción, tono, código, posición, depósito, etc.)
+    const searchFilteredData = useMemo(() => {
+        if (searchTokens.length === 0) return processedData;
+
+        return processedData.filter((m) => {
+            const hay = normalizeText(
+                [
+                    m.item?.descripcion,
+                    m.item?.codigoInterno,
+                    m.item?.tono,
+                    m.item?.category?.nombre,
+                    m.item?.categoria,
+                    m.categoria,
+                    m.item?.supplier?.name,
+                    m.batch?.supplier?.name,
+                    m.supplier?.name,
+                    m.documento?.partner?.name,
+                    m.batch?.lotNumber,
+                    m._originLot,
+                    m._destLot,
+                    m.posicion?.codigo,
+                    m._originPos,
+                    m._destPos,
+                    m.deposito?.nombre,
+                    m.posicion?.depot?.nombre,
+                    m._originDepot,
+                    m._destDepot,
+                    m.documentoNumero,
+                    m.documento?.numero,
+                    m.user?.username,
+                    m.user?.nombre,
+                    m.observaciones,
+                    m._badgeLabel,
+                    m.tipo,
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+            );
+
+            return searchTokens.every((t) => hay.includes(t));
+        });
+    }, [processedData, searchTokens]);
+
+    // Contadores de categorías basados en los resultados filtrados por la barra superior
+    const categoryCounts = useMemo(() => {
+        let realAdjust = 0;
+        let inCount = 0;
+        let outCount = 0;
+        let transferCount = 0;
+        searchFilteredData.forEach((m) => {
+            if (m._category === 'REAL_ADJUST') realAdjust++;
+            else if (m._category === 'IN') inCount++;
+            else if (m._category === 'OUT') outCount++;
+            else if (m._category === 'TRANSFER') transferCount++;
+        });
+        return { all: searchFilteredData.length, realAdjust, inCount, outCount, transferCount };
+    }, [searchFilteredData]);
+
+    // Filtrado final por categoría seleccionada (alimenta gráficos, panel lateral y tabla inferior)
+    const filteredRows = useMemo(() => {
+        if (flowFilter === 'ALL') return searchFilteredData;
+        return searchFilteredData.filter((m) => m._category === flowFilter);
+    }, [searchFilteredData, flowFilter]);
+
+    // Analítica dinámica según los filtros superiores Y la categoría seleccionada
+    const categoryAnalytics = useMemo(() => {
+        const activeRows = filteredRows.filter((r) => r.status !== 'ANULADO');
+        const annulledCount = filteredRows.length - activeRows.length;
+
+        let totalCount = activeRows.length;
         let sumaCount = 0;
         let sumaKilos = 0;
         let restaCount = 0;
         let restaKilos = 0;
+        let totalVolume = 0;
+        let lotReassignCount = 0;
 
-        // Evolución por semana o fecha para ver si los ajustes van bajando
-        const trendMap = new Map<string, { label: string; cantidad: number; sumaKg: number; restaKg: number }>();
-        // Top materiales con más ajustes forzados
+        // Determinar si agrupamos por mes o por día según amplitud real de fechas
+        let minTime = Infinity;
+        let maxTime = -Infinity;
+        activeRows.forEach((m) => {
+            const t = new Date(String(m.fecha).slice(0, 10)).getTime();
+            if (Number.isFinite(t)) {
+                if (t < minTime) minTime = t;
+                if (t > maxTime) maxTime = t;
+            }
+        });
+        const spanDays = Number.isFinite(minTime) && Number.isFinite(maxTime) ? (maxTime - minTime) / 86400000 : 0;
+        const groupByMonth = spanDays > 65 || datePreset === 'all' || datePreset === '90d';
+
+        type TrendPoint = {
+            key: string;
+            label: string;
+            cantidad: number;
+            volumen: number;
+            entradas: number;
+            salidas: number;
+            traslados: number;
+            ajustes: number;
+            entradasKg: number;
+            salidasKg: number;
+            trasladosKg: number;
+            ajustesKg: number;
+            sumaKg: number;
+            restaKg: number;
+        };
+
+        const trendMap = new Map<string, TrendPoint>();
         const byMaterial = new Map<
             string,
-            { id: string; codigo: string; descripcion: string; count: number; sumaKg: number; restaKg: number; unidad: string }
+            {
+                id: string;
+                codigo: string;
+                descripcion: string;
+                categoria: string;
+                proveedor: string;
+                count: number;
+                sumaKg: number;
+                restaKg: number;
+                movedKg: number;
+                unidad: string;
+            }
         >();
 
-        const ascAdjusts = [...realAdjusts].reverse();
-        ascAdjusts.forEach((m) => {
+        const ascRows = [...activeRows].reverse();
+        ascRows.forEach((m) => {
             const qty = Math.abs(Number(m.qtyPrincipal || 0));
+            const isTransfer = m._category === 'TRANSFER';
             const isPos = m._signedQty > 0;
 
-            if (isPos) {
+            totalVolume += qty;
+            if (isTransfer) {
+                if (m._isLotReassign) lotReassignCount++;
+            } else if (isPos) {
                 sumaCount++;
                 sumaKilos += qty;
             } else {
@@ -461,57 +591,104 @@ export default function AdminMovementsPage() {
                 restaKilos += qty;
             }
 
-            // Agrupar para el gráfico de tendencia (por fecha o mes según la extensión)
             const fStr = String(m.fecha).slice(0, 10);
-            const key = datePreset === 'all' || datePreset === '90d' ? fStr.slice(0, 7) : fStr;
-            const label =
-                datePreset === 'all' || datePreset === '90d'
-                    ? `${fStr.slice(5, 7)}/${fStr.slice(2, 4)}`
-                    : formatDateAR(fStr).slice(0, 5);
+            const key = groupByMonth ? fStr.slice(0, 7) : fStr;
+            const label = groupByMonth
+                ? `${fStr.slice(5, 7)}/${fStr.slice(2, 4)}`
+                : formatDateAR(fStr).slice(0, 5);
 
-            const curTrend = trendMap.get(key) || { label, cantidad: 0, sumaKg: 0, restaKg: 0 };
-            curTrend.cantidad += 1;
-            if (isPos) curTrend.sumaKg = Number((curTrend.sumaKg + qty).toFixed(1));
-            else curTrend.restaKg = Number((curTrend.restaKg + qty).toFixed(1));
-            trendMap.set(key, curTrend);
+            const cur = trendMap.get(key) || {
+                key,
+                label,
+                cantidad: 0,
+                volumen: 0,
+                entradas: 0,
+                salidas: 0,
+                traslados: 0,
+                ajustes: 0,
+                entradasKg: 0,
+                salidasKg: 0,
+                trasladosKg: 0,
+                ajustesKg: 0,
+                sumaKg: 0,
+                restaKg: 0,
+            };
 
-            // Agrupar por material
+            cur.cantidad += 1;
+            cur.volumen = Number((cur.volumen + qty).toFixed(1));
+
+            if (m._category === 'IN') {
+                cur.entradas += 1;
+                cur.entradasKg = Number((cur.entradasKg + qty).toFixed(1));
+            } else if (m._category === 'OUT') {
+                cur.salidas += 1;
+                cur.salidasKg = Number((cur.salidasKg + qty).toFixed(1));
+            } else if (m._category === 'TRANSFER') {
+                cur.traslados += 1;
+                cur.trasladosKg = Number((cur.trasladosKg + qty).toFixed(1));
+            } else if (m._category === 'REAL_ADJUST') {
+                cur.ajustes += 1;
+                cur.ajustesKg = Number((cur.ajustesKg + qty).toFixed(1));
+            }
+
+            if (!isTransfer) {
+                if (isPos) cur.sumaKg = Number((cur.sumaKg + qty).toFixed(1));
+                else cur.restaKg = Number((cur.restaKg + qty).toFixed(1));
+            }
+            trendMap.set(key, cur);
+
             if (m.item?.id) {
                 const curMat = byMaterial.get(m.item.id) || {
                     id: m.item.id,
                     codigo: m.item.codigoInterno || 'S/C',
                     descripcion: m.item.descripcion || 'Material',
+                    categoria: m.item.category?.nombre || m.item.categoria || '',
+                    proveedor: m.item.supplier?.name || m.batch?.supplier?.name || m.documento?.partner?.name || '',
                     count: 0,
                     sumaKg: 0,
                     restaKg: 0,
+                    movedKg: 0,
                     unidad: m.item.unidadPrincipal || 'kg',
                 };
                 curMat.count += 1;
-                if (isPos) curMat.sumaKg += qty;
-                else curMat.restaKg += qty;
+                curMat.movedKg += qty;
+                if (!isTransfer) {
+                    if (isPos) curMat.sumaKg += qty;
+                    else curMat.restaKg += qty;
+                }
                 byMaterial.set(m.item.id, curMat);
             }
         });
 
+        const trendData = Array.from(trendMap.values()).sort((a, b) => a.key.localeCompare(b.key));
         const topMaterials = Array.from(byMaterial.values())
-            .sort((a, b) => b.count - a.count || b.sumaKg + b.restaKg - (a.sumaKg + a.restaKg))
+            .sort((a, b) => {
+                if (flowFilter === 'IN' || flowFilter === 'OUT') {
+                    return b.movedKg - a.movedKg || b.count - a.count;
+                }
+                return b.count - a.count || b.movedKg - a.movedKg;
+            })
             .slice(0, 5);
 
         return {
-            totalCount: realAdjusts.length,
+            totalCount,
+            annulledCount,
             sumaCount,
             sumaKilos,
             restaCount,
             restaKilos,
-            trendData: Array.from(trendMap.values()),
+            totalVolume,
+            avgVolume: totalCount > 0 ? totalVolume / totalCount : 0,
+            lotReassignCount,
+            trendData,
             topMaterials,
         };
-    }, [processedData, datePreset]);
+    }, [filteredRows, datePreset, flowFilter]);
 
     // Curva de evolución del saldo cuando se investiga un material puntual
     const materialHistoryChart = useMemo(() => {
-        if (!itemId || processedData.length === 0) return [];
-        const asc = [...processedData].reverse();
+        if (!itemId || searchFilteredData.length === 0) return [];
+        const asc = [...searchFilteredData].reverse();
         const byDate = new Map<string, { label: string; saldo: number }>();
         asc.forEach((m) => {
             if (m._saldoAfter == null) return;
@@ -522,22 +699,7 @@ export default function AdminMovementsPage() {
             });
         });
         return Array.from(byDate.values());
-    }, [processedData, itemId]);
-
-    // Contadores para los filtros de la tabla
-    const categoryCounts = useMemo(() => {
-        let realAdjust = 0;
-        let inCount = 0;
-        let outCount = 0;
-        let transferCount = 0;
-        processedData.forEach((m) => {
-            if (m._category === 'REAL_ADJUST') realAdjust++;
-            else if (m._category === 'IN') inCount++;
-            else if (m._category === 'OUT') outCount++;
-            else if (m._category === 'TRANSFER') transferCount++;
-        });
-        return { all: processedData.length, realAdjust, inCount, outCount, transferCount };
-    }, [processedData]);
+    }, [searchFilteredData, itemId]);
 
     // Mapa de lotes conocidos por material (para que en el selector de material también puedas escribir un lote, proveedor o categoría)
     const lotsByItemId = useMemo(() => {
@@ -551,64 +713,11 @@ export default function AdminMovementsPage() {
         return map;
     }, [movements]);
 
-    const normalizeText = (str: string) =>
-        (str || '')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase();
-
-    // Filtrado final de la tabla (por categoría seleccionada y buscador flexible multi-palabra)
-    const filteredRows = useMemo(() => {
-        const tokens = normalizeText(quickSearch)
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean);
-
-        return processedData.filter((m) => {
-            if (flowFilter === 'REAL_ADJUST' && m._category !== 'REAL_ADJUST') return false;
-            if (flowFilter === 'IN' && m._category !== 'IN') return false;
-            if (flowFilter === 'OUT' && m._category !== 'OUT') return false;
-            if (flowFilter === 'TRANSFER' && m._category !== 'TRANSFER') return false;
-
-            if (tokens.length > 0) {
-                const hay = normalizeText(
-                    [
-                        m.item?.descripcion,
-                        m.item?.codigoInterno,
-                        m.item?.category?.nombre,
-                        m.item?.categoria,
-                        m.categoria,
-                        m.item?.supplier?.name,
-                        m.batch?.supplier?.name,
-                        m.supplier?.name,
-                        m.documento?.partner?.name,
-                        m.batch?.lotNumber,
-                        m._originLot,
-                        m._destLot,
-                        m.posicion?.codigo,
-                        m._originPos,
-                        m._destPos,
-                        m.deposito?.nombre,
-                        m.posicion?.depot?.nombre,
-                        m.documentoNumero,
-                        m.documento?.numero,
-                        m.user?.username,
-                        m.user?.nombre,
-                        m.observaciones,
-                        m._badgeLabel,
-                    ]
-                        .filter(Boolean)
-                        .join(' ')
-                );
-
-                if (!tokens.every((t) => hay.includes(t))) return false;
-            }
-
-            return true;
-        });
-    }, [processedData, flowFilter, quickSearch]);
-
     const pagination = useClientPagination(filteredRows, 25);
+
+    useEffect(() => {
+        pagination.setPage(0);
+    }, [quickSearch, depositoId, itemId, desde, hasta, flowFilter]);
 
     const handleReverse = async (m: any) => {
         const desc = m.item?.descripcion || 'Material';
@@ -661,6 +770,8 @@ export default function AdminMovementsPage() {
             'Es Ajuste Forzado': m._isRealAdjust ? 'SÍ' : 'NO',
             'Código': m.item?.codigoInterno || '—',
             'Material': m.item?.descripcion || '—',
+            'Categoría': m.item?.category?.nombre || m.item?.categoria || '—',
+            'Proveedor': m.item?.supplier?.name || m.batch?.supplier?.name || m.documento?.partner?.name || '—',
             'Lote': m._isPairedTransfer && m._isLotReassign ? `${m._originLot} → ${m._destLot}` : m.batch?.lotNumber || '—',
             'Ubicación': m._isPairedTransfer ? `${m._originPos} → ${m._destPos}` : m.posicion?.codigo || 'S/P',
             'Depósito': m.deposito?.nombre || m.posicion?.depot?.nombre || '—',
@@ -724,18 +835,32 @@ export default function AdminMovementsPage() {
             </div>
         );
 
+        const matCat = m.item?.category?.nombre || m.item?.categoria || '';
+        const matSupplier = m.item?.supplier?.name || m.batch?.supplier?.name || m.documento?.partner?.name || '';
         const materialCell = (
             <div
                 onClick={() => m.item?.id && handleSelectItem(m.item.id)}
-                style={{ cursor: 'pointer', maxWidth: '250px' }}
+                style={{ cursor: 'pointer', maxWidth: '280px' }}
                 title="Clic para ver todo el historial de este material"
             >
                 <div style={{ fontWeight: 700, color: '#a5b4fc', fontSize: '13px', lineHeight: 1.25, whiteSpace: 'normal' }}>
                     {m.item?.descripcion || '—'}
                 </div>
-                <code style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
-                    {m.item?.codigoInterno}
-                </code>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                    <code style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>
+                        {m.item?.codigoInterno}
+                    </code>
+                    {matCat && (
+                        <span style={{ fontSize: '10px', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.12)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                            {matCat}
+                        </span>
+                    )}
+                    {matSupplier && (
+                        <span style={{ fontSize: '11px', color: 'var(--text-subtle, #9ca3af)' }}>
+                            · {matSupplier}
+                        </span>
+                    )}
+                </div>
             </div>
         );
 
@@ -996,18 +1121,25 @@ export default function AdminMovementsPage() {
                 </Btn>
             </PageHeader>
 
-            {/* ── 1. BARRA ÚNICA DE FILTROS (1 SOLA FILA LIMPIA) ── */}
-            <Card style={{ padding: '14px 16px', marginBottom: '18px' }}>
+            {/* ── 1. BARRA ÚNICA DE FILTROS SUPERIORES (FILTRA GRÁFICOS, MÉTRICAS Y TABLA) ── */}
+            <Card style={{ padding: '14px 16px', marginBottom: '14px' }}>
                 <div
                     style={{
                         display: 'grid',
-                        gridTemplateColumns: isMobile ? '1fr' : '1.5fr 0.9fr 1.1fr auto',
+                        gridTemplateColumns: isMobile ? '1fr' : '1.45fr 1.25fr 0.85fr auto',
                         gap: '12px',
                         alignItems: 'flex-end',
                     }}
                 >
+                    <Input
+                        label="🔍 Buscador multi-palabra (lote, proveedor, categoría, descripción, posición...)"
+                        placeholder="Ej: blanco algodon 1-2-B"
+                        value={quickSearch}
+                        onChange={setQuickSearch}
+                    />
+
                     <SearchSelect
-                        label="🏷️ Material (Buscá por categoría, descripción, proveedor, código o lote)"
+                        label="🏷️ Material específico (Kardex)"
                         value={itemId}
                         onChange={handleSelectItem}
                         options={[
@@ -1021,11 +1153,11 @@ export default function AdminMovementsPage() {
                                 return {
                                     value: i.id,
                                     label: `${cat ? `[${cat}] ` : ''}${i.codigoInterno} - ${i.descripcion}${sup ? ` (${sup})` : ''}`,
-                                    searchText: `${cat} ${sup} ${i.codigoInterno} ${i.descripcion} ${knownLots}`,
+                                    searchText: `${cat} ${sup} ${i.tono || ''} ${i.codigoInterno} ${i.descripcion} ${knownLots}`,
                                 };
                             }),
                         ]}
-                        placeholder="Ej: nylon negro eurotex..."
+                        placeholder="Elegir material puntual..."
                     />
 
                     <Select
@@ -1038,13 +1170,6 @@ export default function AdminMovementsPage() {
                                 .filter((d: any) => d.activo !== false)
                                 .map((d: any) => ({ value: d.id, label: d.nombre })),
                         ]}
-                    />
-
-                    <Input
-                        label="🔍 Filtro libre (Categoría, material, proveedor, lote, posición...)"
-                        placeholder="Ej: nylon negro eurotex 120..."
-                        value={quickSearch}
-                        onChange={setQuickSearch}
                     />
 
                     <div>
@@ -1080,254 +1205,47 @@ export default function AdminMovementsPage() {
                         <Input label="Hasta" type="date" value={hasta} onChange={setHasta} style={{ width: '160px' }} />
                     </div>
                 )}
+
+                {searchTokens.length > 0 && (
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flexWrap: 'wrap',
+                            marginTop: '10px',
+                            paddingTop: '10px',
+                            borderTop: '1px solid var(--border-subtle, #1e2133)',
+                            fontSize: '12px',
+                            color: 'var(--text-muted, #9ca3af)',
+                        }}
+                    >
+                        <span>Coincidencias con todas las palabras:</span>
+                        {searchTokens.map((tok, i) => (
+                            <span
+                                key={`${tok}-${i}`}
+                                style={{
+                                    background: 'rgba(99, 102, 241, 0.16)',
+                                    border: '1px solid rgba(99, 102, 241, 0.4)',
+                                    color: '#c7d2fe',
+                                    padding: '2px 8px',
+                                    borderRadius: '999px',
+                                    fontWeight: 700,
+                                    fontSize: '11px',
+                                }}
+                            >
+                                {tok}
+                            </span>
+                        ))}
+                        <span style={{ color: '#10b981', fontWeight: 700 }}>
+                            ({searchFilteredData.length} de {processedData.length} movimientos)
+                        </span>
+                    </div>
+                )}
             </Card>
 
-            {/* ── 2. BLOQUE DASHBOARD (2 PANELES LADO A LADO, CERO REDUNDANCIA) ── */}
-            <div
-                style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? '1fr' : '1.15fr 1fr',
-                    gap: '16px',
-                    marginBottom: '20px',
-                }}
-            >
-                {/* PANEL IZQUIERDO: CONTROL DE AJUSTES REALES (SIN CONTRAPARTIDA) */}
-                <Card style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                            <div>
-                                <div style={{ fontSize: '12px', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    ⚠️ Ajustes Forzados (Sin Contrapartida)
-                                </div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', marginTop: '2px' }}>
-                                    Excluye traslados entre posiciones (-250 / +250). Muestra solo diferencias de inventario.
-                                </div>
-                            </div>
-                            <Btn
-                                small
-                                variant={flowFilter === 'REAL_ADJUST' ? 'primary' : 'secondary'}
-                                onClick={() => setFlowFilter(flowFilter === 'REAL_ADJUST' ? 'ALL' : 'REAL_ADJUST')}
-                            >
-                                {flowFilter === 'REAL_ADJUST' ? 'Ver Todos' : 'Filtrar Tabla'}
-                            </Btn>
-                        </div>
-
-                        {/* 3 Numeros claros */}
-                        <div
-                            style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(3, 1fr)',
-                                gap: '10px',
-                                marginBottom: '16px',
-                            }}
-                        >
-                            <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
-                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Total Ajustes</div>
-                                <div style={{ fontSize: '22px', fontWeight: 900, color: '#f59e0b', marginTop: '2px' }}>
-                                    {realAdjustAnalytics.totalCount}
-                                </div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>correcciones a mano</div>
-                            </div>
-
-                            <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
-                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Adiciones / Suma (+)</div>
-                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
-                                    +{realAdjustAnalytics.sumaKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
-                                </div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>en {realAdjustAnalytics.sumaCount} ajustes</div>
-                            </div>
-
-                            <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
-                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Faltantes / Baja (-)</div>
-                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#ef4444', marginTop: '4px' }}>
-                                    -{realAdjustAnalytics.restaKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
-                                </div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>en {realAdjustAnalytics.restaCount} ajustes</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Gráfico de tendencia de ajustes forzados */}
-                    <div style={{ height: '140px', width: '100%' }}>
-                        {realAdjustAnalytics.trendData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={realAdjustAnalytics.trendData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                    <XAxis dataKey="label" stroke="#9ca3af" fontSize={11} tickLine={false} />
-                                    <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} allowDecimals={false} />
-                                    <RechartsTooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1a1d2e',
-                                            borderColor: '#374151',
-                                            borderRadius: 8,
-                                            color: '#fff',
-                                            fontSize: '12px',
-                                        }}
-                                        formatter={(val: any) => [`${val} ajustes forzados`, 'Cantidad']}
-                                    />
-                                    <Bar dataKey="cantidad" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981', fontSize: '13px', fontWeight: 600, background: 'rgba(16, 185, 129, 0.05)', borderRadius: '8px' }}>
-                                ✅ Sin ajustes forzados en este período
-                            </div>
-                        )}
-                    </div>
-                </Card>
-
-                {/* PANEL DERECHO: CONTEXTUAL (RANKING DE MATERIALES CON MÁS AJUSTES O CURVA DE STOCK DEL MATERIAL SELECCIONADO) */}
-                <Card style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    {!itemId ? (
-                        <>
-                            <div style={{ marginBottom: '12px' }}>
-                                <div style={{ fontSize: '12px', fontWeight: 800, color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    🎯 Materiales con más Ajustes Manuales
-                                </div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', marginTop: '2px' }}>
-                                    Hacé clic en un material para investigar su historial completo (Kardex)
-                                </div>
-                            </div>
-
-                            {realAdjustAnalytics.topMaterials.length === 0 ? (
-                                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle, #6b7280)', fontSize: '13px' }}>
-                                    No hay materiales con ajustes manuales en este período.
-                                </div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, justifyContent: 'center' }}>
-                                    {realAdjustAnalytics.topMaterials.map((mat, idx) => (
-                                        <div
-                                            key={mat.id}
-                                            onClick={() => handleSelectItem(mat.id)}
-                                            style={{
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                padding: '10px 12px',
-                                                background: 'rgba(255,255,255,0.03)',
-                                                border: '1px solid var(--border-subtle, #1e2133)',
-                                                borderRadius: '8px',
-                                                cursor: 'pointer',
-                                                transition: 'border-color 0.15s',
-                                            }}
-                                            onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#6366f1')}
-                                            onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle, #1e2133)')}
-                                        >
-                                            <div style={{ minWidth: 0, flex: 1, paddingRight: '10px' }}>
-                                                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary, #f3f4f6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                    {idx + 1}. {mat.descripcion}
-                                                </div>
-                                                <code style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>{mat.codigo}</code>
-                                            </div>
-
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', whiteSpace: 'nowrap' }}>
-                                                <div style={{ textAlign: 'right', fontSize: '12px' }}>
-                                                    {mat.sumaKg > 0 && (
-                                                        <span style={{ color: '#10b981', fontWeight: 700, marginRight: '6px' }}>
-                                                            +{mat.sumaKg.toFixed(1)} {mat.unidad}
-                                                        </span>
-                                                    )}
-                                                    {mat.restaKg > 0 && (
-                                                        <span style={{ color: '#ef4444', fontWeight: 700 }}>
-                                                            -{mat.restaKg.toFixed(1)} {mat.unidad}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <Badge color="#f59e0b">{mat.count} aj.</Badge>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </>
-                    ) : (
-                        <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
-                                <div>
-                                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#a5b4fc', textTransform: 'uppercase' }}>
-                                        📈 Evolución de Stock: {selectedItemObj?.codigoInterno}
-                                    </div>
-                                    <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary, #f3f4f6)', marginTop: '2px' }}>
-                                        {selectedItemObj?.descripcion}
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <div style={{ textAlign: 'right', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', padding: '6px 10px', borderRadius: '8px' }}>
-                                        <div style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>Stock Hoy</div>
-                                        <div style={{ fontSize: '15px', fontWeight: 900, color: '#38bdf8' }}>
-                                            {currentStockTotal.toLocaleString('es-AR', { maximumFractionDigits: 1 })} {unitLabel}
-                                        </div>
-                                    </div>
-                                    <Btn small variant="secondary" onClick={() => handleSelectItem('')} title="Volver a vista general">
-                                        ✕
-                                    </Btn>
-                                </div>
-                            </div>
-
-                            {/* Ubicaciones actuales resumidas en pills */}
-                            {currentItemStock.length > 0 && (
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                                    {currentItemStock.map((s: any) => (
-                                        <span
-                                            key={s.id}
-                                            onClick={() => s.batch?.lotNumber && setQuickSearch(quickSearch === s.batch.lotNumber ? '' : s.batch.lotNumber)}
-                                            style={{
-                                                fontSize: '11px',
-                                                background: 'rgba(255,255,255,0.04)',
-                                                border: '1px solid var(--border-subtle, #1e2133)',
-                                                padding: '3px 8px',
-                                                borderRadius: '6px',
-                                                cursor: 'pointer',
-                                            }}
-                                            title="Clic para filtrar por este lote"
-                                        >
-                                            <strong style={{ color: '#a5b4fc' }}>📍 {s.posicion?.codigo}</strong>{' '}
-                                            <span style={{ color: '#10b981', fontWeight: 700 }}>{Number(s.qtyPrincipal).toFixed(1)} {unitLabel}</span>{' '}
-                                            <code style={{ color: 'var(--text-muted, #9ca3af)' }}>({s.batch?.lotNumber || 'S/L'})</code>
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-
-                            <div style={{ height: '145px', width: '100%' }}>
-                                {materialHistoryChart.length > 1 ? (
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={materialHistoryChart}>
-                                            <defs>
-                                                <linearGradient id="saldoGrad" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.45} />
-                                                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
-                                                </linearGradient>
-                                            </defs>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                            <XAxis dataKey="label" stroke="#9ca3af" fontSize={11} tickLine={false} />
-                                            <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} />
-                                            <RechartsTooltip
-                                                contentStyle={{
-                                                    backgroundColor: '#1a1d2e',
-                                                    borderColor: '#374151',
-                                                    borderRadius: 8,
-                                                    color: '#fff',
-                                                    fontSize: '12px',
-                                                }}
-                                                formatter={(val: any) => [`${Number(val).toLocaleString('es-AR')} ${unitLabel}`, 'Saldo']}
-                                            />
-                                            <Area type="monotone" dataKey="saldo" stroke="#818cf8" strokeWidth={2.5} fill="url(#saldoGrad)" />
-                                        </AreaChart>
-                                    </ResponsiveContainer>
-                                ) : (
-                                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle, #6b7280)', fontSize: '12px' }}>
-                                        Historial de saldo disponible en la tabla inferior
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </Card>
-            </div>
-
-            {/* ── 3. FILTROS DE TABLA (EL ÚNICO LUGAR PARA FILTRAR POR TIPO) ── */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+            {/* ── 2. SELECTOR DE CATEGORÍA (ACTUALIZA GRÁFICO, PANEL LATERAL Y TABLA) ── */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                         type="button"
@@ -1337,7 +1255,7 @@ export default function AdminMovementsPage() {
                             pagination.setPage(0);
                         }}
                     >
-                        Todos ({categoryCounts.all})
+                        📊 Todos ({categoryCounts.all})
                     </button>
                     <button
                         type="button"
@@ -1347,7 +1265,7 @@ export default function AdminMovementsPage() {
                             pagination.setPage(0);
                         }}
                     >
-                        ⚠️ Solo Ajustes Forzados ({categoryCounts.realAdjust})
+                        ⚠️ Ajustes Forzados ({categoryCounts.realAdjust})
                     </button>
                     <button
                         type="button"
@@ -1377,7 +1295,7 @@ export default function AdminMovementsPage() {
                             pagination.setPage(0);
                         }}
                     >
-                        🔄 Traslados Internos ({categoryCounts.transferCount})
+                        🔄 Movimientos Internos ({categoryCounts.transferCount})
                     </button>
                 </div>
 
@@ -1396,6 +1314,501 @@ export default function AdminMovementsPage() {
                     </Btn>
                 )}
             </div>
+
+            {/* ── 3. BLOQUE DASHBOARD DINÁMICO SEGÚN CATEGORÍA Y FILTROS ── */}
+            {(() => {
+                const panelMeta: Record<
+                    FlowFilter,
+                    {
+                        title: string;
+                        subtitle: string;
+                        accent: string;
+                        emptyMsg: string;
+                        rightTitle: string;
+                        rightEmpty: string;
+                        badgeSuffix: string;
+                    }
+                > = {
+                    ALL: {
+                        title: '📊 Resumen General de Movimientos',
+                        subtitle: 'Evolución combinada de entradas, salidas, movimientos internos y ajustes según tus filtros.',
+                        accent: '#818cf8',
+                        emptyMsg: 'Sin movimientos registrados para los filtros seleccionados',
+                        rightTitle: '🏆 Materiales con más Actividad',
+                        rightEmpty: 'No hay movimientos para mostrar ranking en este período.',
+                        badgeSuffix: 'mov.',
+                    },
+                    REAL_ADJUST: {
+                        title: '⚠️ Ajustes Forzados (Sin Contrapartida)',
+                        subtitle: 'Excluye traslados entre posiciones (-250 / +250). Muestra solo diferencias manuales de inventario.',
+                        accent: '#f59e0b',
+                        emptyMsg: '✅ Sin ajustes forzados para los filtros seleccionados',
+                        rightTitle: '🎯 Materiales con más Ajustes Forzados',
+                        rightEmpty: 'No hay materiales con ajustes manuales en este período.',
+                        badgeSuffix: 'aj.',
+                    },
+                    IN: {
+                        title: '📥 Entradas de Mercadería',
+                        subtitle: 'Remitos de entrada, devoluciones de línea e ingresos de producción.',
+                        accent: '#10b981',
+                        emptyMsg: 'Sin entradas registradas para los filtros seleccionados',
+                        rightTitle: '📦 Top Materiales con más Entradas',
+                        rightEmpty: 'No hay entradas registradas en este período.',
+                        badgeSuffix: 'ent.',
+                    },
+                    OUT: {
+                        title: '📤 Salidas y Consumos',
+                        subtitle: 'Remitos de salida y entregas a producción.',
+                        accent: '#38bdf8',
+                        emptyMsg: 'Sin salidas registradas para los filtros seleccionados',
+                        rightTitle: '🏭 Top Materiales con más Salidas',
+                        rightEmpty: 'No hay salidas registradas en este período.',
+                        badgeSuffix: 'sal.',
+                    },
+                    TRANSFER: {
+                        title: '🔄 Movimientos Internos (Traslados)',
+                        subtitle: 'Reubicaciones entre posiciones y cambios de lote dentro del depósito (efecto neto 0).',
+                        accent: '#6366f1',
+                        emptyMsg: 'Sin movimientos internos registrados para los filtros seleccionados',
+                        rightTitle: '🔄 Top Materiales con más Movimientos Internos',
+                        rightEmpty: 'No hay movimientos internos en este período.',
+                        badgeSuffix: 'trasl.',
+                    },
+                };
+
+                const meta = panelMeta[flowFilter];
+                const isVolume = chartMetric === 'volume';
+
+                return (
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: isMobile ? '1fr' : '1.15fr 1fr',
+                            gap: '16px',
+                            marginBottom: '20px',
+                        }}
+                    >
+                        {/* PANEL IZQUIERDO: MÉTRICAS Y GRÁFICO DE LA CATEGORÍA ACTIVA */}
+                        <Card style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                            <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                                    <div>
+                                        <div style={{ fontSize: '12px', fontWeight: 800, color: meta.accent, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                            {meta.title}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', marginTop: '2px' }}>
+                                            {meta.subtitle}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                        <button
+                                            type="button"
+                                            className={`period-pill ${chartMetric === 'count' ? 'active' : ''}`}
+                                            style={{ padding: '4px 9px', fontSize: '11px' }}
+                                            onClick={() => setChartMetric('count')}
+                                        >
+                                            Cantidad
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`period-pill ${chartMetric === 'volume' ? 'active' : ''}`}
+                                            style={{ padding: '4px 9px', fontSize: '11px' }}
+                                            onClick={() => setChartMetric('volume')}
+                                        >
+                                            Volumen ({unitLabel})
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* 3 KPIs adaptados a la categoría */}
+                                <div
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(3, 1fr)',
+                                        gap: '10px',
+                                        marginBottom: '16px',
+                                    }}
+                                >
+                                    {flowFilter === 'ALL' && (
+                                        <>
+                                            <div style={{ background: 'rgba(129, 140, 248, 0.08)', border: '1px solid rgba(129, 140, 248, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Total Activos</div>
+                                                <div style={{ fontSize: '22px', fontWeight: 900, color: '#a5b4fc', marginTop: '2px' }}>
+                                                    {categoryAnalytics.totalCount}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>
+                                                    {categoryAnalytics.annulledCount > 0 ? `+ ${categoryAnalytics.annulledCount} anulados` : 'movimientos en vista'}
+                                                </div>
+                                            </div>
+                                            <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Ingresos (+)</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
+                                                    +{categoryAnalytics.sumaKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>en {categoryAnalytics.sumaCount} mov.</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(56, 189, 248, 0.06)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Egresos (-)</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#38bdf8', marginTop: '4px' }}>
+                                                    -{categoryAnalytics.restaKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>en {categoryAnalytics.restaCount} mov.</div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {flowFilter === 'REAL_ADJUST' && (
+                                        <>
+                                            <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Total Ajustes</div>
+                                                <div style={{ fontSize: '22px', fontWeight: 900, color: '#f59e0b', marginTop: '2px' }}>
+                                                    {categoryAnalytics.totalCount}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>correcciones a mano</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Adiciones / Suma (+)</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
+                                                    +{categoryAnalytics.sumaKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>en {categoryAnalytics.sumaCount} ajustes</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Faltantes / Baja (-)</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#ef4444', marginTop: '4px' }}>
+                                                    -{categoryAnalytics.restaKilos.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>en {categoryAnalytics.restaCount} ajustes</div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {flowFilter === 'IN' && (
+                                        <>
+                                            <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Total Entradas</div>
+                                                <div style={{ fontSize: '22px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>
+                                                    {categoryAnalytics.totalCount}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>ingresos activos</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Volumen Ingresado</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
+                                                    +{categoryAnalytics.totalVolume.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>acumulado</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-subtle, #1e2133)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Promedio / Entrada</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text-primary, #f3f4f6)', marginTop: '4px' }}>
+                                                    {categoryAnalytics.avgVolume.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>por movimiento</div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {flowFilter === 'OUT' && (
+                                        <>
+                                            <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Total Salidas</div>
+                                                <div style={{ fontSize: '22px', fontWeight: 900, color: '#38bdf8', marginTop: '2px' }}>
+                                                    {categoryAnalytics.totalCount}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>egresos activos</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(56, 189, 248, 0.06)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Volumen Egresado</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#38bdf8', marginTop: '4px' }}>
+                                                    -{categoryAnalytics.totalVolume.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>despachado</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-subtle, #1e2133)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Promedio / Salida</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: 'var(--text-primary, #f3f4f6)', marginTop: '4px' }}>
+                                                    {categoryAnalytics.avgVolume.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>por movimiento</div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {flowFilter === 'TRANSFER' && (
+                                        <>
+                                            <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Total Traslados</div>
+                                                <div style={{ fontSize: '22px', fontWeight: 900, color: '#818cf8', marginTop: '2px' }}>
+                                                    {categoryAnalytics.totalCount}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>movimientos internos</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(99, 102, 241, 0.06)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Volumen Movilizado</div>
+                                                <div style={{ fontSize: '18px', fontWeight: 900, color: '#a5b4fc', marginTop: '4px' }}>
+                                                    {categoryAnalytics.totalVolume.toLocaleString('es-AR', { maximumFractionDigits: 1 })} <small style={{ fontSize: '11px' }}>{unitLabel}</small>
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>reubicados</div>
+                                            </div>
+                                            <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-subtle, #1e2133)', borderRadius: '10px', padding: '10px 12px' }}>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)', fontWeight: 600 }}>Cambios de Lote</div>
+                                                <div style={{ fontSize: '22px', fontWeight: 900, color: '#fbbf24', marginTop: '2px' }}>
+                                                    {categoryAnalytics.lotReassignCount}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-subtle, #6b7280)' }}>reasignaciones</div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Gráfico dinámico de tendencia según categoría y métrica */}
+                            <div style={{ height: '165px', width: '100%' }}>
+                                {categoryAnalytics.trendData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={categoryAnalytics.trendData}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                            <XAxis dataKey="label" stroke="#9ca3af" fontSize={11} tickLine={false} />
+                                            <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} allowDecimals={isVolume} />
+                                            <RechartsTooltip
+                                                contentStyle={{
+                                                    backgroundColor: '#1a1d2e',
+                                                    borderColor: '#374151',
+                                                    borderRadius: 8,
+                                                    color: '#fff',
+                                                    fontSize: '12px',
+                                                }}
+                                                formatter={(val: any, name: any) => [
+                                                    isVolume
+                                                        ? `${Number(val).toLocaleString('es-AR', { maximumFractionDigits: 1 })} ${unitLabel}`
+                                                        : `${val} mov.`,
+                                                    name,
+                                                ]}
+                                            />
+                                            {flowFilter === 'ALL' ? (
+                                                <>
+                                                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
+                                                    <Bar
+                                                        dataKey={isVolume ? 'entradasKg' : 'entradas'}
+                                                        name="Entradas"
+                                                        stackId="a"
+                                                        fill="#10b981"
+                                                        radius={[0, 0, 0, 0]}
+                                                    />
+                                                    <Bar
+                                                        dataKey={isVolume ? 'salidasKg' : 'salidas'}
+                                                        name="Salidas"
+                                                        stackId="a"
+                                                        fill="#38bdf8"
+                                                        radius={[0, 0, 0, 0]}
+                                                    />
+                                                    <Bar
+                                                        dataKey={isVolume ? 'trasladosKg' : 'traslados'}
+                                                        name="Internos"
+                                                        stackId="a"
+                                                        fill="#6366f1"
+                                                        radius={[0, 0, 0, 0]}
+                                                    />
+                                                    <Bar
+                                                        dataKey={isVolume ? 'ajustesKg' : 'ajustes'}
+                                                        name="Ajustes"
+                                                        stackId="a"
+                                                        fill="#f59e0b"
+                                                        radius={[4, 4, 0, 0]}
+                                                    />
+                                                </>
+                                            ) : (
+                                                <Bar
+                                                    dataKey={isVolume ? 'volumen' : 'cantidad'}
+                                                    name={isVolume ? `Volumen (${unitLabel})` : 'Movimientos'}
+                                                    fill={meta.accent}
+                                                    radius={[4, 4, 0, 0]}
+                                                />
+                                            )}
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: flowFilter === 'REAL_ADJUST' ? '#10b981' : 'var(--text-subtle, #6b7280)', fontSize: '13px', fontWeight: 600, background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px' }}>
+                                        {meta.emptyMsg}
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
+
+                        {/* PANEL DERECHO: RANKING CONTEXTUAL DE LA CATEGORÍA O CURVA KARDEX DEL MATERIAL */}
+                        <Card style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                            {!itemId ? (
+                                <>
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <div style={{ fontSize: '12px', fontWeight: 800, color: meta.accent, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                            {meta.rightTitle}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted, #9ca3af)', marginTop: '2px' }}>
+                                            Hacé clic en un material para investigar su historial completo (Kardex)
+                                        </div>
+                                    </div>
+
+                                    {categoryAnalytics.topMaterials.length === 0 ? (
+                                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle, #6b7280)', fontSize: '13px' }}>
+                                            {meta.rightEmpty}
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, justifyContent: 'center' }}>
+                                            {categoryAnalytics.topMaterials.map((mat, idx) => (
+                                                <div
+                                                    key={mat.id}
+                                                    onClick={() => handleSelectItem(mat.id)}
+                                                    style={{
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        padding: '10px 12px',
+                                                        background: 'rgba(255,255,255,0.03)',
+                                                        border: '1px solid var(--border-subtle, #1e2133)',
+                                                        borderRadius: '8px',
+                                                        cursor: 'pointer',
+                                                        transition: 'border-color 0.15s',
+                                                    }}
+                                                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = meta.accent)}
+                                                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle, #1e2133)')}
+                                                >
+                                                    <div style={{ minWidth: 0, flex: 1, paddingRight: '10px' }}>
+                                                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary, #f3f4f6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                            {idx + 1}. {mat.descripcion}
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', overflow: 'hidden' }}>
+                                                            <code style={{ fontSize: '11px', color: 'var(--text-muted, #9ca3af)' }}>{mat.codigo}</code>
+                                                            {mat.categoria && (
+                                                                <span style={{ fontSize: '10px', color: '#93c5fd', whiteSpace: 'nowrap' }}>
+                                                                    · {mat.categoria}
+                                                                </span>
+                                                            )}
+                                                            {mat.proveedor && (
+                                                                <span style={{ fontSize: '10px', color: 'var(--text-subtle, #6b7280)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    · {mat.proveedor}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ textAlign: 'right', fontSize: '12px' }}>
+                                                            {flowFilter === 'TRANSFER' ? (
+                                                                <span style={{ color: '#a5b4fc', fontWeight: 700 }}>
+                                                                    {mat.movedKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} {mat.unidad}
+                                                                </span>
+                                                            ) : (
+                                                                <>
+                                                                    {mat.sumaKg > 0 && (
+                                                                        <span style={{ color: '#10b981', fontWeight: 700, marginRight: mat.restaKg > 0 ? '6px' : 0 }}>
+                                                                            +{mat.sumaKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} {mat.unidad}
+                                                                        </span>
+                                                                    )}
+                                                                    {mat.restaKg > 0 && (
+                                                                        <span style={{ color: flowFilter === 'OUT' ? '#38bdf8' : '#ef4444', fontWeight: 700 }}>
+                                                                            -{mat.restaKg.toLocaleString('es-AR', { maximumFractionDigits: 1 })} {mat.unidad}
+                                                                        </span>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                        <Badge color={meta.accent}>
+                                                            {mat.count} {meta.badgeSuffix}
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
+                                        <div>
+                                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#a5b4fc', textTransform: 'uppercase' }}>
+                                                📈 Evolución de Stock: {selectedItemObj?.codigoInterno}
+                                            </div>
+                                            <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary, #f3f4f6)', marginTop: '2px' }}>
+                                                {selectedItemObj?.descripcion}
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ textAlign: 'right', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', padding: '6px 10px', borderRadius: '8px' }}>
+                                                <div style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>Stock Hoy</div>
+                                                <div style={{ fontSize: '15px', fontWeight: 900, color: '#38bdf8' }}>
+                                                    {currentStockTotal.toLocaleString('es-AR', { maximumFractionDigits: 1 })} {unitLabel}
+                                                </div>
+                                            </div>
+                                            <Btn small variant="secondary" onClick={() => handleSelectItem('')} title="Volver a vista general">
+                                                ✕
+                                            </Btn>
+                                        </div>
+                                    </div>
+
+                                    {/* Ubicaciones actuales resumidas en pills */}
+                                    {currentItemStock.length > 0 && (
+                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                            {currentItemStock.map((s: any) => (
+                                                <span
+                                                    key={s.id}
+                                                    onClick={() => s.batch?.lotNumber && setQuickSearch(quickSearch === s.batch.lotNumber ? '' : s.batch.lotNumber)}
+                                                    style={{
+                                                        fontSize: '11px',
+                                                        background: 'rgba(255,255,255,0.04)',
+                                                        border: '1px solid var(--border-subtle, #1e2133)',
+                                                        padding: '3px 8px',
+                                                        borderRadius: '6px',
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    title="Clic para filtrar por este lote"
+                                                >
+                                                    <strong style={{ color: '#a5b4fc' }}>📍 {s.posicion?.codigo}</strong>{' '}
+                                                    <span style={{ color: '#10b981', fontWeight: 700 }}>{Number(s.qtyPrincipal).toFixed(1)} {unitLabel}</span>{' '}
+                                                    <code style={{ color: 'var(--text-muted, #9ca3af)' }}>({s.batch?.lotNumber || 'S/L'})</code>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div style={{ height: '145px', width: '100%' }}>
+                                        {materialHistoryChart.length > 1 ? (
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <AreaChart data={materialHistoryChart}>
+                                                    <defs>
+                                                        <linearGradient id="saldoGrad" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.45} />
+                                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                    <XAxis dataKey="label" stroke="#9ca3af" fontSize={11} tickLine={false} />
+                                                    <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} />
+                                                    <RechartsTooltip
+                                                        contentStyle={{
+                                                            backgroundColor: '#1a1d2e',
+                                                            borderColor: '#374151',
+                                                            borderRadius: 8,
+                                                            color: '#fff',
+                                                            fontSize: '12px',
+                                                        }}
+                                                        formatter={(val: any) => [`${Number(val).toLocaleString('es-AR')} ${unitLabel}`, 'Saldo']}
+                                                    />
+                                                    <Area type="monotone" dataKey="saldo" stroke="#818cf8" strokeWidth={2.5} fill="url(#saldoGrad)" />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        ) : (
+                                            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle, #6b7280)', fontSize: '12px' }}>
+                                                Historial de saldo disponible en la tabla inferior
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </Card>
+                    </div>
+                );
+            })()}
 
             {/* ── 4. TABLA PRINCIPAL ── */}
             <Card style={{ padding: isMobile ? '12px' : '0' }}>
